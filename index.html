@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Winter Hill — Bake Planner</title>
+<style>
+  :root {
+    --bg: #f5f1e8;
+    --card: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #5a6b5e;
+    --accent: #1f4d2e;
+    --accent-dark: #143420;
+    --border: #dcdccf;
+    --danger: #8a2a2a;
+    --ok: #1f4d2e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  header {
+    padding: 24px 20px 8px;
+    text-align: center;
+  }
+  header .brand-logo {
+    display: block;
+    margin: 0 auto 10px;
+    max-width: 110px;
+    height: auto;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 1.7rem;
+    letter-spacing: 1px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  header p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  nav.tabs {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    margin: 16px 0 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  nav.tabs button {
+    background: none;
+    border: none;
+    padding: 10px 18px;
+    font-size: 1rem;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
+  }
+  nav.tabs button.active {
+    color: var(--accent-dark);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+  main {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 12px 16px 64px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .card h2 {
+    margin: 0 0 8px;
+    font-size: 1.1rem;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .row + .row { margin-top: 8px; }
+  label { font-size: 0.9rem; color: var(--muted); }
+  input[type="text"], input[type="number"] {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 0.95rem;
+    background: white;
+    color: var(--ink);
+  }
+  input[type="number"] { width: 90px; text-align: right; }
+  input[type="text"] { flex: 1; min-width: 120px; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-dark); }
+  button.secondary {
+    background: transparent;
+    color: var(--accent-dark);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: #e3ebe3; }
+  button.danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid var(--border);
+  }
+  button.danger:hover { background: #fbeaea; }
+  button.tiny { padding: 3px 8px; font-size: 0.8rem; }
+  .muted { color: var(--muted); font-size: 0.9rem; }
+  .recipe-summary {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  table.ingredients {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+  }
+  table.ingredients th, table.ingredients td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.95rem;
+  }
+  table.ingredients th { color: var(--muted); font-weight: 500; font-size: 0.85rem; }
+  table.ingredients td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ingredient-edit-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 36px;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .bake-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 90px;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .bake-row:last-child { border-bottom: none; }
+  .bake-row .meta { font-size: 0.8rem; color: var(--muted); }
+  .totals {
+    background: #ecf2ec;
+    border: 1px solid #c5d6c5;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .totals h2 { margin-top: 0; }
+  .totals table td.num { font-weight: 600; }
+  .pill {
+    display: inline-block;
+    background: #e3ebe3;
+    color: var(--accent-dark);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 0.75rem;
+    margin-left: 6px;
+  }
+  details summary {
+    cursor: pointer;
+    color: var(--accent-dark);
+    font-size: 0.9rem;
+    margin-top: 6px;
+  }
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 24px;
+  }
+  .footer-note {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-top: 24px;
+  }
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="logo.png" alt="Winter Hill" class="brand-logo" />
+  <h1>WINTER HILL</h1>
+  <p>Bake planner</p>
+</header>
+
+<nav class="tabs">
+  <button id="tab-plan-btn" class="active" onclick="showTab('plan')">Bake Plan</button>
+  <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
+</nav>
+
+<main>
+  <section id="tab-plan">
+    <div class="card">
+      <h2>This bake</h2>
+      <p class="muted">Enter how many of each you'll bake. Totals appear below.</p>
+      <div id="plan-list"></div>
+    </div>
+
+    <div class="card totals" id="totals-card" style="display:none">
+      <h2>Ingredient totals</h2>
+      <div id="totals-output"></div>
+    </div>
+
+    <div class="card totals" id="levain-card" style="display:none">
+      <h2>Levain build plan</h2>
+      <p class="muted" style="margin-top:0">1:1:1 starter : flour : water, built in two refreshes.</p>
+      <div id="levain-output"></div>
+    </div>
+  </section>
+
+  <section id="tab-recipes" style="display:none">
+    <div class="card">
+      <div class="row" style="justify-content: space-between">
+        <h2 style="margin:0">Your recipes</h2>
+        <button onclick="startNewRecipe()">+ Add recipe</button>
+      </div>
+      <p class="muted" style="margin: 6px 0 0">Recipes use <strong>baker's percentages</strong>: flour = 100%, everything else as a % of the flour weight.</p>
+    </div>
+    <div id="recipes-list"></div>
+
+    <div class="card" id="recipe-editor" style="display:none">
+      <h2 id="editor-title">New recipe</h2>
+      <div class="row">
+        <label style="width:120px">Name</label>
+        <input type="text" id="r-name" placeholder="e.g. Country Sourdough" />
+      </div>
+      <div class="row">
+        <label style="width:120px">Unit name</label>
+        <input type="text" id="r-unit" placeholder="e.g. loaf, muffin, pan" />
+      </div>
+      <div class="row">
+        <label style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
+        <input type="number" id="r-weight" min="0" step="10" />
+        <span class="muted">grams</span>
+      </div>
+
+      <hr class="sep" />
+      <h2 style="font-size:1rem; margin:6px 0">Ingredients (baker's %)</h2>
+      <p class="muted" style="margin-top:0">Flour should total 100%. Salt is typically 2%, water 60–85%, yeast 0.5–1%, levain 15–25%.</p>
+      <div id="r-ingredients"></div>
+      <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
+
+      <hr class="sep" />
+      <div class="row" style="justify-content: flex-end; gap: 8px">
+        <button class="secondary" onclick="cancelEdit()">Cancel</button>
+        <button onclick="saveRecipe()">Save recipe</button>
+      </div>
+    </div>
+
+    <div class="card" style="text-align: center">
+      <button class="danger" onclick="resetToDefaults()">Reset all recipes to defaults</button>
+      <p class="muted" style="font-size: 0.8rem; margin: 8px 0 0">Replaces your recipes with the built-in Winter Hill defaults and clears the current bake plan.</p>
+    </div>
+  </section>
+
+  <p class="footer-note">All data is stored locally in your browser.</p>
+</main>
+
+<script>
+  const STORAGE_KEY = 'cottage-bakery-recipes-v5';
+  const PLAN_KEY = 'cottage-bakery-plan-v5';
+
+  const SEED_RECIPES = [
+    {
+      id: 'seed-sourdough-batard',
+      name: 'Sourdough Batard',
+      unit: 'loaf',
+      loafWeight: 675,
+      ingredients: [
+        { name: 'Bread flour', pct: 65.14 },
+        { name: 'All purpose flour', pct: 22.29 },
+        { name: 'Rye flour', pct: 6.29 },
+        { name: 'Red wheat (Redeemer)', pct: 6.29 },
+        { name: 'Water', pct: 73 },
+        { name: 'Levain', pct: 22 },
+        { name: 'Salt', pct: 2.5 },
+      ],
+    },
+    {
+      id: 'seed-sourdough-boule',
+      name: 'Sourdough Boule',
+      unit: 'loaf',
+      loafWeight: 850,
+      ingredients: [
+        { name: 'Bread flour', pct: 65.14 },
+        { name: 'All purpose flour', pct: 22.29 },
+        { name: 'Rye flour', pct: 6.29 },
+        { name: 'Red wheat (Redeemer)', pct: 6.29 },
+        { name: 'Water', pct: 73 },
+        { name: 'Levain', pct: 22 },
+        { name: 'Salt', pct: 2.5 },
+      ],
+    },
+    {
+      id: 'seed-english-muffins',
+      name: 'Sourdough English Muffins',
+      unit: 'muffin',
+      loafWeight: 80,
+      ingredients: [
+        { name: 'Bread flour', pct: 100 },
+        { name: 'Water', pct: 45.83 },
+        { name: 'Milk', pct: 9.17 },
+        { name: 'Butter', pct: 5 },
+        { name: 'Honey', pct: 1.67 },
+        { name: 'Salt', pct: 2 },
+        { name: 'Levain', pct: 19.17 },
+      ],
+    },
+  ];
+
+  // ---- state ----
+  let recipes = loadRecipes();
+  let plan = loadPlan();      // { recipeId: count }
+  let editingId = null;       // null = not editing
+
+  function loadRecipes() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return SEED_RECIPES.map(r => ({ ...r, ingredients: r.ingredients.map(i => ({...i})) }));
+  }
+  function saveRecipes() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+  }
+  function loadPlan() {
+    try {
+      const raw = localStorage.getItem(PLAN_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {};
+  }
+  function savePlan() {
+    localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
+  }
+  function uid() { return 'r-' + Math.random().toString(36).slice(2, 10); }
+
+  // ---- tabs ----
+  function showTab(name) {
+    document.getElementById('tab-plan').style.display = name === 'plan' ? '' : 'none';
+    document.getElementById('tab-recipes').style.display = name === 'recipes' ? '' : 'none';
+    document.getElementById('tab-plan-btn').classList.toggle('active', name === 'plan');
+    document.getElementById('tab-recipes-btn').classList.toggle('active', name === 'recipes');
+    if (name === 'plan') renderPlan();
+    if (name === 'recipes') renderRecipes();
+  }
+
+  // ---- math ----
+  // For each recipe: total dough per loaf = loafWeight
+  // sum of pct (as fraction) = sum(pct)/100
+  // flour weight per loaf = loafWeight / sumFraction
+  // each ingredient weight = flour weight * (pct / 100)
+  function computeIngredientWeights(recipe, loaves) {
+    const sumPct = recipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
+    if (sumPct <= 0) return [];
+    const flourWeight = (recipe.loafWeight * loaves) / (sumPct / 100);
+    return recipe.ingredients.map(i => ({
+      name: i.name,
+      pct: i.pct,
+      grams: flourWeight * (i.pct / 100),
+    }));
+  }
+
+  // ---- render: plan tab ----
+  function renderPlan() {
+    const list = document.getElementById('plan-list');
+    list.innerHTML = '';
+    if (recipes.length === 0) {
+      list.innerHTML = '<div class="empty">No recipes yet. Add some in the Recipes tab.</div>';
+      document.getElementById('totals-card').style.display = 'none';
+      return;
+    }
+
+    recipes.forEach(r => {
+      const count = plan[r.id] || 0;
+      const unit = r.unit || 'loaf';
+      const unitPlural = pluralize(unit);
+      const row = document.createElement('div');
+      row.className = 'bake-row';
+      row.innerHTML = `
+        <div>
+          <div><strong>${escapeHtml(r.name)}</strong></div>
+          <div class="meta">${r.loafWeight} g per ${escapeHtml(unit)}</div>
+        </div>
+        <div>
+          <input type="number" min="0" step="1" value="${count}"
+            onchange="setPlanCount('${r.id}', this.value)" aria-label="Number of ${escapeHtml(unitPlural)}" />
+        </div>
+        <div class="muted">${escapeHtml(unitPlural)}</div>
+      `;
+      list.appendChild(row);
+    });
+
+    renderTotals();
+  }
+
+  function setPlanCount(id, val) {
+    const n = Math.max(0, Math.floor(Number(val) || 0));
+    if (n === 0) delete plan[id]; else plan[id] = n;
+    savePlan();
+    renderTotals();
+  }
+
+  function renderTotals() {
+    const activeRecipes = recipes.filter(r => (plan[r.id] || 0) > 0);
+    const card = document.getElementById('totals-card');
+    const out = document.getElementById('totals-output');
+    const levainCard = document.getElementById('levain-card');
+
+    if (activeRecipes.length === 0) {
+      card.style.display = 'none';
+      levainCard.style.display = 'none';
+      return;
+    }
+
+    // Per-recipe breakdown + aggregate
+    const aggregate = {}; // lowercased name -> { name, grams }
+    let totalDough = 0;
+    const perRecipeHtml = activeRecipes.map(r => {
+      const loaves = plan[r.id];
+      const unit = r.unit || 'loaf';
+      const unitLabel = loaves === 1 ? unit : pluralize(unit);
+      const weights = computeIngredientWeights(r, loaves);
+      const rows = weights.map(w => {
+        const key = w.name.trim().toLowerCase();
+        if (!aggregate[key]) aggregate[key] = { name: w.name.trim(), grams: 0 };
+        aggregate[key].grams += w.grams;
+        return `<tr>
+          <td>${escapeHtml(w.name)}</td>
+          <td class="num">${w.pct}%</td>
+          <td class="num">${formatGrams(w.grams)}</td>
+        </tr>`;
+      }).join('');
+      totalDough += r.loafWeight * loaves;
+      return `<details>
+        <summary>${escapeHtml(r.name)} &times; ${loaves} ${escapeHtml(unitLabel)} <span class="pill">${formatGrams(r.loafWeight * loaves)}</span></summary>
+        <table class="ingredients">
+          <thead><tr><th>Ingredient</th><th class="num">%</th><th class="num">grams</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </details>`;
+    }).join('');
+
+    const aggRows = Object.values(aggregate)
+      .sort((a, b) => b.grams - a.grams)
+      .map(a => `<tr><td>${escapeHtml(a.name)}</td><td class="num">${formatGrams(a.grams)}</td></tr>`)
+      .join('');
+
+    out.innerHTML = `
+      <p class="muted" style="margin-top:0">Total dough: <strong>${formatGrams(totalDough)}</strong> across ${activeRecipes.length} recipe${activeRecipes.length>1?'s':''}.</p>
+      <table class="ingredients">
+        <thead><tr><th>Ingredient</th><th class="num">Total grams</th></tr></thead>
+        <tbody>${aggRows}</tbody>
+      </table>
+      <hr class="sep" />
+      <h2 style="font-size:0.95rem; margin: 4px 0 6px">Per recipe</h2>
+      ${perRecipeHtml}
+    `;
+    card.style.display = '';
+
+    renderLevainPlan(aggregate);
+  }
+
+  function renderLevainPlan(aggregate) {
+    const levainCard = document.getElementById('levain-card');
+    const levainOut = document.getElementById('levain-output');
+
+    const levainTotal = Object.values(aggregate)
+      .filter(a => a.name.toLowerCase().includes('levain'))
+      .reduce((s, a) => s + a.grams, 0);
+
+    if (levainTotal <= 0) {
+      levainCard.style.display = 'none';
+      return;
+    }
+
+    const BUFFER = 1.10;                    // 10% extra for jar residue
+    const bufferedTotal = levainTotal * BUFFER;
+    const build2Each = bufferedTotal / 3;   // each third of the final build
+    const build1Each = build2Each / 3;      // each third of the first refresh
+    const build1Total = build2Each;         // first refresh output = build 2's starter portion
+
+    levainOut.innerHTML = `
+      <p style="margin-top:0">Total levain needed by recipes: <strong>${formatGrams(levainTotal)}</strong></p>
+      <p style="margin: 4px 0 4px">Building with a <strong>10% buffer</strong> for jar residue → target <strong>${formatGrams(bufferedTotal)}</strong></p>
+      <p style="margin: 6px 0 14px">Mature starter to set aside: <strong>${formatGrams(build1Each)}</strong></p>
+
+      <h2 style="font-size:0.95rem; margin: 4px 0 6px">Build 1 — first refresh <span class="pill">makes ${formatGrams(build1Total)}</span></h2>
+      <table class="ingredients">
+        <tbody>
+          <tr><td>Mature starter</td><td class="num">${formatGrams(build1Each)}</td></tr>
+          <tr><td>All purpose flour</td><td class="num">${formatGrams(build1Each)}</td></tr>
+          <tr><td>Water</td><td class="num">${formatGrams(build1Each)}</td></tr>
+        </tbody>
+      </table>
+
+      <h2 style="font-size:0.95rem; margin: 14px 0 6px">Build 2 — final levain <span class="pill">makes ${formatGrams(bufferedTotal)}</span></h2>
+      <table class="ingredients">
+        <tbody>
+          <tr><td>Ripe levain from Build 1</td><td class="num">${formatGrams(build2Each)}</td></tr>
+          <tr><td>All purpose flour</td><td class="num">${formatGrams(build2Each)}</td></tr>
+          <tr><td>Water</td><td class="num">${formatGrams(build2Each)}</td></tr>
+        </tbody>
+      </table>
+    `;
+    levainCard.style.display = '';
+  }
+
+  function formatGrams(g) {
+    if (g < 9) return g.toFixed(1) + ' g';
+    return Math.round(g) + ' g';
+  }
+
+  // ---- render: recipes tab ----
+  function renderRecipes() {
+    const list = document.getElementById('recipes-list');
+    list.innerHTML = '';
+    if (recipes.length === 0) {
+      list.innerHTML = '<div class="card empty">No recipes yet. Click <strong>Add recipe</strong> to create one.</div>';
+      return;
+    }
+    recipes.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const sumPct = r.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
+      card.innerHTML = `
+        <div class="row" style="justify-content: space-between">
+          <div>
+            <strong>${escapeHtml(r.name)}</strong>
+            <span class="pill">${r.loafWeight} g/${escapeHtml(r.unit || 'loaf')}</span>
+            <div class="recipe-summary">${r.ingredients.length} ingredients · sum ${sumPct.toFixed(1)}%</div>
+          </div>
+          <div class="row" style="gap:6px">
+            <button class="secondary tiny" onclick="editRecipe('${r.id}')">Edit</button>
+            <button class="danger tiny" onclick="deleteRecipe('${r.id}')">Delete</button>
+          </div>
+        </div>
+        <table class="ingredients">
+          <thead><tr><th>Ingredient</th><th class="num">%</th></tr></thead>
+          <tbody>
+            ${r.ingredients.map(i => `<tr><td>${escapeHtml(i.name)}</td><td class="num">${i.pct}%</td></tr>`).join('')}
+          </tbody>
+        </table>
+      `;
+      list.appendChild(card);
+    });
+  }
+
+  // ---- editor ----
+  function startNewRecipe() {
+    editingId = null;
+    document.getElementById('editor-title').textContent = 'New recipe';
+    document.getElementById('r-name').value = '';
+    document.getElementById('r-unit').value = 'loaf';
+    document.getElementById('r-unit-label').textContent = 'loaf';
+    document.getElementById('r-weight').value = 500;
+    document.getElementById('r-ingredients').innerHTML = '';
+    // start with a couple of common rows
+    addIngredientRow({ name: 'Bread flour', pct: 100 });
+    addIngredientRow({ name: 'Water', pct: 70 });
+    addIngredientRow({ name: 'Salt', pct: 2 });
+    document.getElementById('recipe-editor').style.display = '';
+    document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function editRecipe(id) {
+    const r = recipes.find(x => x.id === id);
+    if (!r) return;
+    editingId = id;
+    document.getElementById('editor-title').textContent = 'Edit recipe';
+    document.getElementById('r-name').value = r.name;
+    const unit = r.unit || 'loaf';
+    document.getElementById('r-unit').value = unit;
+    document.getElementById('r-unit-label').textContent = unit;
+    document.getElementById('r-weight').value = r.loafWeight;
+    document.getElementById('r-ingredients').innerHTML = '';
+    r.ingredients.forEach(i => addIngredientRow(i));
+    document.getElementById('recipe-editor').style.display = '';
+    document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function addIngredientRow(prefill) {
+    const wrap = document.getElementById('r-ingredients');
+    const row = document.createElement('div');
+    row.className = 'ingredient-edit-row';
+    row.innerHTML = `
+      <input type="text" class="ing-name" placeholder="Ingredient name" value="${prefill ? escapeAttr(prefill.name) : ''}" />
+      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${prefill ? prefill.pct : ''}" />
+      <button class="danger tiny" onclick="this.parentElement.remove()" aria-label="Remove">×</button>
+    `;
+    wrap.appendChild(row);
+  }
+
+  function cancelEdit() {
+    document.getElementById('recipe-editor').style.display = 'none';
+    editingId = null;
+  }
+
+  function saveRecipe() {
+    const name = document.getElementById('r-name').value.trim();
+    const unit = document.getElementById('r-unit').value.trim() || 'loaf';
+    const loafWeight = Number(document.getElementById('r-weight').value);
+    if (!name) { alert('Please give the recipe a name.'); return; }
+    if (!loafWeight || loafWeight <= 0) { alert(`Please enter a weight per ${unit} in grams.`); return; }
+
+    const rows = document.querySelectorAll('#r-ingredients .ingredient-edit-row');
+    const ingredients = [];
+    for (const row of rows) {
+      const iname = row.querySelector('.ing-name').value.trim();
+      const ipct = Number(row.querySelector('.ing-pct').value);
+      if (!iname) continue;
+      if (!Number.isFinite(ipct) || ipct < 0) {
+        alert(`Ingredient "${iname}" needs a non-negative percentage.`);
+        return;
+      }
+      ingredients.push({ name: iname, pct: ipct });
+    }
+    if (ingredients.length === 0) { alert('Add at least one ingredient.'); return; }
+
+    if (editingId) {
+      const idx = recipes.findIndex(x => x.id === editingId);
+      if (idx >= 0) recipes[idx] = { ...recipes[idx], name, unit, loafWeight, ingredients };
+    } else {
+      recipes.push({ id: uid(), name, unit, loafWeight, ingredients });
+    }
+    saveRecipes();
+    cancelEdit();
+    renderRecipes();
+  }
+
+  function resetToDefaults() {
+    if (!confirm('Replace all recipes with the built-in Winter Hill defaults and clear your bake plan?\n\nThis cannot be undone.')) return;
+    recipes = SEED_RECIPES.map(r => ({ ...r, ingredients: r.ingredients.map(i => ({...i})) }));
+    plan = {};
+    saveRecipes();
+    savePlan();
+    cancelEdit();
+    renderRecipes();
+    renderPlan();
+  }
+
+  function deleteRecipe(id) {
+    const r = recipes.find(x => x.id === id);
+    if (!r) return;
+    if (!confirm(`Delete "${r.name}"? This cannot be undone.`)) return;
+    recipes = recipes.filter(x => x.id !== id);
+    delete plan[id];
+    saveRecipes();
+    savePlan();
+    renderRecipes();
+  }
+
+  // ---- utils ----
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+
+  const IRREGULAR_PLURALS = { loaf: 'loaves' };
+  function pluralize(unit) {
+    if (!unit) return 'items';
+    const u = unit.toLowerCase();
+    if (IRREGULAR_PLURALS[u]) return IRREGULAR_PLURALS[u];
+    return u.endsWith('s') ? u : u + 's';
+  }
+
+  // ---- init ----
+  document.getElementById('r-unit').addEventListener('input', e => {
+    document.getElementById('r-unit-label').textContent = e.target.value.trim() || 'unit';
+  });
+  renderPlan();
+</script>
+</body>
+</html>
