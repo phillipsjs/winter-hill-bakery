@@ -146,10 +146,18 @@
   table.ingredients td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .ingredient-edit-row {
     display: grid;
-    grid-template-columns: 1fr 90px 36px;
+    grid-template-columns: 1fr 80px 130px 32px;
     gap: 8px;
     align-items: center;
     margin-bottom: 6px;
+  }
+  .ingredient-edit-row select {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 6px;
+    font-size: 0.85rem;
+    background: white;
+    color: var(--ink);
   }
   .bake-row {
     display: grid;
@@ -259,7 +267,7 @@
 
       <hr class="sep" />
       <h2 style="font-size:1rem; margin:6px 0">Ingredients (baker's %)</h2>
-      <p class="muted" style="margin-top:0">Flour should total 100%. Salt is typically 2%, water 60–85%, yeast 0.5–1%, levain 15–25%.</p>
+      <p class="muted" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally.</p>
       <div id="r-ingredients"></div>
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
 
@@ -290,10 +298,10 @@
       unit: 'loaf',
       loafWeight: 675,
       ingredients: [
-        { name: 'Bread flour', pct: 65.14 },
-        { name: 'All purpose flour', pct: 22.29 },
-        { name: 'Rye flour', pct: 6.29 },
-        { name: 'Red wheat (Redeemer)', pct: 6.29 },
+        { name: 'Bread flour', pct: 65.14, flourType: 'anchor' },
+        { name: 'All purpose flour', pct: 22.29, flourType: 'anchor' },
+        { name: 'Rye flour', pct: 6.29, flourType: 'specialty' },
+        { name: 'Red wheat (Redeemer)', pct: 6.29, flourType: 'specialty' },
         { name: 'Water', pct: 73 },
         { name: 'Levain', pct: 22 },
         { name: 'Salt', pct: 2.5 },
@@ -305,10 +313,10 @@
       unit: 'loaf',
       loafWeight: 850,
       ingredients: [
-        { name: 'Bread flour', pct: 65.14 },
-        { name: 'All purpose flour', pct: 22.29 },
-        { name: 'Rye flour', pct: 6.29 },
-        { name: 'Red wheat (Redeemer)', pct: 6.29 },
+        { name: 'Bread flour', pct: 65.14, flourType: 'anchor' },
+        { name: 'All purpose flour', pct: 22.29, flourType: 'anchor' },
+        { name: 'Rye flour', pct: 6.29, flourType: 'specialty' },
+        { name: 'Red wheat (Redeemer)', pct: 6.29, flourType: 'specialty' },
         { name: 'Water', pct: 73 },
         { name: 'Levain', pct: 22 },
         { name: 'Salt', pct: 2.5 },
@@ -320,7 +328,7 @@
       unit: 'muffin',
       loafWeight: 80,
       ingredients: [
-        { name: 'Bread flour', pct: 100 },
+        { name: 'Bread flour', pct: 100, flourType: 'anchor' },
         { name: 'Water', pct: 45.83 },
         { name: 'Milk', pct: 9.17 },
         { name: 'Butter', pct: 5 },
@@ -406,7 +414,7 @@
           <div class="meta">${r.loafWeight} g per ${escapeHtml(unit)}</div>
         </div>
         <div>
-          <input type="number" min="0" step="1" value="${count}"
+          <input type="number" min="0" step="1" value="${count > 0 ? count : ''}"
             onchange="setPlanCount('${r.id}', this.value)" aria-label="Number of ${escapeHtml(unitPlural)}" />
         </div>
         <div class="muted">${escapeHtml(unitPlural)}</div>
@@ -606,10 +614,18 @@
     const wrap = document.getElementById('r-ingredients');
     const row = document.createElement('div');
     row.className = 'ingredient-edit-row';
+    const name = prefill ? prefill.name : '';
+    const pct = prefill && prefill.pct !== undefined ? prefill.pct : '';
+    const flourType = prefill ? (prefill.flourType || detectFlourType(name)) : '';
     row.innerHTML = `
-      <input type="text" class="ing-name" placeholder="Ingredient name" value="${prefill ? escapeAttr(prefill.name) : ''}" />
-      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${prefill ? prefill.pct : ''}" />
-      <button class="danger tiny" onclick="this.parentElement.remove()" aria-label="Remove">×</button>
+      <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
+      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${pct}" oninput="onIngredientPctInput(this)" />
+      <select class="ing-flour-type" onchange="onFlourTypeChange(this)" title="Flour role">
+        <option value=""${flourType === '' ? ' selected' : ''}>— not flour —</option>
+        <option value="anchor"${flourType === 'anchor' ? ' selected' : ''}>Anchor flour</option>
+        <option value="specialty"${flourType === 'specialty' ? ' selected' : ''}>Specialty flour</option>
+      </select>
+      <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
     wrap.appendChild(row);
   }
@@ -631,12 +647,15 @@
     for (const row of rows) {
       const iname = row.querySelector('.ing-name').value.trim();
       const ipct = Number(row.querySelector('.ing-pct').value);
+      const flourType = row.querySelector('.ing-flour-type').value;
       if (!iname) continue;
       if (!Number.isFinite(ipct) || ipct < 0) {
         alert(`Ingredient "${iname}" needs a non-negative percentage.`);
         return;
       }
-      ingredients.push({ name: iname, pct: ipct });
+      const ing = { name: iname, pct: ipct };
+      if (flourType) ing.flourType = flourType;
+      ingredients.push(ing);
     }
     if (ingredients.length === 0) { alert('Add at least one ingredient.'); return; }
 
@@ -671,6 +690,73 @@
     saveRecipes();
     savePlan();
     renderRecipes();
+  }
+
+  // ---- flour role detection + rebalancing ----
+  function detectFlourType(name) {
+    const n = (name || '').toLowerCase().trim();
+    if (!n) return '';
+    if (/bread flour|all[- ]?purpose|\bap flour\b/.test(n)) return 'anchor';
+    if (/flour|\brye\b|redeemer|whole wheat|whole grain|spelt|einkorn|buckwheat|kamut|durum|semolina|red wheat/.test(n)) return 'specialty';
+    return '';
+  }
+
+  function onIngredientPctInput(input) {
+    const row = input.closest('.ingredient-edit-row');
+    const type = row.querySelector('.ing-flour-type').value;
+    if (type === 'specialty') rebalanceAnchors();
+  }
+
+  function onFlourTypeChange(select) {
+    rebalanceAnchors();
+  }
+
+  function onIngredientNameBlur(input) {
+    const row = input.closest('.ingredient-edit-row');
+    const select = row.querySelector('.ing-flour-type');
+    if (select.value) return;
+    const detected = detectFlourType(input.value);
+    if (detected) {
+      select.value = detected;
+      rebalanceAnchors();
+    }
+  }
+
+  function removeIngredientRow(button) {
+    const row = button.closest('.ingredient-edit-row');
+    const wasFlour = !!row.querySelector('.ing-flour-type').value;
+    row.remove();
+    if (wasFlour) rebalanceAnchors();
+  }
+
+  function rebalanceAnchors() {
+    const rows = Array.from(document.querySelectorAll('#r-ingredients .ingredient-edit-row'));
+    const anchors = [];
+    let specialtySum = 0;
+    for (const row of rows) {
+      const type = row.querySelector('.ing-flour-type').value;
+      const pct = Number(row.querySelector('.ing-pct').value) || 0;
+      if (type === 'anchor') anchors.push({ row, pct });
+      else if (type === 'specialty') specialtySum += pct;
+    }
+    if (anchors.length === 0) return;
+    const targetAnchorSum = Math.max(0, 100 - specialtySum);
+    const currentAnchorSum = anchors.reduce((s, a) => s + a.pct, 0);
+    if (currentAnchorSum === 0) {
+      const each = targetAnchorSum / anchors.length;
+      anchors.forEach(a => {
+        a.row.querySelector('.ing-pct').value = round2(each);
+      });
+    } else {
+      const scale = targetAnchorSum / currentAnchorSum;
+      anchors.forEach(a => {
+        a.row.querySelector('.ing-pct').value = round2(a.pct * scale);
+      });
+    }
+  }
+
+  function round2(n) {
+    return Math.round(n * 100) / 100;
   }
 
   // ---- utils ----
