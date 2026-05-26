@@ -170,8 +170,8 @@
   .bake-row:last-child { border-bottom: none; }
   .bake-row .meta { font-size: 0.8rem; color: var(--muted); }
   .totals {
-    background: #ecf2ec;
-    border: 1px solid #c5d6c5;
+    background: #c8dcc8;
+    border: 1px solid #94b496;
     border-radius: 10px;
     padding: 16px;
   }
@@ -453,6 +453,7 @@
     COOL_HOURS: 1,
     LEVAIN_REFRESH_ACTIVE_MIN: 2,
     MUFFIN_DECK_CAPACITY: 16,
+    MUFFIN_MIXER_CAPACITY: 24,
     MUFFIN_MIX_ACTIVE_MIN: 10,
     MUFFIN_BULK_MIN: 120,
     MUFFIN_SHAPE_MIN_PER: 1,
@@ -1296,9 +1297,8 @@
       }
     }
     const numContainers = Math.max(1, containerInfo.length);
-    const muffinContainerGroups = totalMuffins > 0 ? planDoughContainers(muffinRecipes, plan, DOUGH_CONTAINER_CAPACITY_G) : [];
-    const muffinMixContainers = muffinContainerGroups.reduce((s, g) => s + g.containers.length, 0);
-    const totalMixBatches = numContainers + muffinMixContainers;
+    const muffinMixBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
+    const totalMixBatches = numContainers + muffinMixBatches;
 
     const benchRestFor = (loaves) => {
       const natural = (loaves - 1) * SCHED.PRESHAPE_MIN_PER_LOAF;
@@ -1441,8 +1441,8 @@
       const muffinBulkStart = addMinutes(muffinShapeStart, -SCHED.MUFFIN_BULK_MIN);
       const muffinMixStart = addMinutes(muffinBulkStart, -SCHED.MUFFIN_MIX_ACTIVE_MIN);
 
-      const muffinMixDetail = muffinMixContainers > 1
-        ? `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix × ${muffinMixContainers} containers = ${SCHED.MUFFIN_MIX_ACTIVE_MIN * muffinMixContainers} min active · then ${SCHED.MUFFIN_BULK_MIN / 60} hr bulk ferment (shared ripe Build 2 levain)`
+      const muffinMixDetail = muffinMixBatches > 1
+        ? `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix × ${muffinMixBatches} batches = ${SCHED.MUFFIN_MIX_ACTIVE_MIN * muffinMixBatches} min active (mixer holds max ${SCHED.MUFFIN_MIXER_CAPACITY} muffins; all batches go into the same container for proofing) · then ${SCHED.MUFFIN_BULK_MIN / 60} hr bulk ferment (shared ripe Build 2 levain)`
         : `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix · then ${SCHED.MUFFIN_BULK_MIN / 60} hr bulk ferment (uses ripe Build 2 levain shared with bread)`;
       events.push({
         time: muffinMixStart,
