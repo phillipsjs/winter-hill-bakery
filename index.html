@@ -452,6 +452,11 @@
     OVEN_CAPACITY: 12,
     COOL_HOURS: 1,
     LEVAIN_REFRESH_ACTIVE_MIN: 2,
+    MUFFIN_DECK_CAPACITY: 16,
+    MUFFIN_MIX_ACTIVE_MIN: 10,
+    MUFFIN_BULK_MIN: 120,
+    MUFFIN_SHAPE_MIN_PER: 1,
+    MUFFIN_WARMUP_MIN: 180,
   };
 
   const SEED_RECIPES = [
@@ -767,8 +772,7 @@
   function renderDoughContainerPlan() {
     const card = document.getElementById('container-card');
     const out = document.getElementById('container-output');
-    const loafRecipes = recipes.filter(r => (r.unit || 'loaf') === 'loaf');
-    const groups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G);
+    const groups = planDoughContainers(recipes, plan, DOUGH_CONTAINER_CAPACITY_G);
 
     if (groups.length === 0) {
       card.style.display = 'none';
@@ -1122,6 +1126,42 @@
     return decks;
   }
 
+  function planMuffinBakes(muffinRecipes, planMap) {
+    const DECK_CAP = SCHED.MUFFIN_DECK_CAPACITY;
+    const MAX_DECKS = 3;
+    const PER_OVEN = DECK_CAP * MAX_DECKS;
+    const types = muffinRecipes
+      .map(r => ({ name: r.name, count: planMap[r.id] || 0 }))
+      .filter(t => t.count > 0);
+    const total = types.reduce((s, t) => s + t.count, 0);
+    if (total === 0) return [];
+    const batches = Math.ceil(total / PER_OVEN);
+    const result = [];
+    let remainingByType = types.map(t => ({ ...t }));
+    for (let b = 0; b < batches; b++) {
+      const inBatchTotal = Math.min(PER_OVEN, remainingByType.reduce((s, t) => s + t.count, 0));
+      const decksNeeded = Math.ceil(inBatchTotal / DECK_CAP);
+      const decks = Array.from({ length: decksNeeded }, () => ({ items: [], total: 0 }));
+      let di = 0;
+      for (const t of remainingByType) {
+        let rem = t.count;
+        while (rem > 0 && di < decks.length) {
+          const space = DECK_CAP - decks[di].total;
+          const take = Math.min(rem, space);
+          if (take > 0) {
+            decks[di].items.push({ name: t.name, count: take });
+            decks[di].total += take;
+            rem -= take;
+            t.count -= take;
+          }
+          if (decks[di].total === DECK_CAP) di++;
+        }
+      }
+      result.push(decks);
+    }
+    return result;
+  }
+
   function planOvenLoads(loafRecipes, planMap) {
     const OVEN_CAP = SCHED.OVEN_CAPACITY;
     const DECK_CAP = 4;
@@ -1183,7 +1223,10 @@
   function buildSchedule(deadline, coldProofHours, bakeTimePref) {
     const loafRecipes = recipes.filter(r => (r.unit || 'loaf') === 'loaf' && (plan[r.id] || 0) > 0);
     const totalLoaves = loafRecipes.reduce((s, r) => s + plan[r.id], 0);
-    if (totalLoaves === 0) return { totalLoaves: 0, batches: 0, events: [], warnings: [] };
+    const muffinRecipes = recipes.filter(r => r.unit === 'muffin' && (plan[r.id] || 0) > 0);
+    const totalMuffins = muffinRecipes.reduce((s, r) => s + plan[r.id], 0);
+    if (totalLoaves === 0 && totalMuffins === 0) return { totalLoaves: 0, batches: 0, events: [], warnings: [] };
+    if (totalLoaves === 0) return { totalLoaves: 0, batches: 0, events: [], warnings: ['Muffins only — no sourdough loaves in the bake plan. (Muffin-only schedule not yet supported.)'] };
 
     const specialtyFlourNames = new Set();
     for (const r of loafRecipes) {
@@ -1194,8 +1237,11 @@
       }
     }
 
-    const batches = Math.ceil(totalLoaves / SCHED.OVEN_CAPACITY);
-    const totalBakeMin = batches * SCHED.BAKE_MIN + (batches - 1) * SCHED.REHEAT_MIN;
+    const breadBatches = Math.ceil(totalLoaves / SCHED.OVEN_CAPACITY);
+    const muffinPerOven = SCHED.MUFFIN_DECK_CAPACITY * 3;
+    const muffinBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / muffinPerOven) : 0;
+    const batches = breadBatches + muffinBatches;
+    const totalBakeMin = batches * SCHED.BAKE_MIN + Math.max(0, batches - 1) * SCHED.REHEAT_MIN;
     const D = new Date(deadline);
     const warnings = [];
 
@@ -1250,6 +1296,9 @@
       }
     }
     const numContainers = Math.max(1, containerInfo.length);
+    const muffinContainerGroups = totalMuffins > 0 ? planDoughContainers(muffinRecipes, plan, DOUGH_CONTAINER_CAPACITY_G) : [];
+    const muffinMixContainers = muffinContainerGroups.reduce((s, g) => s + g.containers.length, 0);
+    const totalMixBatches = numContainers + muffinMixContainers;
 
     const benchRestFor = (loaves) => {
       const natural = (loaves - 1) * SCHED.PRESHAPE_MIN_PER_LOAF;
@@ -1362,24 +1411,66 @@
     }
     events.push({ time: fridgeIn, title: 'Into fridge — cold proof', detail: `${coldProofHours} hr in fridge` });
     const ovenPlan = planOvenLoads(loafRecipes, plan);
+    const muffinOvenPlan = totalMuffins > 0 ? planMuffinBakes(muffinRecipes, plan) : [];
     for (let b = 0; b < batches; b++) {
       const bakeStart = addMinutes(firstBakeStart, b * (SCHED.BAKE_MIN + SCHED.REHEAT_MIN));
       const reheatSuffix = b < batches - 1 ? ` · ${SCHED.REHEAT_MIN} min reheat after` : '';
-      const planLines = ovenPlan[b]
-        ? '\n' + ovenPlan[b]
+      const isMuffin = b >= breadBatches;
+      const plan_b = isMuffin ? muffinOvenPlan[b - breadBatches] : ovenPlan[b];
+      const kindSuffix = totalMuffins > 0
+        ? (isMuffin ? ' — muffins into oven' : ' — bread into oven')
+        : ' — into oven';
+      const planLines = plan_b
+        ? '\n' + plan_b
             .map((deck, di) => `Deck ${di + 1}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
             .join('\n')
         : '';
       events.push({
         time: bakeStart,
-        title: `Bake ${b + 1} of ${batches} — into oven`,
+        title: `Bake ${b + 1} of ${batches}${kindSuffix}`,
         detail: `${SCHED.OVEN_LOAD_MIN} min load · ${SCHED.BAKE_MIN} min bake${reheatSuffix}${planLines}`,
       });
     }
+
+    if (totalMuffins > 0) {
+      const muffinBakeStart = addMinutes(firstBakeStart, breadBatches * (SCHED.BAKE_MIN + SCHED.REHEAT_MIN));
+      const muffinOutFridge = addMinutes(muffinBakeStart, -SCHED.MUFFIN_WARMUP_MIN);
+      const muffinFridgeIn = addMinutes(muffinOutFridge, -coldProofHours * 60);
+      const muffinShapeEnd = muffinFridgeIn;
+      const muffinShapeStart = addMinutes(muffinShapeEnd, -totalMuffins * SCHED.MUFFIN_SHAPE_MIN_PER);
+      const muffinBulkStart = addMinutes(muffinShapeStart, -SCHED.MUFFIN_BULK_MIN);
+      const muffinMixStart = addMinutes(muffinBulkStart, -SCHED.MUFFIN_MIX_ACTIVE_MIN);
+
+      const muffinMixDetail = muffinMixContainers > 1
+        ? `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix × ${muffinMixContainers} containers = ${SCHED.MUFFIN_MIX_ACTIVE_MIN * muffinMixContainers} min active · then ${SCHED.MUFFIN_BULK_MIN / 60} hr bulk ferment (shared ripe Build 2 levain)`
+        : `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix · then ${SCHED.MUFFIN_BULK_MIN / 60} hr bulk ferment (uses ripe Build 2 levain shared with bread)`;
+      events.push({
+        time: muffinMixStart,
+        title: 'Mix muffin dough',
+        detail: muffinMixDetail,
+      });
+      events.push({
+        time: muffinShapeStart,
+        title: 'Shape muffins',
+        detail: `${SCHED.MUFFIN_SHAPE_MIN_PER} min × ${totalMuffins} muffins = ${totalMuffins * SCHED.MUFFIN_SHAPE_MIN_PER} min total`,
+      });
+      events.push({
+        time: muffinFridgeIn,
+        title: 'Muffins into fridge — cold proof',
+        detail: `${coldProofHours} hr in fridge`,
+      });
+      events.push({
+        time: muffinOutFridge,
+        title: 'Muffins out of fridge',
+        detail: `${SCHED.MUFFIN_WARMUP_MIN / 60} hr warm-up / final proof before bake`,
+      });
+    }
+
+    events.sort((a, b) => a.time - b.time);
     events.push({ time: lastBakeEnd, title: 'Last loaves out — start cooling', detail: `${SCHED.COOL_HOURS} hr cool` });
     events.push({ time: packageReady, title: 'Package & ready for sale', detail: '' });
 
-    return { totalLoaves, batches, events, warnings, build1Opt, build2Opt, mixBatches: numContainers };
+    return { totalLoaves, totalMuffins, batches, events, warnings, build1Opt, build2Opt, mixBatches: totalMixBatches };
   }
 
   function renderSchedule() {
@@ -1437,7 +1528,9 @@
     if (result.warnings && result.warnings.length) {
       html += result.warnings.map(w => `<div class="schedule-warn">${escapeHtml(w)}</div>`).join('');
     }
-    html += `<p class="schedule-meta">${result.totalLoaves} loaves · ${result.mixBatches} mix ${result.mixBatches === 1 ? 'batch' : 'batches'} · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · cold proof ${coldProofHours} hr${coldProofAuto ? ' (auto — longest fit)' : ''}</p>`;
+    const loafLabel = `${result.totalLoaves} loaves`;
+    const muffinLabel = result.totalMuffins > 0 ? ` + ${result.totalMuffins} muffins` : '';
+    html += `<p class="schedule-meta">${loafLabel}${muffinLabel} · ${result.mixBatches} mix ${result.mixBatches === 1 ? 'batch' : 'batches'} · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · cold proof ${coldProofHours} hr${coldProofAuto ? ' (auto — longest fit)' : ''}</p>`;
     for (const g of groups) {
       html += `<div class="schedule-day"><div class="schedule-day-header">${dayFmt.format(g.date)}</div>`;
       for (const ev of g.events) {
