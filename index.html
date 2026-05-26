@@ -246,7 +246,7 @@
     letter-spacing: -0.2px;
   }
   .schedule-title { font-size: 0.95rem; }
-  .schedule-detail { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+  .schedule-detail { font-size: 0.82rem; color: var(--muted); margin-top: 2px; white-space: pre-line; }
   .schedule-meta {
     margin: 0 0 12px;
     font-size: 0.85rem;
@@ -303,6 +303,12 @@
       <h2>Levain build plan</h2>
       <p class="muted" style="margin-top:0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
       <div id="levain-output"></div>
+    </div>
+
+    <div class="card totals" id="container-card" style="display:none">
+      <h2>Dough containers</h2>
+      <p class="muted" style="margin-top:0">Recipes share a container only if their ingredient ratios are identical. Max 12,000 g per container; larger groups are split evenly.</p>
+      <div id="container-output"></div>
     </div>
   </section>
 
@@ -406,6 +412,7 @@
   const DEADLINE_KEY = 'cottage-bakery-deadline-v1';
   const COLDPROOF_KEY = 'cottage-bakery-coldproof-v1';
   const BAKETIME_KEY = 'cottage-bakery-baketime-v1';
+  const DOUGH_CONTAINER_CAPACITY_G = 12000;
 
   const BAKE_TIME_PRESETS = {
     morning:   { label: 'Morning',   mid: 8.5,  coldProof: 12 },  // 6 AM – 11 AM
@@ -426,18 +433,25 @@
   };
 
   const SCHED = {
+    MILL_ACTIVE_MIN: 15,
     AUTOLYSE_MIN: 60,
+    AUTOLYSE_ACTIVE_MIN: 10,
+    SALT_LEVAIN_MIX_MIN: 10,
     FOLDS_COUNT: 5,
     FOLD_INTERVAL_MIN: 30,
+    FOLD_ACTIVE_MIN: 5,
     BULK_AFTER_FOLDS_MIN: 240,
     PRESHAPE_MIN_PER_LOAF: 4,
-    BENCH_REST_MIN: 17,
+    BENCH_REST_TARGET_MIN: 20,
+    BENCH_REST_SKIP_THRESHOLD_MIN: 15,
     FINAL_SHAPE_MIN_PER_LOAF: 3,
     COLD_PROOF_HOURS: 10,
     BAKE_MIN: 40,
+    OVEN_LOAD_MIN: 10,
     REHEAT_MIN: 5,
     OVEN_CAPACITY: 12,
     COOL_HOURS: 1,
+    LEVAIN_REFRESH_ACTIVE_MIN: 2,
   };
 
   const SEED_RECIPES = [
@@ -593,6 +607,8 @@
     if (activeRecipes.length === 0) {
       card.style.display = 'none';
       levainCard.style.display = 'none';
+      const cc = document.getElementById('container-card');
+      if (cc) cc.style.display = 'none';
       return;
     }
 
@@ -642,6 +658,148 @@
     card.style.display = '';
 
     renderLevainPlan(aggregate);
+    renderDoughContainerPlan();
+  }
+
+  function ratioSignature(recipe) {
+    return [...(recipe.ingredients || [])]
+      .map(i => ({ name: (i.name || '').trim().toLowerCase(), pct: Number(i.pct) || 0 }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(i => `${i.name}:${i.pct}`)
+      .join('|');
+  }
+
+  function splitEvenly(total, n) {
+    if (n <= 0) return [];
+    const base = Math.floor(total / n);
+    const remainder = total - base * n;
+    const result = new Array(n).fill(base);
+    for (let i = 0; i < remainder; i++) result[i] += 1;
+    return result;
+  }
+
+  function planDoughContainers(loafRecipes, planMap, capacity) {
+    const active = loafRecipes
+      .filter(r => (planMap[r.id] || 0) > 0)
+      .map(r => ({ recipe: r, count: planMap[r.id], dough: r.loafWeight * planMap[r.id] }));
+    if (active.length === 0) return [];
+    const groups = new Map();
+    for (const a of active) {
+      const sig = ratioSignature(a.recipe);
+      if (!groups.has(sig)) groups.set(sig, []);
+      groups.get(sig).push(a);
+    }
+    return Array.from(groups.values()).map(items => {
+      const totalDough = items.reduce((s, i) => s + i.dough, 0);
+      const combinedCount = Math.ceil(totalDough / capacity);
+      const separatedCount = items.reduce((s, i) => s + Math.ceil(i.dough / capacity), 0);
+
+      let containers;
+      if (combinedCount === separatedCount || items.length === 1) {
+        // SEPARATED: each recipe gets its own container(s), split evenly by loaves
+        containers = [];
+        for (const item of items) {
+          const recipeContainers = Math.ceil(item.dough / capacity);
+          const loavesPerContainer = splitEvenly(item.count, recipeContainers);
+          for (const loaves of loavesPerContainer) {
+            containers.push({
+              loaves: [{ recipe: item.recipe.name, count: loaves, dough: loaves * item.recipe.loafWeight }],
+              totalLoaves: loaves,
+              totalDough: loaves * item.recipe.loafWeight,
+            });
+          }
+        }
+      } else {
+        // COMBINED: greedy pack whole loaves to balance weight
+        const allLoaves = [];
+        for (const item of items) {
+          for (let i = 0; i < item.count; i++) {
+            allLoaves.push({ recipe: item.recipe.name, weight: item.recipe.loafWeight });
+          }
+        }
+        allLoaves.sort((a, b) => b.weight - a.weight);
+        const slots = Array.from({ length: combinedCount }, () => ({ loaves: [], totalDough: 0 }));
+        for (const loaf of allLoaves) {
+          let bestIdx = -1;
+          let bestDough = Infinity;
+          for (let i = 0; i < slots.length; i++) {
+            if (slots[i].totalDough + loaf.weight <= capacity && slots[i].totalDough < bestDough) {
+              bestIdx = i;
+              bestDough = slots[i].totalDough;
+            }
+          }
+          if (bestIdx === -1) {
+            // Fallback: place in least-loaded regardless of capacity
+            for (let i = 0; i < slots.length; i++) {
+              if (slots[i].totalDough < bestDough) {
+                bestIdx = i;
+                bestDough = slots[i].totalDough;
+              }
+            }
+          }
+          slots[bestIdx].loaves.push(loaf);
+          slots[bestIdx].totalDough += loaf.weight;
+        }
+        containers = slots.map(s => {
+          const recipeMap = new Map();
+          const weightMap = new Map();
+          for (const loaf of s.loaves) {
+            recipeMap.set(loaf.recipe, (recipeMap.get(loaf.recipe) || 0) + 1);
+            weightMap.set(loaf.recipe, loaf.weight);
+          }
+          const loaves = Array.from(recipeMap.entries()).map(([recipe, count]) => ({
+            recipe,
+            count,
+            dough: count * weightMap.get(recipe),
+          }));
+          return {
+            loaves,
+            totalLoaves: s.loaves.length,
+            totalDough: s.totalDough,
+          };
+        });
+      }
+
+      return { items, totalDough, containers };
+    });
+  }
+
+  function renderDoughContainerPlan() {
+    const card = document.getElementById('container-card');
+    const out = document.getElementById('container-output');
+    const loafRecipes = recipes.filter(r => (r.unit || 'loaf') === 'loaf');
+    const groups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G);
+
+    if (groups.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+
+    const totalContainers = groups.reduce((s, g) => s + g.containers.length, 0);
+    const totalDough = groups.reduce((s, g) => s + g.totalDough, 0);
+
+    let html = `<p style="margin-top:0">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
+
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi];
+      const recipeNames = g.items.map(i => i.recipe.name).join(' + ');
+      const recipeDetails = g.items.map(i => `${i.count} × ${i.recipe.name} (${formatGrams(i.dough)})`).join(' · ');
+      const containerLines = g.containers
+        .map((c, i) => {
+          const loafList = c.loaves.map(l => `${l.count} × ${escapeHtml(l.recipe)}`).join(' + ');
+          return `Container ${i + 1}: <strong>${formatGrams(c.totalDough)}</strong> — ${loafList}`;
+        })
+        .join('<br>');
+      const sharedNote = g.items.length > 1 ? ' <span class="muted" style="font-size:0.8rem">(identical ratios)</span>' : '';
+      const topStyle = gi > 0 ? 'border-top: 1px solid var(--border); padding-top: 12px;' : '';
+      html += `<div style="margin-top: 12px; ${topStyle}">
+        <div><strong>${escapeHtml(recipeNames)}</strong>${sharedNote}</div>
+        <div class="muted" style="font-size:0.85rem; margin-top:2px;">${escapeHtml(recipeDetails)}</div>
+        <div style="margin-top:6px;">${containerLines}</div>
+      </div>`;
+    }
+    out.innerHTML = html;
+    card.style.display = '';
   }
 
   function ratioParts(opt) {
@@ -910,10 +1068,110 @@
     const ms = 30 * 60 * 1000;
     return new Date(Math.round(date.getTime() / ms) * ms);
   }
+  function roundToQuarterHour(date) {
+    const ms = 15 * 60 * 1000;
+    return new Date(Math.round(date.getTime() / ms) * ms);
+  }
   function isLateNight(date) {
     const h = date.getHours();
     return h >= 23 || h < 4;
   }
+  function allocateDecks(batch, deckCap, maxDecks) {
+    const typeInfo = batch.map(t => ({ ...t, decksNeeded: Math.ceil(t.count / deckCap) }));
+    const totalPureDecks = typeInfo.reduce((s, t) => s + t.decksNeeded, 0);
+
+    if (totalPureDecks <= maxDecks) {
+      const decks = [];
+      for (const t of typeInfo) {
+        const base = Math.floor(t.count / t.decksNeeded);
+        const extras = t.count % t.decksNeeded;
+        for (let i = 0; i < t.decksNeeded; i++) {
+          const count = base + (i < extras ? 1 : 0);
+          decks.push({ items: [{ name: t.name, count }] });
+        }
+      }
+      return decks;
+    }
+
+    const decks = [];
+    const remainders = [];
+    for (const t of typeInfo) {
+      const fullDecks = Math.floor(t.count / deckCap);
+      for (let i = 0; i < fullDecks; i++) {
+        decks.push({ items: [{ name: t.name, count: deckCap }] });
+      }
+      const rem = t.count % deckCap;
+      if (rem > 0) remainders.push({ name: t.name, count: rem });
+    }
+    let currentDeck = { items: [], total: 0 };
+    for (const r of remainders) {
+      let leftToPlace = r.count;
+      while (leftToPlace > 0) {
+        const space = deckCap - currentDeck.total;
+        const take = Math.min(leftToPlace, space);
+        currentDeck.items.push({ name: r.name, count: take });
+        currentDeck.total += take;
+        leftToPlace -= take;
+        if (currentDeck.total === deckCap) {
+          decks.push(currentDeck);
+          currentDeck = { items: [], total: 0 };
+        }
+      }
+    }
+    if (currentDeck.items.length > 0) decks.push(currentDeck);
+    return decks;
+  }
+
+  function planOvenLoads(loafRecipes, planMap) {
+    const OVEN_CAP = SCHED.OVEN_CAPACITY;
+    const DECK_CAP = 4;
+    const MAX_DECKS = 3;
+
+    const types = loafRecipes
+      .map(r => ({ name: r.name, count: planMap[r.id] || 0 }))
+      .filter(t => t.count > 0);
+
+    if (types.length === 0) return [];
+
+    const total = types.reduce((s, t) => s + t.count, 0);
+    const minBatches = Math.ceil(total / OVEN_CAP);
+    const separateNeeded = types.reduce((s, t) => s + Math.ceil(t.count / OVEN_CAP), 0);
+
+    let batchAssignments;
+    if (separateNeeded === minBatches) {
+      batchAssignments = [];
+      for (const t of types) {
+        const typeBatches = Math.ceil(t.count / OVEN_CAP);
+        for (let b = 0; b < typeBatches; b++) {
+          const base = Math.floor(t.count / typeBatches);
+          const extras = t.count % typeBatches;
+          const count = base + (b < extras ? 1 : 0);
+          batchAssignments.push([{ name: t.name, count }]);
+        }
+      }
+    } else {
+      const sortedTypes = [...types].sort((a, b) => b.count - a.count);
+      const batches = Array.from({ length: minBatches }, () => ({ load: [], total: 0 }));
+      let batchIdx = 0;
+      for (const t of sortedTypes) {
+        let remaining = t.count;
+        while (remaining > 0 && batchIdx < batches.length) {
+          const space = OVEN_CAP - batches[batchIdx].total;
+          const take = Math.min(remaining, space);
+          if (take > 0) {
+            batches[batchIdx].load.push({ name: t.name, count: take });
+            batches[batchIdx].total += take;
+            remaining -= take;
+          }
+          if (batches[batchIdx].total >= OVEN_CAP) batchIdx++;
+        }
+      }
+      batchAssignments = batches.map(b => b.load);
+    }
+
+    return batchAssignments.map(batch => allocateDecks(batch, DECK_CAP, MAX_DECKS));
+  }
+
   function pickLevainBuild(buildKey, refTime) {
     const opts = LEVAIN_RATIOS[buildKey];
     const fastEarliest = addHours(refTime, -opts.fast.max);
@@ -926,6 +1184,15 @@
     const loafRecipes = recipes.filter(r => (r.unit || 'loaf') === 'loaf' && (plan[r.id] || 0) > 0);
     const totalLoaves = loafRecipes.reduce((s, r) => s + plan[r.id], 0);
     if (totalLoaves === 0) return { totalLoaves: 0, batches: 0, events: [], warnings: [] };
+
+    const specialtyFlourNames = new Set();
+    for (const r of loafRecipes) {
+      for (const i of r.ingredients) {
+        if (i.flourType === 'specialty' && (Number(i.pct) || 0) > 0) {
+          specialtyFlourNames.add(i.name);
+        }
+      }
+    }
 
     const batches = Math.ceil(totalLoaves / SCHED.OVEN_CAPACITY);
     const totalBakeMin = batches * SCHED.BAKE_MIN + (batches - 1) * SCHED.REHEAT_MIN;
@@ -971,13 +1238,34 @@
     }
 
     const fridgeIn = addHours(firstBakeStart, -coldProofHours);
-    const finalShapeStart = addMinutes(fridgeIn, -SCHED.FINAL_SHAPE_MIN_PER_LOAF * totalLoaves);
-    const benchRestStart = addMinutes(finalShapeStart, -SCHED.BENCH_REST_MIN);
-    const preshapeStart = addMinutes(benchRestStart, -SCHED.PRESHAPE_MIN_PER_LOAF * totalLoaves);
-    const lastFoldTime = addMinutes(preshapeStart, -SCHED.BULK_AFTER_FOLDS_MIN);
+    const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G);
+    const containerInfo = [];
+    for (const group of containerGroups) {
+      for (const c of group.containers) {
+        containerInfo.push({
+          loaves: c.totalLoaves,
+          dough: c.totalDough,
+          contents: c.loaves,
+        });
+      }
+    }
+    const numContainers = Math.max(1, containerInfo.length);
+
+    const benchRestFor = (loaves) => {
+      const natural = (loaves - 1) * SCHED.PRESHAPE_MIN_PER_LOAF;
+      return natural > SCHED.BENCH_REST_SKIP_THRESHOLD_MIN
+        ? 0
+        : Math.max(0, SCHED.BENCH_REST_TARGET_MIN - natural);
+    };
+    const shapeTimeFor = (loaves) =>
+      loaves * (SCHED.PRESHAPE_MIN_PER_LOAF + SCHED.FINAL_SHAPE_MIN_PER_LOAF) + benchRestFor(loaves);
+    const totalShapeTime = containerInfo.reduce((sum, c) => sum + shapeTimeFor(c.loaves), 0);
+
+    const shapePhaseStart = addMinutes(fridgeIn, -totalShapeTime);
+    const lastFoldTime = addMinutes(shapePhaseStart, -SCHED.BULK_AFTER_FOLDS_MIN);
     const firstFoldTime = addMinutes(lastFoldTime, -(SCHED.FOLDS_COUNT - 1) * SCHED.FOLD_INTERVAL_MIN);
-    const mixTime = addMinutes(firstFoldTime, -SCHED.FOLD_INTERVAL_MIN);
-    const autolyseStart = addMinutes(mixTime, -SCHED.AUTOLYSE_MIN);
+    const mixTime = addMinutes(firstFoldTime, -(SCHED.FOLD_INTERVAL_MIN + (numContainers - 1) * SCHED.SALT_LEVAIN_MIX_MIN));
+    const autolyseStart = addMinutes(mixTime, -(SCHED.AUTOLYSE_MIN + (numContainers - 1) * SCHED.AUTOLYSE_ACTIVE_MIN));
     const build2Opt = pickLevainBuild('build2', mixTime);
     const levainBuild2Mid = addHours(mixTime, -build2Opt.mid);
     const levainBuild2EarliestStart = roundToHalfHour(addHours(mixTime, -build2Opt.max));
@@ -993,41 +1281,105 @@
       time: levainBuild1EarliestStart,
       timeEnd: levainBuild1LatestStart,
       title: 'Levain Build 1 — first refresh',
-      detail: `${build1Opt.ratio} ratio · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
+      detail: `${build1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
     });
     events.push({
       time: levainBuild2EarliestStart,
       timeEnd: levainBuild2LatestStart,
       title: 'Levain Build 2 — final build',
-      detail: `${build2Opt.ratio} ratio · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
+      detail: `${build2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
     });
-    events.push({ time: autolyseStart, title: 'Start autolyse — flour + water only', detail: `Rest ${SCHED.AUTOLYSE_MIN} min` });
-    events.push({ time: mixTime, title: 'Mix in salt + ripe levain', detail: '' });
+    if (specialtyFlourNames.size > 0) {
+      events.push({
+        time: addMinutes(autolyseStart, -SCHED.MILL_ACTIVE_MIN),
+        title: 'Mill specialty flour',
+        detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...specialtyFlourNames].join(' + ')}`,
+      });
+    }
+    const autolyseRestMin = SCHED.AUTOLYSE_MIN - SCHED.AUTOLYSE_ACTIVE_MIN;
+    events.push({
+      time: autolyseStart,
+      title: 'Start autolyse — flour + water only',
+      detail: numContainers > 1
+        ? `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix × ${numContainers} containers = ${SCHED.AUTOLYSE_ACTIVE_MIN * numContainers} min active · then ${autolyseRestMin} min rest`
+        : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`,
+    });
+    events.push({
+      time: mixTime,
+      title: 'Mix in salt + ripe levain',
+      detail: numContainers > 1
+        ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`
+        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`,
+    });
     for (let k = 0; k < SCHED.FOLDS_COUNT; k++) {
       const foldTime = addMinutes(firstFoldTime, k * SCHED.FOLD_INTERVAL_MIN);
       const isLast = k === SCHED.FOLDS_COUNT - 1;
+      const activeStr = numContainers > 1
+        ? `${SCHED.FOLD_ACTIVE_MIN} min × ${numContainers} containers = ${SCHED.FOLD_ACTIVE_MIN * numContainers} min active`
+        : `${SCHED.FOLD_ACTIVE_MIN} min active`;
       events.push({
         time: foldTime,
         title: `Stretch & fold ${k + 1} of ${SCHED.FOLDS_COUNT}${isLast ? ' (last)' : ''}`,
-        detail: isLast ? `Bulk ferment ${SCHED.BULK_AFTER_FOLDS_MIN / 60} hr undisturbed` : '',
+        detail: isLast
+          ? `${activeStr} · then ${SCHED.BULK_AFTER_FOLDS_MIN / 60} hr bulk ferment`
+          : `${activeStr} · next fold in ${SCHED.FOLD_INTERVAL_MIN} min`,
       });
     }
-    events.push({ time: preshapeStart, title: 'Start preshape', detail: `${SCHED.PRESHAPE_MIN_PER_LOAF} min × ${totalLoaves} loaves` });
-    events.push({ time: benchRestStart, title: 'Bench rest', detail: `${SCHED.BENCH_REST_MIN} min` });
-    events.push({ time: finalShapeStart, title: 'Final shape', detail: `${SCHED.FINAL_SHAPE_MIN_PER_LOAF} min × ${totalLoaves} loaves` });
-    events.push({ time: fridgeIn, title: 'Into fridge — cold proof', detail: `${coldProofHours} hr` });
+    let cursorTime = shapePhaseStart;
+    for (let i = 0; i < containerInfo.length; i++) {
+      const c = containerInfo[i];
+      const naturalRest = (c.loaves - 1) * SCHED.PRESHAPE_MIN_PER_LOAF;
+      const benchRest = benchRestFor(c.loaves);
+      const preshapeStartT = cursorTime;
+      const benchRestStartT = addMinutes(preshapeStartT, c.loaves * SCHED.PRESHAPE_MIN_PER_LOAF);
+      const finalShapeStartT = addMinutes(benchRestStartT, benchRest);
+      const containerEndT = addMinutes(finalShapeStartT, c.loaves * SCHED.FINAL_SHAPE_MIN_PER_LOAF);
+
+      const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+      const suffix = numContainers > 1 ? ` (container ${i + 1} of ${numContainers}: ${contentsLabel})` : '';
+      const preshapeBaseDetail = `${SCHED.PRESHAPE_MIN_PER_LOAF} min × ${c.loaves} loaves = ${SCHED.PRESHAPE_MIN_PER_LOAF * c.loaves} min total`;
+      events.push({
+        time: preshapeStartT,
+        title: `Start preshape${suffix}`,
+        detail: benchRest === 0
+          ? `${preshapeBaseDetail} · first loaves rest naturally while you finish (no separate bench rest needed)`
+          : preshapeBaseDetail,
+      });
+      if (benchRest > 0) {
+        events.push({
+          time: benchRestStartT,
+          title: `Bench rest${suffix}`,
+          detail: `${benchRest} min rest (loaf 1 already rested ${naturalRest} min during preshape)`,
+        });
+      }
+      events.push({
+        time: finalShapeStartT,
+        title: `Final shape${suffix}`,
+        detail: `${SCHED.FINAL_SHAPE_MIN_PER_LOAF} min × ${c.loaves} loaves = ${SCHED.FINAL_SHAPE_MIN_PER_LOAF * c.loaves} min total`,
+      });
+
+      cursorTime = containerEndT;
+    }
+    events.push({ time: fridgeIn, title: 'Into fridge — cold proof', detail: `${coldProofHours} hr in fridge` });
+    const ovenPlan = planOvenLoads(loafRecipes, plan);
     for (let b = 0; b < batches; b++) {
       const bakeStart = addMinutes(firstBakeStart, b * (SCHED.BAKE_MIN + SCHED.REHEAT_MIN));
+      const reheatSuffix = b < batches - 1 ? ` · ${SCHED.REHEAT_MIN} min reheat after` : '';
+      const planLines = ovenPlan[b]
+        ? '\n' + ovenPlan[b]
+            .map((deck, di) => `Deck ${di + 1}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
+            .join('\n')
+        : '';
       events.push({
         time: bakeStart,
         title: `Bake ${b + 1} of ${batches} — into oven`,
-        detail: `${SCHED.BAKE_MIN} min` + (b < batches - 1 ? ` · ${SCHED.REHEAT_MIN} min reheat after` : ''),
+        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${SCHED.BAKE_MIN} min bake${reheatSuffix}${planLines}`,
       });
     }
-    events.push({ time: lastBakeEnd, title: 'Last loaves out — start cooling', detail: `Cool ${SCHED.COOL_HOURS} hr` });
+    events.push({ time: lastBakeEnd, title: 'Last loaves out — start cooling', detail: `${SCHED.COOL_HOURS} hr cool` });
     events.push({ time: packageReady, title: 'Package & ready for sale', detail: '' });
 
-    return { totalLoaves, batches, events, warnings, build1Opt, build2Opt };
+    return { totalLoaves, batches, events, warnings, build1Opt, build2Opt, mixBatches: numContainers };
   }
 
   function renderSchedule() {
@@ -1085,13 +1437,13 @@
     if (result.warnings && result.warnings.length) {
       html += result.warnings.map(w => `<div class="schedule-warn">${escapeHtml(w)}</div>`).join('');
     }
-    html += `<p class="schedule-meta">${result.totalLoaves} loaves · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · cold proof ${coldProofHours} hr${coldProofAuto ? ' (auto — longest fit)' : ''}</p>`;
+    html += `<p class="schedule-meta">${result.totalLoaves} loaves · ${result.mixBatches} mix ${result.mixBatches === 1 ? 'batch' : 'batches'} · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · cold proof ${coldProofHours} hr${coldProofAuto ? ' (auto — longest fit)' : ''}</p>`;
     for (const g of groups) {
       html += `<div class="schedule-day"><div class="schedule-day-header">${dayFmt.format(g.date)}</div>`;
       for (const ev of g.events) {
         const timeCell = ev.timeEnd
-          ? `${timeFmt.format(ev.time)}<span class="schedule-time-end">to ${timeFmt.format(ev.timeEnd)}</span>`
-          : timeFmt.format(ev.time);
+          ? `${timeFmt.format(roundToQuarterHour(ev.time))}<span class="schedule-time-end">to ${timeFmt.format(roundToQuarterHour(ev.timeEnd))}</span>`
+          : timeFmt.format(roundToQuarterHour(ev.time));
         html += `<div class="schedule-row">
           <div class="schedule-time">${timeCell}</div>
           <div>
