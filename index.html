@@ -204,6 +204,72 @@
     margin-top: 24px;
   }
   hr.sep { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+  #deadline-input {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 0.95rem;
+    background: white;
+    color: var(--ink);
+    font-family: inherit;
+  }
+  .schedule-day { margin-bottom: 16px; }
+  .schedule-day:last-child { margin-bottom: 0; }
+  .schedule-day-header {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--accent-dark);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+    letter-spacing: 0.3px;
+  }
+  .schedule-row {
+    display: grid;
+    grid-template-columns: 78px 1fr;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .schedule-row:last-child { border-bottom: none; }
+  .schedule-time {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--accent-dark);
+    font-size: 0.95rem;
+  }
+  .schedule-time-end {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 500;
+    opacity: 0.85;
+    letter-spacing: -0.2px;
+  }
+  .schedule-title { font-size: 0.95rem; }
+  .schedule-detail { font-size: 0.82rem; color: var(--muted); margin-top: 2px; }
+  .schedule-meta {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .schedule-warn {
+    background: #faf4e8;
+    border: 1px solid #d6c79f;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    color: #6a4a10;
+    margin: 0 0 12px;
+  }
+  .settings-select {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 0.95rem;
+    background: white;
+    color: var(--ink);
+    font-family: inherit;
+  }
 </style>
 </head>
 <body>
@@ -217,6 +283,7 @@
 <nav class="tabs">
   <button id="tab-plan-btn" class="active" onclick="showTab('plan')">Bake Plan</button>
   <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
+  <button id="tab-schedule-btn" onclick="showTab('schedule')">Schedule</button>
 </nav>
 
 <main>
@@ -234,7 +301,7 @@
 
     <div class="card totals" id="levain-card" style="display:none">
       <h2>Levain build plan</h2>
-      <p class="muted" style="margin-top:0">1:1:1 starter : flour : water, built in two refreshes.</p>
+      <p class="muted" style="margin-top:0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
       <div id="levain-output"></div>
     </div>
   </section>
@@ -284,12 +351,94 @@
     </div>
   </section>
 
+  <section id="tab-schedule" style="display:none">
+    <div class="card">
+      <h2>Bake deadline</h2>
+      <p class="muted" style="margin-top:0">When do the breads need to be packaged and ready for sale?</p>
+      <input type="datetime-local" id="deadline-input" />
+
+      <hr class="sep" />
+
+      <div class="row" style="align-items: center; gap: 10px; margin-bottom: 10px;">
+        <label style="font-size: 0.95rem;">Bake time:</label>
+        <select id="bake-time-input" class="settings-select">
+          <option value="">— any (use deadline) —</option>
+          <option value="morning">Morning (6 AM – 11 AM)</option>
+          <option value="lunch">Lunch (11 AM – 2 PM)</option>
+          <option value="afternoon">Afternoon (2 PM – 6 PM)</option>
+          <option value="evening">Evening (6 PM – 10 PM)</option>
+        </select>
+      </div>
+
+      <div class="row" style="align-items: center; gap: 10px;">
+        <label style="font-size: 0.95rem;">Cold proof:</label>
+        <select id="coldproof-input" class="settings-select">
+          <option value="">— any (use deadline) —</option>
+          <option value="8">8 hours</option>
+          <option value="10">10 hours</option>
+          <option value="12">12 hours</option>
+          <option value="14">14 hours</option>
+          <option value="16">16 hours</option>
+          <option value="18">18 hours</option>
+          <option value="20">20 hours</option>
+          <option value="22">22 hours</option>
+          <option value="24">24 hours</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card" id="schedule-card">
+      <h2>Schedule</h2>
+      <div id="schedule-output"><p class="muted">Set a deadline above to see the schedule.</p></div>
+    </div>
+
+    <div class="card">
+      <p class="muted" style="font-size: 0.8rem; margin: 0">English muffins aren't scheduled yet — sourdough loaves only for now.</p>
+    </div>
+  </section>
+
   <p class="footer-note">All data is stored locally in your browser.</p>
 </main>
 
 <script>
   const STORAGE_KEY = 'cottage-bakery-recipes-v5';
   const PLAN_KEY = 'cottage-bakery-plan-v5';
+  const DEADLINE_KEY = 'cottage-bakery-deadline-v1';
+  const COLDPROOF_KEY = 'cottage-bakery-coldproof-v1';
+  const BAKETIME_KEY = 'cottage-bakery-baketime-v1';
+
+  const BAKE_TIME_PRESETS = {
+    morning:   { label: 'Morning',   mid: 8.5,  coldProof: 12 },  // 6 AM – 11 AM
+    lunch:     { label: 'Lunch',     mid: 12.5, coldProof: 16 },  // 11 AM – 2 PM
+    afternoon: { label: 'Afternoon', mid: 16,   coldProof: 20 },  // 2 PM – 6 PM
+    evening:   { label: 'Evening',   mid: 20,   coldProof: 24 },  // 6 PM – 10 PM
+  };
+
+  const LEVAIN_RATIOS = {
+    build1: {
+      fast: { min: 8,  max: 12, mid: 10, ratio: '1:1:1' },
+      slow: { min: 18, max: 24, mid: 21, ratio: '1:5:5' },
+    },
+    build2: {
+      fast: { min: 4,  max: 6,  mid: 5,  ratio: '1:1:1' },
+      slow: { min: 12, max: 16, mid: 14, ratio: '1:5:5' },
+    },
+  };
+
+  const SCHED = {
+    AUTOLYSE_MIN: 60,
+    FOLDS_COUNT: 5,
+    FOLD_INTERVAL_MIN: 30,
+    BULK_AFTER_FOLDS_MIN: 240,
+    PRESHAPE_MIN_PER_LOAF: 4,
+    BENCH_REST_MIN: 17,
+    FINAL_SHAPE_MIN_PER_LOAF: 3,
+    COLD_PROOF_HOURS: 10,
+    BAKE_MIN: 40,
+    REHEAT_MIN: 5,
+    OVEN_CAPACITY: 12,
+    COOL_HOURS: 1,
+  };
 
   const SEED_RECIPES = [
     {
@@ -370,10 +519,13 @@
   function showTab(name) {
     document.getElementById('tab-plan').style.display = name === 'plan' ? '' : 'none';
     document.getElementById('tab-recipes').style.display = name === 'recipes' ? '' : 'none';
+    document.getElementById('tab-schedule').style.display = name === 'schedule' ? '' : 'none';
     document.getElementById('tab-plan-btn').classList.toggle('active', name === 'plan');
     document.getElementById('tab-recipes-btn').classList.toggle('active', name === 'recipes');
+    document.getElementById('tab-schedule-btn').classList.toggle('active', name === 'schedule');
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
+    if (name === 'schedule') renderSchedule();
   }
 
   // ---- math ----
@@ -492,6 +644,49 @@
     renderLevainPlan(aggregate);
   }
 
+  function ratioParts(opt) {
+    const parts = opt.ratio.split(':').map(Number);
+    if (parts.length !== 3 || parts.some(x => !Number.isFinite(x) || x <= 0)) {
+      return { s: 1, f: 1, w: 1, total: 3 };
+    }
+    return { s: parts[0], f: parts[1], w: parts[2], total: parts[0] + parts[1] + parts[2] };
+  }
+
+  function getSelectedLevainRatios() {
+    const defaults = {
+      build1: LEVAIN_RATIOS.build1.fast,
+      build2: LEVAIN_RATIOS.build2.fast,
+    };
+    const deadlineStr = document.getElementById('deadline-input').value;
+    if (!deadlineStr) return defaults;
+    const deadline = new Date(deadlineStr);
+    if (isNaN(deadline.getTime())) return defaults;
+
+    const bakeTimePref = document.getElementById('bake-time-input').value;
+    const coldProofRaw = document.getElementById('coldproof-input').value;
+    let coldProofHours;
+    if (coldProofRaw === '') {
+      const candidates = [24, 22, 20, 18, 16, 14, 12, 10, 8];
+      coldProofHours = candidates.find(c => {
+        const trial = buildSchedule(deadline, c, bakeTimePref);
+        if (trial.totalLoaves === 0) return true;
+        const mixEvent = trial.events.find(e => e.title.startsWith('Mix'));
+        return !mixEvent || !isLateNight(mixEvent.time);
+      }) || 24;
+    } else {
+      const n = Number(coldProofRaw);
+      coldProofHours = Number.isFinite(n) && n > 0
+        ? Math.max(8, Math.min(24, n))
+        : SCHED.COLD_PROOF_HOURS;
+    }
+
+    const result = buildSchedule(deadline, coldProofHours, bakeTimePref);
+    return {
+      build1: result.build1Opt || defaults.build1,
+      build2: result.build2Opt || defaults.build2,
+    };
+  }
+
   function renderLevainPlan(aggregate) {
     const levainCard = document.getElementById('levain-card');
     const levainOut = document.getElementById('levain-output');
@@ -507,30 +702,42 @@
 
     const BUFFER = 1.10;                    // 10% extra for jar residue
     const bufferedTotal = levainTotal * BUFFER;
-    const build2Each = bufferedTotal / 3;   // each third of the final build
-    const build1Each = build2Each / 3;      // each third of the first refresh
-    const build1Total = build2Each;         // first refresh output = build 2's starter portion
+
+    const ratios = getSelectedLevainRatios();
+    const b1 = ratioParts(ratios.build1);
+    const b2 = ratioParts(ratios.build2);
+
+    // Build 2: split bufferedTotal by the build 2 ratio
+    const build2Starter = bufferedTotal * b2.s / b2.total;
+    const build2Flour   = bufferedTotal * b2.f / b2.total;
+    const build2Water   = bufferedTotal * b2.w / b2.total;
+
+    // Build 1: makes the starter portion needed by build 2
+    const build1Total   = build2Starter;
+    const build1Starter = build1Total * b1.s / b1.total;
+    const build1Flour   = build1Total * b1.f / b1.total;
+    const build1Water   = build1Total * b1.w / b1.total;
 
     levainOut.innerHTML = `
       <p style="margin-top:0">Total levain needed by recipes: <strong>${formatGrams(levainTotal)}</strong></p>
       <p style="margin: 4px 0 4px">Building with a <strong>10% buffer</strong> for jar residue → target <strong>${formatGrams(bufferedTotal)}</strong></p>
-      <p style="margin: 6px 0 14px">Mature starter to set aside: <strong>${formatGrams(build1Each)}</strong></p>
+      <p style="margin: 6px 0 14px">Mature starter to set aside: <strong>${formatGrams(build1Starter)}</strong></p>
 
-      <h2 style="font-size:0.95rem; margin: 4px 0 6px">Build 1 — first refresh <span class="pill">makes ${formatGrams(build1Total)}</span></h2>
+      <h2 style="font-size:0.95rem; margin: 4px 0 6px">Build 1 — first refresh <span class="pill">${ratios.build1.ratio} · makes ${formatGrams(build1Total)}</span></h2>
       <table class="ingredients">
         <tbody>
-          <tr><td>Mature starter</td><td class="num">${formatGrams(build1Each)}</td></tr>
-          <tr><td>All purpose flour</td><td class="num">${formatGrams(build1Each)}</td></tr>
-          <tr><td>Water</td><td class="num">${formatGrams(build1Each)}</td></tr>
+          <tr><td>Mature starter</td><td class="num">${formatGrams(build1Starter)}</td></tr>
+          <tr><td>All purpose flour</td><td class="num">${formatGrams(build1Flour)}</td></tr>
+          <tr><td>Water</td><td class="num">${formatGrams(build1Water)}</td></tr>
         </tbody>
       </table>
 
-      <h2 style="font-size:0.95rem; margin: 14px 0 6px">Build 2 — final levain <span class="pill">makes ${formatGrams(bufferedTotal)}</span></h2>
+      <h2 style="font-size:0.95rem; margin: 14px 0 6px">Build 2 — final levain <span class="pill">${ratios.build2.ratio} · makes ${formatGrams(bufferedTotal)}</span></h2>
       <table class="ingredients">
         <tbody>
-          <tr><td>Ripe levain from Build 1</td><td class="num">${formatGrams(build2Each)}</td></tr>
-          <tr><td>All purpose flour</td><td class="num">${formatGrams(build2Each)}</td></tr>
-          <tr><td>Water</td><td class="num">${formatGrams(build2Each)}</td></tr>
+          <tr><td>Ripe levain from Build 1</td><td class="num">${formatGrams(build2Starter)}</td></tr>
+          <tr><td>All purpose flour</td><td class="num">${formatGrams(build2Flour)}</td></tr>
+          <tr><td>Water</td><td class="num">${formatGrams(build2Water)}</td></tr>
         </tbody>
       </table>
     `;
@@ -692,6 +899,218 @@
     renderRecipes();
   }
 
+  // ---- schedule ----
+  function addMinutes(date, min) {
+    const d = new Date(date);
+    d.setMinutes(d.getMinutes() + min);
+    return d;
+  }
+  function addHours(date, hours) { return addMinutes(date, hours * 60); }
+  function roundToHalfHour(date) {
+    const ms = 30 * 60 * 1000;
+    return new Date(Math.round(date.getTime() / ms) * ms);
+  }
+  function isLateNight(date) {
+    const h = date.getHours();
+    return h >= 23 || h < 4;
+  }
+  function pickLevainBuild(buildKey, refTime) {
+    const opts = LEVAIN_RATIOS[buildKey];
+    const fastEarliest = addHours(refTime, -opts.fast.max);
+    const fastLatest = addHours(refTime, -opts.fast.min);
+    if (!isLateNight(fastEarliest) && !isLateNight(fastLatest)) return opts.fast;
+    return opts.slow;
+  }
+
+  function buildSchedule(deadline, coldProofHours, bakeTimePref) {
+    const loafRecipes = recipes.filter(r => (r.unit || 'loaf') === 'loaf' && (plan[r.id] || 0) > 0);
+    const totalLoaves = loafRecipes.reduce((s, r) => s + plan[r.id], 0);
+    if (totalLoaves === 0) return { totalLoaves: 0, batches: 0, events: [], warnings: [] };
+
+    const batches = Math.ceil(totalLoaves / SCHED.OVEN_CAPACITY);
+    const totalBakeMin = batches * SCHED.BAKE_MIN + (batches - 1) * SCHED.REHEAT_MIN;
+    const D = new Date(deadline);
+    const warnings = [];
+
+    let firstBakeStart;
+    let lastBakeEnd;
+    let packageReady;
+
+    const preset = bakeTimePref ? BAKE_TIME_PRESETS[bakeTimePref] : null;
+    if (preset) {
+      const day = new Date(D);
+      day.setHours(0, 0, 0, 0);
+      const tryDay = d => {
+        const t = new Date(d);
+        t.setHours(Math.floor(preset.mid), Math.round((preset.mid % 1) * 60), 0, 0);
+        return t;
+      };
+      let attempt = tryDay(day);
+      let coolEnd = addMinutes(attempt, totalBakeMin + SCHED.COOL_HOURS * 60);
+      if (coolEnd > D) {
+        day.setDate(day.getDate() - 1);
+        attempt = tryDay(day);
+        coolEnd = addMinutes(attempt, totalBakeMin + SCHED.COOL_HOURS * 60);
+      }
+      firstBakeStart = attempt;
+      lastBakeEnd = addMinutes(firstBakeStart, totalBakeMin);
+      packageReady = addHours(lastBakeEnd, SCHED.COOL_HOURS);
+      const slackHr = (D - packageReady) / (1000 * 60 * 60);
+      if (slackHr > 0.1) {
+        warnings.push(`Bread will be ready ${slackHr.toFixed(1)} hr before your deadline.`);
+      }
+    } else {
+      lastBakeEnd = addHours(D, -SCHED.COOL_HOURS);
+      firstBakeStart = addMinutes(lastBakeEnd, -totalBakeMin);
+      packageReady = D;
+    }
+
+    const bakeHour = firstBakeStart.getHours();
+    if (bakeHour >= 23 || bakeHour < 4) {
+      warnings.push(`Bake starts in the 11 PM – 4 AM window. Consider shifting the deadline or picking a different bake-time preference.`);
+    }
+
+    const fridgeIn = addHours(firstBakeStart, -coldProofHours);
+    const finalShapeStart = addMinutes(fridgeIn, -SCHED.FINAL_SHAPE_MIN_PER_LOAF * totalLoaves);
+    const benchRestStart = addMinutes(finalShapeStart, -SCHED.BENCH_REST_MIN);
+    const preshapeStart = addMinutes(benchRestStart, -SCHED.PRESHAPE_MIN_PER_LOAF * totalLoaves);
+    const lastFoldTime = addMinutes(preshapeStart, -SCHED.BULK_AFTER_FOLDS_MIN);
+    const firstFoldTime = addMinutes(lastFoldTime, -(SCHED.FOLDS_COUNT - 1) * SCHED.FOLD_INTERVAL_MIN);
+    const mixTime = addMinutes(firstFoldTime, -SCHED.FOLD_INTERVAL_MIN);
+    const autolyseStart = addMinutes(mixTime, -SCHED.AUTOLYSE_MIN);
+    const build2Opt = pickLevainBuild('build2', mixTime);
+    const levainBuild2Mid = addHours(mixTime, -build2Opt.mid);
+    const levainBuild2EarliestStart = roundToHalfHour(addHours(mixTime, -build2Opt.max));
+    const levainBuild2LatestStart = roundToHalfHour(addHours(mixTime, -build2Opt.min));
+    const build1Opt = pickLevainBuild('build1', levainBuild2Mid);
+    const levainBuild1EarliestStart = roundToHalfHour(addHours(levainBuild2Mid, -build1Opt.max));
+    const levainBuild1LatestStart = roundToHalfHour(addHours(levainBuild2Mid, -build1Opt.min));
+
+    const events = [];
+    const build1IsSlow = build1Opt === LEVAIN_RATIOS.build1.slow;
+    const build2IsSlow = build2Opt === LEVAIN_RATIOS.build2.slow;
+    events.push({
+      time: levainBuild1EarliestStart,
+      timeEnd: levainBuild1LatestStart,
+      title: 'Levain Build 1 — first refresh',
+      detail: `${build1Opt.ratio} ratio · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
+    });
+    events.push({
+      time: levainBuild2EarliestStart,
+      timeEnd: levainBuild2LatestStart,
+      title: 'Levain Build 2 — final build',
+      detail: `${build2Opt.ratio} ratio · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
+    });
+    events.push({ time: autolyseStart, title: 'Start autolyse — flour + water only', detail: `Rest ${SCHED.AUTOLYSE_MIN} min` });
+    events.push({ time: mixTime, title: 'Mix in salt + ripe levain', detail: '' });
+    for (let k = 0; k < SCHED.FOLDS_COUNT; k++) {
+      const foldTime = addMinutes(firstFoldTime, k * SCHED.FOLD_INTERVAL_MIN);
+      const isLast = k === SCHED.FOLDS_COUNT - 1;
+      events.push({
+        time: foldTime,
+        title: `Stretch & fold ${k + 1} of ${SCHED.FOLDS_COUNT}${isLast ? ' (last)' : ''}`,
+        detail: isLast ? `Bulk ferment ${SCHED.BULK_AFTER_FOLDS_MIN / 60} hr undisturbed` : '',
+      });
+    }
+    events.push({ time: preshapeStart, title: 'Start preshape', detail: `${SCHED.PRESHAPE_MIN_PER_LOAF} min × ${totalLoaves} loaves` });
+    events.push({ time: benchRestStart, title: 'Bench rest', detail: `${SCHED.BENCH_REST_MIN} min` });
+    events.push({ time: finalShapeStart, title: 'Final shape', detail: `${SCHED.FINAL_SHAPE_MIN_PER_LOAF} min × ${totalLoaves} loaves` });
+    events.push({ time: fridgeIn, title: 'Into fridge — cold proof', detail: `${coldProofHours} hr` });
+    for (let b = 0; b < batches; b++) {
+      const bakeStart = addMinutes(firstBakeStart, b * (SCHED.BAKE_MIN + SCHED.REHEAT_MIN));
+      events.push({
+        time: bakeStart,
+        title: `Bake ${b + 1} of ${batches} — into oven`,
+        detail: `${SCHED.BAKE_MIN} min` + (b < batches - 1 ? ` · ${SCHED.REHEAT_MIN} min reheat after` : ''),
+      });
+    }
+    events.push({ time: lastBakeEnd, title: 'Last loaves out — start cooling', detail: `Cool ${SCHED.COOL_HOURS} hr` });
+    events.push({ time: packageReady, title: 'Package & ready for sale', detail: '' });
+
+    return { totalLoaves, batches, events, warnings, build1Opt, build2Opt };
+  }
+
+  function renderSchedule() {
+    const out = document.getElementById('schedule-output');
+    const deadlineStr = document.getElementById('deadline-input').value;
+    if (!deadlineStr) {
+      out.innerHTML = '<p class="muted">Set a deadline above to see the schedule.</p>';
+      return;
+    }
+    const deadline = new Date(deadlineStr);
+    if (isNaN(deadline.getTime())) {
+      out.innerHTML = '<p class="muted">Invalid deadline.</p>';
+      return;
+    }
+    const bakeTimePref = document.getElementById('bake-time-input').value;
+    const coldProofRaw = document.getElementById('coldproof-input').value;
+    let coldProofHours;
+    let coldProofAuto = false;
+    if (coldProofRaw === '') {
+      coldProofAuto = true;
+      const candidates = [24, 22, 20, 18, 16, 14, 12, 10, 8];
+      coldProofHours = candidates.find(c => {
+        const trial = buildSchedule(deadline, c, bakeTimePref);
+        if (trial.totalLoaves === 0) return true;
+        const mixEvent = trial.events.find(e => e.title.startsWith('Mix'));
+        return !mixEvent || !isLateNight(mixEvent.time);
+      }) || 24;
+    } else {
+      const n = Number(coldProofRaw);
+      coldProofHours = Number.isFinite(n) && n > 0
+        ? Math.max(8, Math.min(24, n))
+        : SCHED.COLD_PROOF_HOURS;
+    }
+    const result = buildSchedule(deadline, coldProofHours, bakeTimePref);
+    if (result.totalLoaves === 0) {
+      out.innerHTML = '<p class="muted">No sourdough loaves in the current Bake Plan. Add some to see the schedule.</p>';
+      return;
+    }
+
+    const groups = [];
+    let currentKey = null;
+    for (const ev of result.events) {
+      const key = ev.time.toDateString();
+      if (key !== currentKey) {
+        groups.push({ key, date: ev.time, events: [] });
+        currentKey = key;
+      }
+      groups[groups.length - 1].events.push(ev);
+    }
+
+    const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+
+    let html = '';
+    if (result.warnings && result.warnings.length) {
+      html += result.warnings.map(w => `<div class="schedule-warn">${escapeHtml(w)}</div>`).join('');
+    }
+    html += `<p class="schedule-meta">${result.totalLoaves} loaves · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · cold proof ${coldProofHours} hr${coldProofAuto ? ' (auto — longest fit)' : ''}</p>`;
+    for (const g of groups) {
+      html += `<div class="schedule-day"><div class="schedule-day-header">${dayFmt.format(g.date)}</div>`;
+      for (const ev of g.events) {
+        const timeCell = ev.timeEnd
+          ? `${timeFmt.format(ev.time)}<span class="schedule-time-end">to ${timeFmt.format(ev.timeEnd)}</span>`
+          : timeFmt.format(ev.time);
+        html += `<div class="schedule-row">
+          <div class="schedule-time">${timeCell}</div>
+          <div>
+            <div class="schedule-title">${escapeHtml(ev.title)}</div>
+            ${ev.detail ? `<div class="schedule-detail">${escapeHtml(ev.detail)}</div>` : ''}
+          </div>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    out.innerHTML = html;
+  }
+
+  function saveDeadline() {
+    const v = document.getElementById('deadline-input').value;
+    if (v) localStorage.setItem(DEADLINE_KEY, v);
+    else localStorage.removeItem(DEADLINE_KEY);
+  }
+
   // ---- flour role detection + rebalancing ----
   function detectFlourType(name) {
     const n = (name || '').toLowerCase().trim();
@@ -778,6 +1197,27 @@
   // ---- init ----
   document.getElementById('r-unit').addEventListener('input', e => {
     document.getElementById('r-unit-label').textContent = e.target.value.trim() || 'unit';
+  });
+  const deadlineInput = document.getElementById('deadline-input');
+  deadlineInput.value = localStorage.getItem(DEADLINE_KEY) || '';
+  deadlineInput.addEventListener('input', () => {
+    saveDeadline();
+    renderSchedule();
+    renderTotals();
+  });
+  const coldproofInput = document.getElementById('coldproof-input');
+  coldproofInput.value = localStorage.getItem(COLDPROOF_KEY) || '';
+  coldproofInput.addEventListener('change', () => {
+    localStorage.setItem(COLDPROOF_KEY, coldproofInput.value);
+    renderSchedule();
+    renderTotals();
+  });
+  const baketimeInput = document.getElementById('bake-time-input');
+  baketimeInput.value = localStorage.getItem(BAKETIME_KEY) || '';
+  baketimeInput.addEventListener('change', () => {
+    localStorage.setItem(BAKETIME_KEY, baketimeInput.value);
+    renderSchedule();
+    renderTotals();
   });
   renderPlan();
 </script>
