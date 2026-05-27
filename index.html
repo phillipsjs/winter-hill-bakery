@@ -391,6 +391,30 @@
           <option value="24">24 hours</option>
         </select>
       </div>
+
+      <hr class="sep" />
+
+      <p class="muted" style="margin: 0 0 8px;">Levain build ratios — override the scheduler's auto-pick if you prefer a specific timing.</p>
+
+      <div class="row" style="align-items: center; gap: 10px; margin-bottom: 10px;">
+        <label style="font-size: 0.95rem;">Build 1 ratio:</label>
+        <select id="build1-ratio-input" class="settings-select">
+          <option value="">— auto (avoid late-night) —</option>
+          <option value="fast">Fast 1:1:1 (8–12 hr)</option>
+          <option value="medium">Medium 1:3:3 (12–18 hr)</option>
+          <option value="slow">Slow 1:5:5 (18–24 hr)</option>
+        </select>
+      </div>
+
+      <div class="row" style="align-items: center; gap: 10px;">
+        <label style="font-size: 0.95rem;">Build 2 ratio:</label>
+        <select id="build2-ratio-input" class="settings-select">
+          <option value="">— auto (avoid late-night) —</option>
+          <option value="fast">Fast 1:1:1 (4–6 hr)</option>
+          <option value="medium">Medium 1:3:3 (7–11 hr)</option>
+          <option value="slow">Slow 1:5:5 (12–16 hr)</option>
+        </select>
+      </div>
     </div>
 
     <div class="card" id="schedule-card">
@@ -412,6 +436,8 @@
   const DEADLINE_KEY = 'cottage-bakery-deadline-v1';
   const COLDPROOF_KEY = 'cottage-bakery-coldproof-v1';
   const BAKETIME_KEY = 'cottage-bakery-baketime-v1';
+  const BUILD1_RATIO_KEY = 'cottage-bakery-build1-ratio-v1';
+  const BUILD2_RATIO_KEY = 'cottage-bakery-build2-ratio-v1';
   const DOUGH_CONTAINER_CAPACITY_G = 12000;
 
   const BAKE_TIME_PRESETS = {
@@ -423,12 +449,14 @@
 
   const LEVAIN_RATIOS = {
     build1: {
-      fast: { min: 8,  max: 12, mid: 10, ratio: '1:1:1' },
-      slow: { min: 18, max: 24, mid: 21, ratio: '1:5:5' },
+      fast:   { min: 8,  max: 12, mid: 10, ratio: '1:1:1' },
+      medium: { min: 12, max: 18, mid: 15, ratio: '1:3:3' },
+      slow:   { min: 18, max: 24, mid: 21, ratio: '1:5:5' },
     },
     build2: {
-      fast: { min: 4,  max: 6,  mid: 5,  ratio: '1:1:1' },
-      slow: { min: 12, max: 16, mid: 14, ratio: '1:5:5' },
+      fast:   { min: 4,  max: 6,  mid: 5,  ratio: '1:1:1' },
+      medium: { min: 7,  max: 11, mid: 9,  ratio: '1:3:3' },
+      slow:   { min: 12, max: 16, mid: 14, ratio: '1:5:5' },
     },
   };
 
@@ -816,9 +844,16 @@
   }
 
   function getSelectedLevainRatios() {
+    const build1Pref = document.getElementById('build1-ratio-input').value;
+    const build2Pref = document.getElementById('build2-ratio-input').value;
+    const pickDefault = (buildKey, pref) => {
+      if (pref === 'slow')   return LEVAIN_RATIOS[buildKey].slow;
+      if (pref === 'medium') return LEVAIN_RATIOS[buildKey].medium;
+      return LEVAIN_RATIOS[buildKey].fast;
+    };
     const defaults = {
-      build1: LEVAIN_RATIOS.build1.fast,
-      build2: LEVAIN_RATIOS.build2.fast,
+      build1: pickDefault('build1', build1Pref),
+      build2: pickDefault('build2', build2Pref),
     };
     const deadlineStr = document.getElementById('deadline-input').value;
     if (!deadlineStr) return defaults;
@@ -1213,12 +1248,20 @@
     return batchAssignments.map(batch => allocateDecks(batch, DECK_CAP, MAX_DECKS));
   }
 
-  function pickLevainBuild(buildKey, refTime) {
+  function pickLevainBuild(buildKey, refTime, override) {
     const opts = LEVAIN_RATIOS[buildKey];
-    const fastEarliest = addHours(refTime, -opts.fast.max);
-    const fastLatest = addHours(refTime, -opts.fast.min);
-    if (!isLateNight(fastEarliest) && !isLateNight(fastLatest)) return opts.fast;
-    return opts.slow;
+    if (override === 'fast')   return { ...opts.fast,   kind: 'fast',   manual: true };
+    if (override === 'medium') return { ...opts.medium, kind: 'medium', manual: true };
+    if (override === 'slow')   return { ...opts.slow,   kind: 'slow',   manual: true };
+    for (const kind of ['fast', 'medium', 'slow']) {
+      const o = opts[kind];
+      const earliest = addHours(refTime, -o.max);
+      const latest = addHours(refTime, -o.min);
+      if (!isLateNight(earliest) && !isLateNight(latest)) {
+        return { ...o, kind, manual: false };
+      }
+    }
+    return { ...opts.slow, kind: 'slow', manual: false };
   }
 
   function buildSchedule(deadline, coldProofHours, bakeTimePref) {
@@ -1315,28 +1358,35 @@
     const firstFoldTime = addMinutes(lastFoldTime, -(SCHED.FOLDS_COUNT - 1) * SCHED.FOLD_INTERVAL_MIN);
     const mixTime = addMinutes(firstFoldTime, -(SCHED.FOLD_INTERVAL_MIN + (numContainers - 1) * SCHED.SALT_LEVAIN_MIX_MIN));
     const autolyseStart = addMinutes(mixTime, -(SCHED.AUTOLYSE_MIN + (numContainers - 1) * SCHED.AUTOLYSE_ACTIVE_MIN));
-    const build2Opt = pickLevainBuild('build2', mixTime);
+    const build1Pref = (document.getElementById('build1-ratio-input')?.value) || '';
+    const build2Pref = (document.getElementById('build2-ratio-input')?.value) || '';
+    const build2Opt = pickLevainBuild('build2', mixTime, build2Pref);
     const levainBuild2Mid = addHours(mixTime, -build2Opt.mid);
     const levainBuild2EarliestStart = roundToHalfHour(addHours(mixTime, -build2Opt.max));
     const levainBuild2LatestStart = roundToHalfHour(addHours(mixTime, -build2Opt.min));
-    const build1Opt = pickLevainBuild('build1', levainBuild2Mid);
+    const build1Opt = pickLevainBuild('build1', levainBuild2Mid, build1Pref);
     const levainBuild1EarliestStart = roundToHalfHour(addHours(levainBuild2Mid, -build1Opt.max));
     const levainBuild1LatestStart = roundToHalfHour(addHours(levainBuild2Mid, -build1Opt.min));
 
     const events = [];
-    const build1IsSlow = build1Opt === LEVAIN_RATIOS.build1.slow;
-    const build2IsSlow = build2Opt === LEVAIN_RATIOS.build2.slow;
+    const autoNote = (opt) => {
+      if (opt.kind === 'medium') return ' (medium ratio chosen to avoid a late-night refresh)';
+      if (opt.kind === 'slow')   return ' (slower ratio chosen to avoid a late-night refresh)';
+      return '';
+    };
+    const build1Note = build1Opt.manual ? ' (manually selected)' : autoNote(build1Opt);
+    const build2Note = build2Opt.manual ? ' (manually selected)' : autoNote(build2Opt);
     events.push({
       time: levainBuild1EarliestStart,
       timeEnd: levainBuild1LatestStart,
       title: 'Levain Build 1 — first refresh',
-      detail: `${build1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
+      detail: `${build1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1Note}`,
     });
     events.push({
       time: levainBuild2EarliestStart,
       timeEnd: levainBuild2LatestStart,
       title: 'Levain Build 2 — final build',
-      detail: `${build2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2IsSlow ? ' (slower ratio chosen to avoid a late-night refresh)' : ''}`,
+      detail: `${build2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2Note}`,
     });
     if (specialtyFlourNames.size > 0) {
       events.push({
@@ -1661,6 +1711,20 @@
   baketimeInput.value = localStorage.getItem(BAKETIME_KEY) || '';
   baketimeInput.addEventListener('change', () => {
     localStorage.setItem(BAKETIME_KEY, baketimeInput.value);
+    renderSchedule();
+    renderTotals();
+  });
+  const build1RatioInput = document.getElementById('build1-ratio-input');
+  build1RatioInput.value = localStorage.getItem(BUILD1_RATIO_KEY) || '';
+  build1RatioInput.addEventListener('change', () => {
+    localStorage.setItem(BUILD1_RATIO_KEY, build1RatioInput.value);
+    renderSchedule();
+    renderTotals();
+  });
+  const build2RatioInput = document.getElementById('build2-ratio-input');
+  build2RatioInput.value = localStorage.getItem(BUILD2_RATIO_KEY) || '';
+  build2RatioInput.addEventListener('change', () => {
+    localStorage.setItem(BUILD2_RATIO_KEY, build2RatioInput.value);
     renderSchedule();
     renderTotals();
   });
