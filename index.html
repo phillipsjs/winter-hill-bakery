@@ -825,12 +825,23 @@
       processLabel: template.label,
       schedulable: template.schedulable,
     };
+    const hasOverride = (field) => {
+      const raw = recipe ? recipe[field] : undefined;
+      return raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw));
+    };
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
       const raw = recipe ? recipe[field] : undefined;
       const num = Number(raw);
       spec[field] = (raw !== undefined && raw !== null && raw !== '' && Number.isFinite(num))
         ? num
         : template[field];
+    }
+    // Weight-based fallback: heavy loaves (>750 g) only fit 3 per deck instead
+    // of the default 4, which means 9 per oven (3 decks × 3) instead of 12.
+    // Applies only when the user hasn't explicitly overridden these fields.
+    if (type === 'sourdough-loaf' && recipe && Number(recipe.loafWeight) > 750) {
+      if (!hasOverride('deckCapacity')) spec.deckCapacity = 3;
+      if (!hasOverride('ovenCapacity')) spec.ovenCapacity = 9;
     }
     return spec;
   }
@@ -1827,136 +1838,99 @@
   function lateNightActiveSteps(events, kind) {
     return events.filter(ev => ev.time && !ev.timeEnd && isActiveStep(ev, kind) && isLateNight(ev.time));
   }
-  function allocateDecks(batch, deckCap, maxDecks) {
-    const typeInfo = batch.map(t => ({ ...t, decksNeeded: Math.ceil(t.count / deckCap) }));
-    const totalPureDecks = typeInfo.reduce((s, t) => s + t.decksNeeded, 0);
+  // Generic deck-by-deck planner. Each deck's effective capacity is the
+  // minimum deckCap of the recipes in that deck — so a deck of pure batards
+  // (cap 4) fits 4, a deck of pure boules (cap 3) fits 3, and a mixed deck
+  // is capped at the smaller of the two.
+  //
+  // Priorities (highest to lowest):
+  //   1. Minimum bake count (drops out of the deck-by-deck packing — by
+  //      filling each deck as full as possible before opening the next)
+  //   2. Full ovens with full decks — picks the highest-total deck loading
+  //      at each step
+  //   3. Same kind per bake — among loadings with equal total, prefer
+  //      homogeneous decks; biggest-recipe-first ordering ensures leftover
+  //      scraps concentrate in one trailing deck
+  function planBakes(items, deckCapByName, maxDecks) {
+    const remaining = { ...items };
+    const totalLeft = () => Object.values(remaining).reduce((s, c) => s + c, 0);
+    if (totalLeft() === 0) return [];
 
-    if (totalPureDecks <= maxDecks) {
+    const pickBestDeck = () => {
+      const names = Object.keys(remaining).filter(n => remaining[n] > 0);
+      if (names.length === 0) return null;
+      const candidates = [];
+      // Homogeneous deck candidates.
+      for (const name of names) {
+        const take = Math.min(deckCapByName[name], remaining[name]);
+        if (take > 0) candidates.push({ items: [{ name, count: take }], total: take, homog: true });
+      }
+      // Two-recipe mixed deck candidates — only useful when a single recipe
+      // can't fill the deck alone but a pair can.
+      for (let i = 0; i < names.length; i++) {
+        for (let j = i + 1; j < names.length; j++) {
+          const n1 = names[i], n2 = names[j];
+          const cap = Math.min(deckCapByName[n1], deckCapByName[n2]);
+          const [first, second] = remaining[n1] >= remaining[n2] ? [n1, n2] : [n2, n1];
+          const a = Math.min(cap, remaining[first]);
+          const b = Math.min(cap - a, remaining[second]);
+          if (a > 0 && b > 0) {
+            candidates.push({
+              items: [{ name: first, count: a }, { name: second, count: b }],
+              total: a + b,
+              homog: false,
+            });
+          }
+        }
+      }
+      candidates.sort((x, y) => {
+        if (x.total !== y.total) return y.total - x.total;
+        if (x.homog !== y.homog) return x.homog ? -1 : 1;
+        return 0;
+      });
+      return candidates[0] || null;
+    };
+
+    const batches = [];
+    while (totalLeft() > 0) {
       const decks = [];
-      for (const t of typeInfo) {
-        const base = Math.floor(t.count / t.decksNeeded);
-        const extras = t.count % t.decksNeeded;
-        for (let i = 0; i < t.decksNeeded; i++) {
-          const count = base + (i < extras ? 1 : 0);
-          decks.push({ items: [{ name: t.name, count }] });
-        }
+      for (let d = 0; d < maxDecks; d++) {
+        if (totalLeft() === 0) break;
+        const deck = pickBestDeck();
+        if (!deck) break;
+        decks.push({ items: deck.items, total: deck.total });
+        for (const it of deck.items) remaining[it.name] -= it.count;
       }
-      return decks;
+      if (decks.length === 0) break;
+      batches.push(decks);
     }
-
-    const decks = [];
-    const remainders = [];
-    for (const t of typeInfo) {
-      const fullDecks = Math.floor(t.count / deckCap);
-      for (let i = 0; i < fullDecks; i++) {
-        decks.push({ items: [{ name: t.name, count: deckCap }] });
-      }
-      const rem = t.count % deckCap;
-      if (rem > 0) remainders.push({ name: t.name, count: rem });
-    }
-    let currentDeck = { items: [], total: 0 };
-    for (const r of remainders) {
-      let leftToPlace = r.count;
-      while (leftToPlace > 0) {
-        const space = deckCap - currentDeck.total;
-        const take = Math.min(leftToPlace, space);
-        currentDeck.items.push({ name: r.name, count: take });
-        currentDeck.total += take;
-        leftToPlace -= take;
-        if (currentDeck.total === deckCap) {
-          decks.push(currentDeck);
-          currentDeck = { items: [], total: 0 };
-        }
-      }
-    }
-    if (currentDeck.items.length > 0) decks.push(currentDeck);
-    return decks;
+    return batches;
   }
 
-  function planMuffinBakes(muffinRecipes, planMap, perOven) {
-    const DECK_CAP = SCHED.MUFFIN_DECK_CAPACITY;
-    const PER_OVEN = perOven || (DECK_CAP * 3);
-    const MAX_DECKS = Math.max(1, Math.ceil(PER_OVEN / DECK_CAP));
-    const types = muffinRecipes
-      .map(r => ({ name: r.name, count: planMap[r.id] || 0 }))
-      .filter(t => t.count > 0);
-    const total = types.reduce((s, t) => s + t.count, 0);
-    if (total === 0) return [];
-    const batches = Math.ceil(total / PER_OVEN);
-    const result = [];
-    let remainingByType = types.map(t => ({ ...t }));
-    for (let b = 0; b < batches; b++) {
-      const inBatchTotal = Math.min(PER_OVEN, remainingByType.reduce((s, t) => s + t.count, 0));
-      const decksNeeded = Math.ceil(inBatchTotal / DECK_CAP);
-      const decks = Array.from({ length: decksNeeded }, () => ({ items: [], total: 0 }));
-      let di = 0;
-      for (const t of remainingByType) {
-        let rem = t.count;
-        while (rem > 0 && di < decks.length) {
-          const space = DECK_CAP - decks[di].total;
-          const take = Math.min(rem, space);
-          if (take > 0) {
-            decks[di].items.push({ name: t.name, count: take });
-            decks[di].total += take;
-            rem -= take;
-            t.count -= take;
-          }
-          if (decks[di].total === DECK_CAP) di++;
-        }
-      }
-      result.push(decks);
+  function planOvenLoads(loafRecipes, planMap) {
+    const deckCapByName = {};
+    for (const r of loafRecipes) {
+      deckCapByName[r.name] = getRecipeSpec(r).deckCapacity || 4;
     }
-    return result;
+    const items = {};
+    for (const r of loafRecipes) {
+      const c = planMap[r.id] || 0;
+      if (c > 0) items[r.name] = c;
+    }
+    return planBakes(items, deckCapByName, 3);
   }
 
-  function planOvenLoads(loafRecipes, planMap, ovenCap, deckCap) {
-    const OVEN_CAP = ovenCap || SCHED.OVEN_CAPACITY;
-    const DECK_CAP = deckCap || 4;
-    const MAX_DECKS = Math.max(1, Math.ceil(OVEN_CAP / DECK_CAP));
-
-    const types = loafRecipes
-      .map(r => ({ name: r.name, count: planMap[r.id] || 0 }))
-      .filter(t => t.count > 0);
-
-    if (types.length === 0) return [];
-
-    const total = types.reduce((s, t) => s + t.count, 0);
-    const minBatches = Math.ceil(total / OVEN_CAP);
-    const separateNeeded = types.reduce((s, t) => s + Math.ceil(t.count / OVEN_CAP), 0);
-
-    let batchAssignments;
-    if (separateNeeded === minBatches) {
-      batchAssignments = [];
-      for (const t of types) {
-        const typeBatches = Math.ceil(t.count / OVEN_CAP);
-        for (let b = 0; b < typeBatches; b++) {
-          const base = Math.floor(t.count / typeBatches);
-          const extras = t.count % typeBatches;
-          const count = base + (b < extras ? 1 : 0);
-          batchAssignments.push([{ name: t.name, count }]);
-        }
-      }
-    } else {
-      const sortedTypes = [...types].sort((a, b) => b.count - a.count);
-      const batches = Array.from({ length: minBatches }, () => ({ load: [], total: 0 }));
-      let batchIdx = 0;
-      for (const t of sortedTypes) {
-        let remaining = t.count;
-        while (remaining > 0 && batchIdx < batches.length) {
-          const space = OVEN_CAP - batches[batchIdx].total;
-          const take = Math.min(remaining, space);
-          if (take > 0) {
-            batches[batchIdx].load.push({ name: t.name, count: take });
-            batches[batchIdx].total += take;
-            remaining -= take;
-          }
-          if (batches[batchIdx].total >= OVEN_CAP) batchIdx++;
-        }
-      }
-      batchAssignments = batches.map(b => b.load);
+  function planMuffinBakes(muffinRecipes, planMap) {
+    const deckCapByName = {};
+    for (const r of muffinRecipes) {
+      deckCapByName[r.name] = getRecipeSpec(r).deckCapacity || SCHED.MUFFIN_DECK_CAPACITY;
     }
-
-    return batchAssignments.map(batch => allocateDecks(batch, DECK_CAP, MAX_DECKS));
+    const items = {};
+    for (const r of muffinRecipes) {
+      const c = planMap[r.id] || 0;
+      if (c > 0) items[r.name] = c;
+    }
+    return planBakes(items, deckCapByName, 3);
   }
 
   function pickLevainBuild(buildKey, refTime, override) {
@@ -2045,9 +2019,14 @@
       muffinColdProofHours = Math.max(muffinColdProofHours, ...explicitMuffinColdProofs);
     }
 
-    const breadBatches = Math.ceil(totalLoaves / loafAgg.ovenCapacity);
-    const muffinPerOven = muffinAgg ? muffinAgg.ovenCapacity : SCHED.MUFFIN_DECK_CAPACITY * 3;
-    const muffinBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / muffinPerOven) : 0;
+    // Plan the actual oven loads up-front (per-deck packing with per-recipe
+    // caps). Downstream batch counts and timings derive from these plans so
+    // a mixed plan with 850g boules + 675g batards still uses each recipe's
+    // own deck cap (3 for boules, 4 for batards) on homogeneous decks.
+    const ovenPlan = planOvenLoads(loafRecipes, plan);
+    const muffinOvenPlan = totalMuffins > 0 ? planMuffinBakes(muffinRecipes, plan) : [];
+    const breadBatches = ovenPlan.length;
+    const muffinBatches = muffinOvenPlan.length;
     const batches = breadBatches + muffinBatches;
     const loafBakeTotalMin = breadBatches * loafAgg.bakeMin + Math.max(0, breadBatches - 1) * SCHED.REHEAT_MIN;
     const muffinBakeTotalMin = totalMuffins > 0
@@ -2400,7 +2379,6 @@
     }
 
     // --- Loaf bake loop ---
-    const ovenPlan = planOvenLoads(loafRecipes, plan, loafAgg.ovenCapacity, loafAgg.deckCapacity);
     let loafCumOffset = 0;
     for (let b = 0; b < breadBatches; b++) {
       const bakeStart = addMinutes(firstBakeStart, loafCumOffset);
@@ -2423,7 +2401,6 @@
 
     // --- Muffin bake loop (independent slot) ---
     if (totalMuffins > 0 && muffinSlot) {
-      const muffinOvenPlan = planMuffinBakes(muffinRecipes, plan, muffinPerOven);
       let muffinCumOffset = 0;
       for (let b = 0; b < muffinBatches; b++) {
         const bakeStart = addMinutes(muffinSlot.firstBakeStart, muffinCumOffset);
