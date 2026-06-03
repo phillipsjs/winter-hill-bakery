@@ -447,6 +447,32 @@
     color: #6a4a10;
     margin: 0 0 12px;
   }
+  .schedule-fixes {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #d6c79f;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .schedule-fixes-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #6a4a10;
+    margin-right: 2px;
+  }
+  button.schedule-fix-btn {
+    background: #fff;
+    color: #6a4a10;
+    border: 1px solid #c9a94f;
+    border-radius: 999px;
+    padding: 4px 11px;
+    font-size: 0.8rem;
+  }
+  button.schedule-fix-btn:hover { background: #f3e7c8; }
+  button.schedule-fix-btn .schedule-fix-knob { font-weight: 600; }
+  button.schedule-fix-btn .schedule-fix-plus { opacity: 0.6; margin: 0 2px; }
   .settings-select {
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -595,27 +621,29 @@
             <label>Cold proof:</label>
             <select id="coldproof-loaf-input" class="settings-select">
               <option value="">— any (use deadline) —</option>
-              <option value="8">8 hours</option>
-              <option value="10">10 hours</option>
-              <option value="12">12 hours</option>
-              <option value="14">14 hours</option>
-              <option value="16">16 hours</option>
-              <option value="18">18 hours</option>
-              <option value="20">20 hours</option>
-              <option value="22">22 hours</option>
-              <option value="24">24 hours</option>
-              <option value="26">26 hours</option>
-              <option value="28">28 hours</option>
-              <option value="30">30 hours</option>
-              <option value="32">32 hours</option>
-              <option value="34">34 hours</option>
-              <option value="36">36 hours</option>
-              <option value="38">38 hours</option>
-              <option value="40">40 hours</option>
-              <option value="42">42 hours</option>
-              <option value="44">44 hours</option>
-              <option value="46">46 hours</option>
-              <option value="48">48 hours</option>
+              <option value="0">None (bake after shape)</option>
+              <option value="2-6">2–6 hours</option>
+              <option value="4-8">4–8 hours</option>
+              <option value="6-10">6–10 hours</option>
+              <option value="8-12">8–12 hours</option>
+              <option value="10-14">10–14 hours</option>
+              <option value="12-16">12–16 hours</option>
+              <option value="14-18">14–18 hours</option>
+              <option value="16-20">16–20 hours</option>
+              <option value="18-22">18–22 hours</option>
+              <option value="20-24">20–24 hours</option>
+              <option value="22-26">22–26 hours</option>
+              <option value="24-28">24–28 hours</option>
+              <option value="26-30">26–30 hours</option>
+              <option value="28-32">28–32 hours</option>
+              <option value="30-34">30–34 hours</option>
+              <option value="32-36">32–36 hours</option>
+              <option value="34-38">34–38 hours</option>
+              <option value="36-40">36–40 hours</option>
+              <option value="38-42">38–42 hours</option>
+              <option value="40-44">40–44 hours</option>
+              <option value="42-46">42–46 hours</option>
+              <option value="44-48">44–48 hours</option>
             </select>
           </div>
         </div>
@@ -640,27 +668,29 @@
             <label>Cold proof:</label>
             <select id="coldproof-muffin-input" class="settings-select">
               <option value="">— any (use deadline) —</option>
-              <option value="8">8 hours</option>
-              <option value="10">10 hours</option>
-              <option value="12">12 hours</option>
-              <option value="14">14 hours</option>
-              <option value="16">16 hours</option>
-              <option value="18">18 hours</option>
-              <option value="20">20 hours</option>
-              <option value="22">22 hours</option>
-              <option value="24">24 hours</option>
-              <option value="26">26 hours</option>
-              <option value="28">28 hours</option>
-              <option value="30">30 hours</option>
-              <option value="32">32 hours</option>
-              <option value="34">34 hours</option>
-              <option value="36">36 hours</option>
-              <option value="38">38 hours</option>
-              <option value="40">40 hours</option>
-              <option value="42">42 hours</option>
-              <option value="44">44 hours</option>
-              <option value="46">46 hours</option>
-              <option value="48">48 hours</option>
+              <option value="0">None (bake after shape)</option>
+              <option value="2-6">2–6 hours</option>
+              <option value="4-8">4–8 hours</option>
+              <option value="6-10">6–10 hours</option>
+              <option value="8-12">8–12 hours</option>
+              <option value="10-14">10–14 hours</option>
+              <option value="12-16">12–16 hours</option>
+              <option value="14-18">14–18 hours</option>
+              <option value="16-20">16–20 hours</option>
+              <option value="18-22">18–22 hours</option>
+              <option value="20-24">20–24 hours</option>
+              <option value="22-26">22–26 hours</option>
+              <option value="24-28">24–28 hours</option>
+              <option value="26-30">26–30 hours</option>
+              <option value="28-32">28–32 hours</option>
+              <option value="30-34">30–34 hours</option>
+              <option value="32-36">32–36 hours</option>
+              <option value="34-38">34–38 hours</option>
+              <option value="36-40">36–40 hours</option>
+              <option value="38-42">38–42 hours</option>
+              <option value="40-44">40–44 hours</option>
+              <option value="42-46">42–46 hours</option>
+              <option value="44-48">44–48 hours</option>
             </select>
           </div>
         </div>
@@ -1091,6 +1121,46 @@
     renderTotals();
   }
 
+  // Apply a one-click scheduling fix offered under a warning. A fix is one or
+  // more steps (a combined fix changes two settings at once). Each step maps a
+  // logical control to its input element; we set the value and dispatch the
+  // same event the input fires on manual change so its listener persists the
+  // value. Intermediate re-renders are suppressed so the schedule re-renders
+  // once after all steps are applied — important for combined fixes, whose
+  // half-applied state would otherwise trigger a redundant (and possibly slow)
+  // fix search.
+  const SCHEDULE_FIX_CONTROLS = {
+    'coldproof-loaf':   ['coldproof-loaf-input', 'change'],
+    'coldproof-muffin': ['coldproof-muffin-input', 'change'],
+    'bake-time-loaf':   ['bake-time-loaf-input', 'change'],
+    'bake-time-muffin': ['bake-time-muffin-input', 'change'],
+    'deadline-loaf':    ['deadline-loaf-input', 'input'],
+    'deadline-muffin':  ['deadline-muffin-input', 'input'],
+    'build1-ratio':     ['build1-ratio-input', 'change'],
+    'build2-ratio':     ['build2-ratio-input', 'change'],
+  };
+  let suppressScheduleRender = false;
+  function applyScheduleFix(btn) {
+    let steps;
+    try { steps = JSON.parse(btn.dataset.fix); } catch (e) { return; }
+    if (!Array.isArray(steps) || !steps.length) return;
+    suppressScheduleRender = true;
+    try {
+      for (const step of steps) {
+        const entry = SCHEDULE_FIX_CONTROLS[step.control];
+        if (!entry) continue;
+        const el = document.getElementById(entry[0]);
+        if (!el) continue;
+        el.value = step.value;
+        el.dispatchEvent(new Event(entry[1], { bubbles: true }));
+      }
+    } finally {
+      suppressScheduleRender = false;
+    }
+    renderSchedule();
+    renderTotals();
+  }
+
   // For each event, apply the offset from the latest anchor whose anchored
   // event's scheduled time is <= this event's scheduled time. Returns the set
   // of event titles that are themselves anchored (for visual indication).
@@ -1466,16 +1536,23 @@
     const muffinBakeTime = document.getElementById('bake-time-muffin-input').value;
     const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
     const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
-    const resolveColdProof = (raw, fallback) => {
-      if (raw === '') return fallback;
-      const n = Number(raw);
-      return Number.isFinite(n) && n > 0 ? Math.max(8, Math.min(48, n)) : fallback;
+    const resolveColdProofWindow = (raw, fallbackMin) => {
+      const parsed = parseColdProofWindow(raw);
+      if (parsed) return parsed;
+      return { min: fallbackMin, max: fallbackMin + COLD_PROOF_WINDOW_WIDTH };
     };
     let loafColdProofHours;
+    let loafColdProofMaxHr;
     if (loafColdProofRaw === '') {
-      const candidates = [48, 46, 44, 42, 40, 38, 36, 34, 32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8];
+      // Default target ~16-20 hr; try shorter first (down to 8-12), then
+      // longer if no short window works. .find() picks the first candidate
+      // with no late-night active steps, and the reduce fallback tie-breaks
+      // toward earlier entries — so the search prefers 16, then 14, ..., 8,
+      // then 18, 20, ..., 44.
+      const candidates = [16, 14, 12, 10, 8, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44];
       const trials = candidates.map(c => {
-        const trial = buildSchedule(loafDeadline, muffinDeadline, c, SCHED.COLD_PROOF_HOURS, loafBakeTime, muffinBakeTime);
+        const trial = buildSchedule(loafDeadline, muffinDeadline, c, SCHED.COLD_PROOF_HOURS, loafBakeTime, muffinBakeTime,
+          c + COLD_PROOF_WINDOW_WIDTH, SCHED.COLD_PROOF_HOURS + COLD_PROOF_WINDOW_WIDTH);
         const lateCount = trial.totalLoaves === 0 ? 0 : lateNightActiveSteps(trial.events, 'loaf').length;
         return { c, total: trial.totalLoaves, lateCount };
       });
@@ -1483,12 +1560,17 @@
       loafColdProofHours = noLate
         ? noLate.c
         : trials.reduce((a, b) => (b.lateCount < a.lateCount ? b : a)).c;
+      loafColdProofMaxHr = loafColdProofHours + COLD_PROOF_WINDOW_WIDTH;
     } else {
-      loafColdProofHours = resolveColdProof(loafColdProofRaw, SCHED.COLD_PROOF_HOURS);
+      const w = resolveColdProofWindow(loafColdProofRaw, SCHED.COLD_PROOF_HOURS);
+      loafColdProofHours = w.min;
+      loafColdProofMaxHr = w.max;
     }
-    const muffinColdProofHours = resolveColdProof(muffinColdProofRaw, loafColdProofHours);
+    const muffinW = resolveColdProofWindow(muffinColdProofRaw, loafColdProofHours);
+    const muffinColdProofHours = muffinW.min;
+    const muffinColdProofMaxHr = muffinW.max;
 
-    const result = buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime);
+    const result = buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime, loafColdProofMaxHr, muffinColdProofMaxHr);
     return {
       build1: result.build1Opt || defaults.build1,
       build2: result.build2Opt || defaults.build2,
@@ -1810,6 +1892,23 @@
     const h = date.getHours();
     return h >= 23 || h < 5;
   }
+  // Cold-proof input is a 4-hour window string like "10-14". Legacy storage
+  // may hold a single number "10"; treat that as the window's lower bound.
+  // The literal "0" is the "no cold proof" sentinel — bake right after final shape.
+  const COLD_PROOF_WINDOW_WIDTH = 4;
+  function parseColdProofWindow(raw) {
+    if (raw == null || raw === '') return null;
+    if (raw === '0' || raw === 0) return { min: 0, max: 0 };
+    const m = String(raw).match(/^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$/);
+    if (m) {
+      const min = Number(m[1]);
+      const max = Math.max(min, Number(m[2]));
+      return { min, max };
+    }
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return { min: n, max: n + COLD_PROOF_WINDOW_WIDTH };
+    return null;
+  }
   // Titles of events that require the baker to be awake at a specific moment.
   // The auto cold-proof picker rejects schedules where any of these fall in
   // the late-night window. Bake events and oven preheat are deliberately
@@ -1955,7 +2054,7 @@
     return v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v));
   }
 
-  function buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime) {
+  function buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime, loafColdProofMaxHr, muffinColdProofMaxHr) {
     const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf' && (plan[r.id] || 0) > 0);
     const totalLoaves = loafRecipes.reduce((s, r) => s + plan[r.id], 0);
     const muffinRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-muffin' && (plan[r.id] || 0) > 0);
@@ -1969,11 +2068,11 @@
       const names = unschedRecipes
         .map(r => `${r.name} (${PROCESS_TEMPLATES[getProcessType(r)].label}, ${plan[r.id]})`)
         .join(', ');
-      warnings.push(`Not yet on the timeline — schedule a separate session for: ${names}.`);
+      warnings.push({ msg: `Not yet on the timeline — schedule a separate session for: ${names}.`, issue: 'unscheduled' });
     }
     if (totalLoaves === 0 && totalMuffins === 0) return { totalLoaves: 0, batches: 0, events: [], warnings };
     if (totalLoaves === 0) {
-      warnings.push('Muffins only — no sourdough loaves in the bake plan. (Muffin-only schedule not yet supported.)');
+      warnings.push({ msg: 'Muffins only — no sourdough loaves in the bake plan. (Muffin-only schedule not yet supported.)', issue: 'muffin-only' });
       return { totalLoaves: 0, batches: 0, events: [], warnings };
     }
 
@@ -2010,13 +2109,17 @@
       .filter(r => hasExplicitOverride(r, 'coldProofHr'))
       .map(r => Number(r.coldProofHr));
     if (explicitLoafColdProofs.length) {
-      loafColdProofHours = Math.max(loafColdProofHours, ...explicitLoafColdProofs);
+      const newMin = Math.max(loafColdProofHours, ...explicitLoafColdProofs);
+      if (loafColdProofMaxHr != null) loafColdProofMaxHr += (newMin - loafColdProofHours);
+      loafColdProofHours = newMin;
     }
     const explicitMuffinColdProofs = muffinRecipes
       .filter(r => hasExplicitOverride(r, 'coldProofHr'))
       .map(r => Number(r.coldProofHr));
     if (explicitMuffinColdProofs.length) {
-      muffinColdProofHours = Math.max(muffinColdProofHours, ...explicitMuffinColdProofs);
+      const newMin = Math.max(muffinColdProofHours, ...explicitMuffinColdProofs);
+      if (muffinColdProofMaxHr != null) muffinColdProofMaxHr += (newMin - muffinColdProofHours);
+      muffinColdProofHours = newMin;
     }
 
     // Plan the actual oven loads up-front (per-deck packing with per-recipe
@@ -2037,7 +2140,7 @@
     const effMuffinDeadline = muffinDeadline || loafDeadline;
     const effMuffinBakeTime = muffinBakeTime || loafBakeTime;
 
-    const computeBakeSlot = (deadline, bakeTimePref, bakeTotalMin, kindLabel) => {
+    const computeBakeSlot = (deadline, bakeTimePref, bakeTotalMin, kindLabel, kind) => {
       const D = new Date(deadline);
       let firstBakeStart, lastBakeEnd, packageReady;
       const preset = bakeTimePref ? BAKE_TIME_PRESETS[bakeTimePref] : null;
@@ -2061,7 +2164,7 @@
         packageReady = addHours(lastBakeEnd, SCHED.COOL_HOURS);
         const slackHr = (D - packageReady) / (1000 * 60 * 60);
         if (slackHr > 0.1) {
-          warnings.push(`${kindLabel} will be ready ${slackHr.toFixed(1)} hr before its deadline.`);
+          warnings.push({ msg: `${kindLabel} will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind });
         }
       } else {
         lastBakeEnd = addHours(D, -SCHED.COOL_HOURS);
@@ -2070,18 +2173,30 @@
       }
       const bakeHour = firstBakeStart.getHours();
       if (bakeHour >= 23 || bakeHour < 5) {
-        warnings.push(`${kindLabel} bake starts in the 11 PM – 5 AM window. Consider shifting its deadline or picking a different bake-time preference.`);
+        warnings.push({ msg: `${kindLabel} bake starts in the 11 PM – 5 AM window. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind });
       }
       return { firstBakeStart, lastBakeEnd, packageReady };
     };
 
-    const loafSlot = computeBakeSlot(loafDeadline, loafBakeTime, loafBakeTotalMin, 'Bread');
+    const loafSlot = computeBakeSlot(loafDeadline, loafBakeTime, loafBakeTotalMin, 'Bread', 'loaf');
     const muffinSlot = totalMuffins > 0
-      ? computeBakeSlot(effMuffinDeadline, effMuffinBakeTime, muffinBakeTotalMin, 'Muffins')
+      ? computeBakeSlot(effMuffinDeadline, effMuffinBakeTime, muffinBakeTotalMin, 'Muffins', 'muffin')
       : null;
     const firstBakeStart = loafSlot.firstBakeStart;
     const lastBakeEnd = loafSlot.lastBakeEnd;
     const packageReady = loafSlot.packageReady;
+
+    // Precompute the absolute start time of every loaf bake — used both for
+    // the bake-event emission later and for the per-container cold-proof
+    // calculation below.
+    const loafBakeStartTimes = [];
+    {
+      let cum = 0;
+      for (let b = 0; b < breadBatches; b++) {
+        loafBakeStartTimes.push(addMinutes(firstBakeStart, cum));
+        cum += loafAgg.bakeMin + (b < breadBatches - 1 ? SCHED.REHEAT_MIN : 0);
+      }
+    }
 
     const fridgeIn = addHours(firstBakeStart, -loafColdProofHours);
     const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G);
@@ -2136,7 +2251,52 @@
       0
     );
 
-    const shapePhaseStart = addMinutes(fridgeIn, -totalShapeTime);
+    // Reorder containers so the ones whose loaves bake first are also shaped
+    // first. This way each container goes into the fridge right after its own
+    // shaping (not after every container finishes) and all containers end up
+    // in the same target cold-proof window.
+    const bakeRecipeCounts = ovenPlan.map(decks => {
+      const counts = {};
+      for (const deck of decks) {
+        for (const item of deck.items) {
+          counts[item.name] = (counts[item.name] || 0) + item.count;
+        }
+      }
+      return counts;
+    });
+    const firstBakeForContainer = (c) => {
+      const recipes = (c.contents || []).map(x => x.recipe);
+      for (let b = 0; b < bakeRecipeCounts.length; b++) {
+        if (recipes.some(r => (bakeRecipeCounts[b][r] || 0) > 0)) return b;
+      }
+      return Number.POSITIVE_INFINITY;
+    };
+    if (containerInfo.length > 1 && bakeRecipeCounts.length > 0) {
+      const order = containerInfo.map((_, i) => i).sort((a, b) =>
+        firstBakeForContainer(containerInfo[a]) - firstBakeForContainer(containerInfo[b])
+      );
+      const reInfo = order.map(i => containerInfo[i]);
+      const reShape = order.map(i => containerShape[i]);
+      containerInfo.length = 0;
+      containerInfo.push(...reInfo);
+      containerShape.length = 0;
+      containerShape.push(...reShape);
+    }
+    const containerFirstBakeIdx = containerInfo.map(c => firstBakeForContainer(c));
+    const firstContainerShapeDur = containerShape[0]
+      ? containerShape[0].preshapeMin + containerShape[0].benchRest + containerShape[0].finalShapeMin
+      : 0;
+    const totalContainerShapeDur = containerShape.reduce(
+      (s, c) => s + c.preshapeMin + c.benchRest + c.finalShapeMin, 0
+    );
+
+    // Anchor the shape phase so the FIRST container's shape ends at fridgeIn —
+    // that container's loaves get exactly loafColdProofHours, later containers
+    // get a bit more (within a ~30-90 min window). When there is no cold proof,
+    // we instead anchor so the LAST container's shape ends at firstBakeStart —
+    // i.e., shape everything sequentially right before the bake.
+    const shapeAnchorDur = loafColdProofHours === 0 ? totalContainerShapeDur : firstContainerShapeDur;
+    const shapePhaseStart = addMinutes(fridgeIn, -shapeAnchorDur);
     const lastFoldTime = addMinutes(shapePhaseStart, -loafAgg.bulkMin);
     const firstFoldTime = addMinutes(lastFoldTime, -(SCHED.FOLDS_COUNT - 1) * SCHED.FOLD_INTERVAL_MIN);
     const mixTime = addMinutes(firstFoldTime, -(SCHED.FOLD_INTERVAL_MIN + (numContainers - 1) * SCHED.SALT_LEVAIN_MIX_MIN));
@@ -2152,7 +2312,10 @@
     let muffinTimes = null;
     if (totalMuffins > 0 && muffinSlot) {
       const muffinBakeStart = muffinSlot.firstBakeStart;
-      const muffinOutFridge = addMinutes(muffinBakeStart, -muffinAgg.warmupMin);
+      // No cold proof: skip the fridge step and the from-fridge warmup —
+      // shape ends right at bake start.
+      const muffinEffectiveWarmupMin = muffinColdProofHours === 0 ? 0 : muffinAgg.warmupMin;
+      const muffinOutFridge = addMinutes(muffinBakeStart, -muffinEffectiveWarmupMin);
       const muffinFridgeIn = addMinutes(muffinOutFridge, -muffinColdProofHours * 60);
       const muffinShapeStart = addMinutes(muffinFridgeIn, -totalMuffinShapeMin);
       const muffinBulkStart = addMinutes(muffinShapeStart, -muffinAgg.bulkMin);
@@ -2312,6 +2475,7 @@
         return `${formatMin(each)} min × ${item.count} ${label}`;
       }).join(' + ');
     };
+    const containerFridgeInTimes = [];
     let cursorTime = shapePhaseStart;
     for (let i = 0; i < containerInfo.length; i++) {
       const c = containerInfo[i];
@@ -2320,6 +2484,7 @@
       const benchRestStartT = addMinutes(preshapeStartT, shape.preshapeMin);
       const finalShapeStartT = addMinutes(benchRestStartT, shape.benchRest);
       const containerEndT = addMinutes(finalShapeStartT, shape.finalShapeMin);
+      containerFridgeInTimes.push(containerEndT);
 
       const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
       const suffix = numContainers > 1 ? ` (container ${i + 1} of ${numContainers}: ${contentsLabel})` : '';
@@ -2349,7 +2514,40 @@
 
       cursorTime = containerEndT;
     }
-    events.push({ time: fridgeIn, title: 'Into fridge — cold proof', detail: `${loafColdProofHours} hr in fridge`, process: 'loaf' });
+    // One "into fridge" event per container at its actual shape end. Each
+    // shows the cold proof time from that container's shape end to its first
+    // bake — typically a 0-90 min window across containers.
+    const fmtColdProof = (ms) => {
+      const hr = ms / (60 * 60 * 1000);
+      if (Math.abs(hr - Math.round(hr)) < 0.05) return `${Math.round(hr)} hr`;
+      const wholeHr = Math.floor(hr);
+      const min = Math.round((hr - wholeHr) * 60);
+      return min === 0 ? `${wholeHr} hr` : `${wholeHr} hr ${min} min`;
+    };
+    const containerColdProofMs = [];
+    if (loafColdProofHours > 0) {
+      for (let i = 0; i < containerInfo.length; i++) {
+        const c = containerInfo[i];
+        const fridgeTime = containerFridgeInTimes[i];
+        const bakeIdx = containerFirstBakeIdx[i];
+        const bakeStart = (Number.isFinite(bakeIdx) && loafBakeStartTimes[bakeIdx])
+          ? loafBakeStartTimes[bakeIdx]
+          : firstBakeStart;
+        const cpMs = bakeStart - fridgeTime;
+        containerColdProofMs.push(cpMs);
+        const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+        const suffix = numContainers > 1 ? ` (container ${i + 1} of ${numContainers}: ${contentsLabel})` : '';
+        events.push({
+          time: fridgeTime,
+          title: `Into fridge${suffix}`,
+          detail: `${fmtColdProof(cpMs)} cold proof`,
+          process: 'loaf',
+        });
+      }
+    }
+    const loafColdProofRange = containerColdProofMs.length > 0
+      ? { minMs: Math.min(...containerColdProofMs), maxMs: Math.max(...containerColdProofMs) }
+      : null;
 
     // --- Oven preheat (per process; share if muffin bake follows loaf closely) ---
     const preheatHrStr = (SCHED.OVEN_PREHEAT_MIN / 60).toFixed(SCHED.OVEN_PREHEAT_MIN % 60 === 0 ? 0 : 1);
@@ -2379,9 +2577,8 @@
     }
 
     // --- Loaf bake loop ---
-    let loafCumOffset = 0;
     for (let b = 0; b < breadBatches; b++) {
-      const bakeStart = addMinutes(firstBakeStart, loafCumOffset);
+      const bakeStart = loafBakeStartTimes[b];
       const reheatSuffix = b < breadBatches - 1 ? ` · ${SCHED.REHEAT_MIN} min reheat after` : '';
       const plan_b = ovenPlan[b];
       const kindSuffix = totalMuffins > 0 ? ' — bread into oven' : ' — into oven';
@@ -2396,7 +2593,6 @@
         detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake${reheatSuffix}${planLines}`,
         process: 'loaf',
       });
-      loafCumOffset += loafAgg.bakeMin + (b < breadBatches - 1 ? SCHED.REHEAT_MIN : 0);
     }
 
     // --- Muffin bake loop (independent slot) ---
@@ -2444,18 +2640,20 @@
         detail: muffinShapeDetail,
         process: 'muffin',
       });
-      events.push({
-        time: muffinTimes.muffinFridgeIn,
-        title: 'Muffins into fridge — cold proof',
-        detail: `${muffinColdProofHours} hr in fridge`,
-        process: 'muffin',
-      });
-      events.push({
-        time: muffinTimes.muffinOutFridge,
-        title: 'Muffins out of fridge',
-        detail: `${(muffinAgg.warmupMin / 60).toFixed(muffinAgg.warmupMin % 60 === 0 ? 0 : 1)} hr warm-up / final proof before bake`,
-        process: 'muffin',
-      });
+      if (muffinColdProofHours > 0) {
+        events.push({
+          time: muffinTimes.muffinFridgeIn,
+          title: 'Muffins into fridge — cold proof',
+          detail: `${muffinColdProofHours} hr in fridge`,
+          process: 'muffin',
+        });
+        events.push({
+          time: muffinTimes.muffinOutFridge,
+          title: 'Muffins out of fridge',
+          detail: `${(muffinAgg.warmupMin / 60).toFixed(muffinAgg.warmupMin % 60 === 0 ? 0 : 1)} hr warm-up / final proof before bake`,
+          process: 'muffin',
+        });
+      }
     }
 
     // --- Per-process cooling + package-ready ---
@@ -2492,6 +2690,15 @@
       }
     }
 
+    // Cold proof window check: warn if any container's cold proof exceeded
+    // the user's selected upper bound (i.e., the bake didn't fit in the
+    // chosen window).
+    if (loafColdProofRange && loafColdProofMaxHr != null) {
+      const maxAchievedHr = loafColdProofRange.maxMs / (60 * 60 * 1000);
+      if (maxAchievedHr > loafColdProofMaxHr + 0.1) {
+        warnings.push({ msg: `One or more containers cold-proof for ${maxAchievedHr.toFixed(1)} hr, exceeding the upper bound of ${loafColdProofMaxHr} hr. Pick a wider cold-proof window or rebalance the shape phase.`, issue: 'coldproof-exceeded', kind: 'loaf' });
+      }
+    }
     // Late-night warnings: report any active step that lands in the 11 PM –
     // 5 AM window. The auto cold-proof picker tries to avoid this, but a
     // manually pinned cold proof or unusual bake time may still cause it.
@@ -2504,10 +2711,10 @@
       return unique.slice(0, 4).join(', ') + (unique.length > 4 ? '…' : '');
     };
     if (lateLoaf.length > 0) {
-      warnings.push(`${lateLoaf.length} active loaf step${lateLoaf.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateLoaf)}). Try a different loaf cold proof or bake time.`);
+      warnings.push({ msg: `${lateLoaf.length} active loaf step${lateLoaf.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateLoaf)}). Try a different loaf cold proof or bake time.`, issue: 'late-night', kind: 'loaf' });
     }
     if (lateMuffin.length > 0) {
-      warnings.push(`${lateMuffin.length} active muffin step${lateMuffin.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateMuffin)}). Try a different muffin cold proof or bake time.`);
+      warnings.push({ msg: `${lateMuffin.length} active muffin step${lateMuffin.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateMuffin)}). Try a different muffin cold proof or bake time.`, issue: 'late-night', kind: 'muffin' });
     }
     events.sort((a, b) => a.time - b.time);
     return {
@@ -2515,6 +2722,7 @@
       build1Opt, build2Opt,
       muffinBuild1Opt, muffinBuild2Opt,
       useSeparateLevains,
+      loafColdProofRange,
       mixBatches: totalMixBatches,
     };
   }
@@ -2531,6 +2739,7 @@
   }
 
   function renderSchedule() {
+    if (suppressScheduleRender) return;
     updateProcessRowVisibility();
     const out = document.getElementById('schedule-output');
     const loafDeadlineStr = document.getElementById('deadline-loaf-input').value;
@@ -2566,50 +2775,62 @@
     const muffinBakeTime = document.getElementById('bake-time-muffin-input').value;
     const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
     const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
-    const clampColdProof = (raw) => {
-      const n = Number(raw);
-      return Number.isFinite(n) && n > 0
-        ? Math.max(8, Math.min(48, n))
-        : SCHED.COLD_PROOF_HOURS;
+    const clampColdProofWindow = (raw, fallbackMin) => {
+      const parsed = parseColdProofWindow(raw);
+      if (parsed) {
+        if (parsed.min === 0 && parsed.max === 0) return { min: 0, max: 0 };
+        return {
+          min: Math.max(2, Math.min(48, parsed.min)),
+          max: Math.max(2, Math.min(48 + COLD_PROOF_WINDOW_WIDTH, parsed.max)),
+        };
+      }
+      return { min: fallbackMin, max: fallbackMin + COLD_PROOF_WINDOW_WIDTH };
     };
     const findBestColdProof = (kind, otherFixed) => {
-      const candidates = [48, 46, 44, 42, 40, 38, 36, 34, 32, 30, 28, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8];
-      // Prefer a cold proof that keeps every active step out of late-night;
-      // fall back to one where at least the mix is OK if nothing else fits.
+      // Candidate window lower bounds. The full window is min .. min + 4.
+      // Default target ~16-20 hr; try shorter first (down to 8-12), then
+      // longer if no short window works. .find() picks the first candidate
+      // with no late-night active steps, and the reduce fallback tie-breaks
+      // toward earlier entries — so the search prefers 16, then 14, ..., 8,
+      // then 18, 20, ..., 44.
+      const candidates = [16, 14, 12, 10, 8, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44];
       const trials = candidates.map(c => {
         const loaf = kind === 'loaf' ? c : otherFixed;
         const muffin = kind === 'muffin' ? c : otherFixed;
-        const trial = buildSchedule(loafDeadline, muffinDeadline, loaf, muffin, loafBakeTime, muffinBakeTime);
+        const trial = buildSchedule(loafDeadline, muffinDeadline, loaf, muffin, loafBakeTime, muffinBakeTime,
+          loaf + COLD_PROOF_WINDOW_WIDTH, muffin + COLD_PROOF_WINDOW_WIDTH);
         const total = kind === 'loaf' ? trial.totalLoaves : (trial.totalMuffins || 0);
         const lateCount = total === 0 ? 0 : lateNightActiveSteps(trial.events, kind).length;
         return { c, total, lateCount };
       });
       const noLate = trials.find(t => t.total === 0 || t.lateCount === 0);
-      if (noLate) return noLate.c;
-      // Nothing clean — return the one with the fewest late-night steps.
-      const best = trials.reduce((a, b) => (b.lateCount < a.lateCount ? b : a));
-      return best.c;
+      const pickedMin = noLate ? noLate.c : trials.reduce((a, b) => (b.lateCount < a.lateCount ? b : a)).c;
+      return { min: pickedMin, max: pickedMin + COLD_PROOF_WINDOW_WIDTH };
     };
 
-    let loafColdProofHours;
+    let loafColdProofWindow;
     let loafColdProofAuto = false;
     if (loafColdProofRaw === '') {
       loafColdProofAuto = true;
-      loafColdProofHours = findBestColdProof('loaf', SCHED.COLD_PROOF_HOURS);
+      loafColdProofWindow = findBestColdProof('loaf', SCHED.COLD_PROOF_HOURS);
     } else {
-      loafColdProofHours = clampColdProof(loafColdProofRaw);
+      loafColdProofWindow = clampColdProofWindow(loafColdProofRaw, SCHED.COLD_PROOF_HOURS);
     }
+    const loafColdProofHours = loafColdProofWindow.min;
+    const loafColdProofMaxHr = loafColdProofWindow.max;
 
-    let muffinColdProofHours;
+    let muffinColdProofWindow;
     let muffinColdProofAuto = false;
     if (muffinColdProofRaw === '') {
       muffinColdProofAuto = true;
-      muffinColdProofHours = findBestColdProof('muffin', loafColdProofHours);
+      muffinColdProofWindow = findBestColdProof('muffin', loafColdProofHours);
     } else {
-      muffinColdProofHours = clampColdProof(muffinColdProofRaw);
+      muffinColdProofWindow = clampColdProofWindow(muffinColdProofRaw, SCHED.COLD_PROOF_HOURS);
     }
+    const muffinColdProofHours = muffinColdProofWindow.min;
+    const muffinColdProofMaxHr = muffinColdProofWindow.max;
 
-    const result = buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime);
+    const result = buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime, loafColdProofMaxHr, muffinColdProofMaxHr);
     const anchors = getAnchors();
     const anchoredTitles = applyAnchorsToEvents(result.events, anchors);
     if (result.totalLoaves === 0) {
@@ -2703,15 +2924,190 @@
     const hasMuffins = (result.totalMuffins || 0) > 0;
     const splitView = hasLoaves && hasMuffins;
 
+    // ---- Verified one-click fixes for scheduling issues ----
+    // For each issue we re-run the scheduler with a single input changed and
+    // only offer a fix that actually clears that issue (without introducing a
+    // new late-night step). Search runs only when warnings are present.
+    const buildInput1El = document.getElementById('build1-ratio-input');
+    const buildInput2El = document.getElementById('build2-ratio-input');
+    const CP_WINDOWS = ['0','2-6','4-8','6-10','8-12','10-14','12-16','14-18','16-20','18-22','20-24','22-26','24-28','26-30','28-32','30-34','32-36','34-38','36-40','38-42','40-44','42-46','44-48'];
+    const BAKE_OPTS = ['', 'morning', 'lunch', 'afternoon', 'evening'];
+    const RATIO_OPTS = ['slow', 'medium', 'fast'];
+    const bakeLabel = (v) => v === '' ? 'any (use deadline)' : v.charAt(0).toUpperCase() + v.slice(1);
+    const ratioLabel = (v) => v.charAt(0).toUpperCase() + v.slice(1);
+    const cpFixLabel = (v) => v === '0' ? 'no cold proof' : v.replace('-', '–') + ' hr';
+    const kindWord = (k) => k === 'muffin' ? 'Muffin' : 'Loaf';
+    const pad2 = (n) => (n < 10 ? '0' : '') + n;
+    const toDatetimeLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    const dlFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+
+    const runTrial = (o) => {
+      const lcp = o.loafCp || { min: loafColdProofHours, max: loafColdProofMaxHr };
+      const mcp = o.muffinCp || { min: muffinColdProofHours, max: muffinColdProofMaxHr };
+      const lbt = o.loafBake !== undefined ? o.loafBake : loafBakeTime;
+      const mbt = o.muffinBake !== undefined ? o.muffinBake : muffinBakeTime;
+      const ld = o.loafDeadline || loafDeadline;
+      const md = o.muffinDeadline || muffinDeadline;
+      // Build ratios are read from the DOM inside buildSchedule; override and restore.
+      let s1, s2, touched = false;
+      if (o.build1Pref !== undefined || o.build2Pref !== undefined) {
+        touched = true; s1 = buildInput1El.value; s2 = buildInput2El.value;
+        if (o.build1Pref !== undefined) buildInput1El.value = o.build1Pref;
+        if (o.build2Pref !== undefined) buildInput2El.value = o.build2Pref;
+      }
+      try { return buildSchedule(ld, md, lcp.min, mcp.min, lbt, mbt, lcp.max, mcp.max); }
+      finally { if (touched) { buildInput1El.value = s1; buildInput2El.value = s2; } }
+    };
+    const fixResolves = (res, w) => {
+      if (!res || !res.warnings) return false;
+      if (res.warnings.some(x => x.issue === w.issue && x.kind === w.kind)) return false;
+      // Don't trade one problem for a fresh late-night one of the same kind.
+      if (w.issue !== 'late-night' && res.warnings.some(x => x.issue === 'late-night' && x.kind === w.kind)) return false;
+      return true;
+    };
+    const computeFixesFor = (w) => {
+      if (!w.kind) return [];
+      const isLoaf = w.kind === 'loaf';
+      const curCpMin = isLoaf ? loafColdProofHours : muffinColdProofHours;
+      const curBake = isLoaf ? loafBakeTime : muffinBakeTime;
+      const baseDeadline = isLoaf ? loafDeadline : (muffinDeadline || loafDeadline);
+      const wantCp = w.issue === 'late-night' || w.issue === 'coldproof-exceeded';
+      const wantLevain = w.issue === 'late-night';
+
+      // Candidate values for one knob, each carrying: the runTrial override, the
+      // input step to apply on click, and the {knob,val} label parts. Ordered so
+      // the smallest/closest change to the current setting comes first.
+      const knobCandidates = (knob) => {
+        if (knob === 'cp') {
+          return CP_WINDOWS
+            .map(v => ({ v, min: v === '0' ? 0 : Number(v.split('-')[0]) }))
+            .filter(c => c.min !== curCpMin)
+            .sort((a, b) => Math.abs(a.min - curCpMin) - Math.abs(b.min - curCpMin))
+            .map(c => {
+              const win = c.v === '0' ? { min: 0, max: 0 } : { min: c.min, max: c.min + COLD_PROOF_WINDOW_WIDTH };
+              return {
+                override: isLoaf ? { loafCp: win } : { muffinCp: win },
+                step: { control: isLoaf ? 'coldproof-loaf' : 'coldproof-muffin', value: c.v },
+                part: { knob: `${kindWord(w.kind)} cold proof`, val: cpFixLabel(c.v) },
+              };
+            });
+        }
+        if (knob === 'bake') {
+          return BAKE_OPTS.filter(v => v !== curBake).map(v => ({
+            override: isLoaf ? { loafBake: v } : { muffinBake: v },
+            step: { control: isLoaf ? 'bake-time-loaf' : 'bake-time-muffin', value: v },
+            part: { knob: `${kindWord(w.kind)} bake time`, val: bakeLabel(v) },
+          }));
+        }
+        if (knob === 'deadline') {
+          if (!baseDeadline) return [];
+          return [1,-1,2,-2,3,-3,4,-4,6,-6,8,-8,12,-12].map(off => {
+            const nd = new Date(baseDeadline.getTime() + off * 3600 * 1000);
+            return {
+              override: isLoaf ? { loafDeadline: nd } : { muffinDeadline: nd },
+              step: { control: isLoaf ? 'deadline-loaf' : 'deadline-muffin', value: toDatetimeLocal(nd) },
+              part: { knob: `Move ${w.kind} deadline`, val: dlFmt.format(nd) },
+            };
+          });
+        }
+        if (knob === 'levain') {
+          const out = [];
+          for (const which of ['build2Pref', 'build1Pref']) {
+            const cur = which === 'build1Pref' ? buildInput1El.value : buildInput2El.value;
+            for (const v of RATIO_OPTS) {
+              if (v === cur) continue;
+              out.push({
+                override: { [which]: v },
+                step: { control: which === 'build1Pref' ? 'build1-ratio' : 'build2-ratio', value: v },
+                part: { knob: which === 'build1Pref' ? 'Build 1 ratio' : 'Build 2 ratio', val: ratioLabel(v) },
+              });
+            }
+          }
+          return out;
+        }
+        return [];
+      };
+
+      // Knobs worth turning for this issue, in display order.
+      const knobs = [];
+      if (wantCp) knobs.push('cp');
+      knobs.push('bake', 'deadline');
+      if (wantLevain) knobs.push('levain');
+
+      // Single-knob fixes first: the first candidate per knob that clears the issue.
+      const fixes = [];
+      for (const knob of knobs) {
+        for (const c of knobCandidates(knob)) {
+          if (fixResolves(runTrial(c.override), w)) {
+            fixes.push({ parts: [c.part], steps: [c.step] });
+            break;
+          }
+        }
+      }
+
+      // Combined fixes: only as a fallback when no single knob resolves the
+      // issue (some situations only clear with two changes at once, e.g. an
+      // earlier deadline AND no bake-time preset). Search each pair of knobs
+      // with capped candidate lists; offer up to 2 distinct two-knob fixes.
+      if (fixes.length === 0 && knobs.length >= 2) {
+        const capped = {
+          cp: knobCandidates('cp').slice(0, 10),
+          bake: knobCandidates('bake'),
+          deadline: knobCandidates('deadline').slice(0, 8),
+          levain: knobCandidates('levain'),
+        };
+        for (let i = 0; i < knobs.length && fixes.length < 2; i++) {
+          for (let j = i + 1; j < knobs.length && fixes.length < 2; j++) {
+            const listA = capped[knobs[i]] || [];
+            const listB = capped[knobs[j]] || [];
+            let found = false;
+            for (const a of listA) {
+              for (const b of listB) {
+                if (fixResolves(runTrial({ ...a.override, ...b.override }), w)) {
+                  fixes.push({ parts: [a.part, b.part], steps: [a.step, b.step] });
+                  found = true;
+                  break;
+                }
+              }
+              if (found) break;
+            }
+          }
+        }
+      }
+      return fixes;
+    };
+
+    const renderFixButton = (f) => {
+      const label = f.parts
+        .map(p => `<span class="schedule-fix-knob">${escapeHtml(p.knob)}</span> → ${escapeHtml(p.val)}`)
+        .join(' <span class="schedule-fix-plus">+</span> ');
+      return `<button class="schedule-fix-btn" data-fix="${escapeAttr(JSON.stringify(f.steps))}" onclick="applyScheduleFix(this)">${label}</button>`;
+    };
+
     let html = '';
     if (result.warnings && result.warnings.length) {
-      html += result.warnings.map(w => `<div class="schedule-warn">${escapeHtml(w)}</div>`).join('');
+      html += result.warnings.map(w => {
+        const fixes = computeFixesFor(w);
+        let block = `<div class="schedule-warn">${escapeHtml(w.msg)}`;
+        if (fixes.length) {
+          const label = fixes.some(f => f.steps.length > 1) ? 'Ways to fix (some change two settings):' : 'Ways to fix:';
+          block += `<div class="schedule-fixes"><span class="schedule-fixes-label">${label}</span>`
+            + fixes.map(renderFixButton).join('')
+            + `</div>`;
+        }
+        return block + `</div>`;
+      }).join('');
     }
     const loafLabel = `${result.totalLoaves} loaves`;
     const muffinLabel = result.totalMuffins > 0 ? ` + ${result.totalMuffins} muffins` : '';
+    // Show the user's selected cold-proof window. (Per-container achieved
+    // times appear in each "Into fridge" event detail.)
+    const fmtCpLabel = (lo, hi) => (lo === 0 && hi === 0) ? 'none' : `${lo}–${hi} hr`;
+    const loafCpWindow = fmtCpLabel(loafColdProofHours, loafColdProofMaxHr);
+    const muffinCpWindow = fmtCpLabel(muffinColdProofHours, muffinColdProofMaxHr);
     const coldProofMetaLabel = (result.totalMuffins || 0) > 0
-      ? `loaf cold proof ${loafColdProofHours} hr${loafColdProofAuto ? ' (auto)' : ''}, muffin cold proof ${muffinColdProofHours} hr${muffinColdProofAuto ? ' (auto)' : ''}`
-      : `cold proof ${loafColdProofHours} hr${loafColdProofAuto ? ' (auto — longest fit)' : ''}`;
+      ? `loaf cold proof ${loafCpWindow}${loafColdProofAuto ? ' (auto)' : ''}, muffin cold proof ${muffinCpWindow}${muffinColdProofAuto ? ' (auto)' : ''}`
+      : `cold proof ${loafCpWindow}${loafColdProofAuto ? ' (auto — longest fit)' : ''}`;
     html += `<p class="schedule-meta">${loafLabel}${muffinLabel} · ${result.mixBatches} mix ${result.mixBatches === 1 ? 'batch' : 'batches'} · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · ${coldProofMetaLabel}</p>`;
     if (anchoredTitles.size > 0) {
       const word = anchoredTitles.size === 1 ? 'anchor' : 'anchors';
@@ -2972,6 +3368,17 @@
     }
     localStorage.setItem(COLDPROOF_SPLIT_MIGRATION_KEY, '1');
   }
+  // Migrate legacy single-value cold proof (e.g. "10") to window format ("10-14").
+  const migrateColdProofToWindow = (key) => {
+    const v = localStorage.getItem(key);
+    if (v == null || v === '' || v.includes('-')) return;
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) {
+      localStorage.setItem(key, `${n}-${n + COLD_PROOF_WINDOW_WIDTH}`);
+    }
+  };
+  migrateColdProofToWindow(LOAF_COLDPROOF_KEY);
+  migrateColdProofToWindow(MUFFIN_COLDPROOF_KEY);
   const loafColdproofInput = document.getElementById('coldproof-loaf-input');
   loafColdproofInput.value = localStorage.getItem(LOAF_COLDPROOF_KEY) || '';
   loafColdproofInput.addEventListener('change', () => {
