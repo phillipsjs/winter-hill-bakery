@@ -221,7 +221,10 @@
     row-gap: 10px;
     margin-top: 12px;
   }
-  .schedule-inputs-grid.single-col { grid-template-columns: 1fr; }
+  .schedule-inputs-grid.single-col,
+  .schedule-inputs-grid.cols-1 { grid-template-columns: 1fr; }
+  .schedule-inputs-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .schedule-inputs-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
   .schedule-input-col-header {
     font-weight: 600;
     font-size: 0.8rem;
@@ -238,7 +241,9 @@
   .schedule-input-col .settings-select,
   .schedule-input-col input[type="datetime-local"] { flex: 1; min-width: 0; }
   @media (max-width: 600px) {
-    .schedule-inputs-grid { grid-template-columns: 1fr; }
+    .schedule-inputs-grid,
+    .schedule-inputs-grid.cols-2,
+    .schedule-inputs-grid.cols-3 { grid-template-columns: 1fr; }
   }
   .schedule-day { margin-bottom: 16px; }
   .schedule-day:last-child { margin-bottom: 0; }
@@ -598,7 +603,7 @@
   <section id="tab-schedule" style="display:none">
     <div class="card">
       <h2>Bake deadline & time</h2>
-      <p class="muted" style="margin-top:0">When does each process need to be packaged and ready for sale? Set separate deadlines and bake-time windows for loaves and muffins — they share a single Build 1 + Build 2 levain.</p>
+      <p class="muted" style="margin-top:0">When does each process need to be packaged and ready for sale? Set separate deadlines and bake-time windows for loaves, muffins, and bagels — they share a single Build 1 + Build 2 levain (the scheduler splits it automatically when timings can't align).</p>
 
       <div class="schedule-inputs-grid" id="schedule-inputs-grid">
         <div class="schedule-input-col" id="schedule-input-loaf-col">
@@ -694,6 +699,57 @@
             </select>
           </div>
         </div>
+
+        <div class="schedule-input-col" id="schedule-input-bagel-col">
+          <div class="schedule-input-col-header">Bagels</div>
+          <div class="row" id="deadline-bagel-row" style="align-items: center; gap: 10px;">
+            <label>Deadline:</label>
+            <input type="datetime-local" id="deadline-bagel-input" />
+          </div>
+          <div class="row" id="bake-time-bagel-row" style="align-items: center; gap: 10px;">
+            <label>Bake time:</label>
+            <select id="bake-time-bagel-input" class="settings-select">
+              <option value="">— any (use deadline) —</option>
+              <option value="morning">Morning (6 AM – 11 AM)</option>
+              <option value="lunch">Lunch (11 AM – 2 PM)</option>
+              <option value="afternoon">Afternoon (2 PM – 6 PM)</option>
+              <option value="evening">Evening (6 PM – 10 PM)</option>
+            </select>
+          </div>
+          <div class="row" id="coldproof-bagel-row" style="align-items: center; gap: 10px;">
+            <label>Cold proof:</label>
+            <select id="coldproof-bagel-input" class="settings-select">
+              <option value="">— any (use deadline) —</option>
+              <option value="0">None (boil after shape)</option>
+              <option value="2-6">2–6 hours</option>
+              <option value="4-8">4–8 hours</option>
+              <option value="6-10">6–10 hours</option>
+              <option value="8-12">8–12 hours</option>
+              <option value="10-14">10–14 hours</option>
+              <option value="12-16">12–16 hours</option>
+              <option value="14-18">14–18 hours</option>
+              <option value="16-20">16–20 hours</option>
+              <option value="18-22">18–22 hours</option>
+              <option value="20-24">20–24 hours</option>
+              <option value="22-26">22–26 hours</option>
+              <option value="24-28">24–28 hours</option>
+              <option value="26-30">26–30 hours</option>
+              <option value="28-32">28–32 hours</option>
+              <option value="30-34">30–34 hours</option>
+              <option value="32-36">32–36 hours</option>
+              <option value="34-38">34–38 hours</option>
+              <option value="36-40">36–40 hours</option>
+              <option value="38-42">38–42 hours</option>
+              <option value="40-44">40–44 hours</option>
+              <option value="42-46">42–46 hours</option>
+              <option value="44-48">44–48 hours</option>
+            </select>
+          </div>
+          <div class="row" id="batchsize-bagel-row" style="align-items: center; gap: 10px;">
+            <label>Batch size:</label>
+            <input type="number" id="batchsize-bagel-input" class="settings-select" min="1" step="1" placeholder="10" style="flex:1; min-width:0;" />
+          </div>
+        </div>
       </div>
 
       <hr class="sep" />
@@ -727,7 +783,7 @@
     </div>
 
     <div class="card">
-      <p class="muted" style="font-size: 0.8rem; margin: 0">Sourdough loaves and English muffins are scheduled. Focaccia and bagel recipes show up in the bake plan but aren't yet woven into the timeline — schedule those separately.</p>
+      <p class="muted" style="font-size: 0.8rem; margin: 0">Sourdough loaves, English muffins, and bagels are scheduled. Focaccia recipes show up in the bake plan but aren't yet woven into the timeline — schedule those separately.</p>
     </div>
   </section>
 
@@ -771,6 +827,10 @@
   const BAKETIME_SPLIT_MIGRATION_KEY = 'cottage-bakery-baketime-split-v1';
   const BUILD1_RATIO_KEY = 'cottage-bakery-build1-ratio-v1';
   const BUILD2_RATIO_KEY = 'cottage-bakery-build2-ratio-v1';
+  const BAGEL_DEADLINE_KEY = 'cottage-bakery-deadline-bagel-v1';
+  const BAGEL_COLDPROOF_KEY = 'cottage-bakery-coldproof-bagel-v1';
+  const BAGEL_BAKETIME_KEY = 'cottage-bakery-baketime-bagel-v1';
+  const BAGEL_BATCHSIZE_KEY = 'cottage-bakery-batchsize-bagel-v1';
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
   const ANCHORS_KEY = 'cottage-bakery-anchors-v1';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
@@ -823,14 +883,15 @@
     'bagel': {
       label: 'Bagel',
       unit: 'bagel',
-      bakeMin: 18,
+      bakeMin: 22,
       ovenCapacity: 24,
+      deckCapacity: 8,
       coldProofHr: 14,
-      warmupMin: 30,
-      autolyseMin: 30,
-      bulkMin: 90,
+      warmupMin: 0,      // bagels are boiled straight from the cold fridge
+      autolyseMin: 0,
+      bulkMin: 120,
       shapeMinPerUnit: 2,
-      schedulable: false,
+      schedulable: true,
     },
   };
 
@@ -917,6 +978,14 @@
     MUFFIN_BULK_MIN: 120,
     MUFFIN_SHAPE_MIN_PER: 1,
     MUFFIN_WARMUP_MIN: 180,
+    // Bagels: own dough mix, then a strictly sequential morning cycle per
+    // batch — boil → top → bake — straight from the cold fridge (no warm-up).
+    BAGEL_MIXER_CAPACITY: 10,     // max bagels' dough per mix batch
+    BAGEL_MIX_ACTIVE_MIN: 10,
+    BAGEL_BATCH_SIZE: 10,         // default bagels per boil→top→bake cycle
+    BAGEL_BOIL_MIN: 5,            // boil time per batch
+    BAGEL_TOP_MIN: 3,            // topping time per batch
+    BAGEL_KETTLE_HEATUP_MIN: 15, // bring the kettle to a boil before batch 1
   };
 
   const SEED_RECIPES = [
@@ -1134,8 +1203,11 @@
     'coldproof-muffin': ['coldproof-muffin-input', 'change'],
     'bake-time-loaf':   ['bake-time-loaf-input', 'change'],
     'bake-time-muffin': ['bake-time-muffin-input', 'change'],
+    'bake-time-bagel':  ['bake-time-bagel-input', 'change'],
     'deadline-loaf':    ['deadline-loaf-input', 'input'],
     'deadline-muffin':  ['deadline-muffin-input', 'input'],
+    'deadline-bagel':   ['deadline-bagel-input', 'input'],
+    'coldproof-bagel':  ['coldproof-bagel-input', 'change'],
     'build1-ratio':     ['build1-ratio-input', 'change'],
     'build2-ratio':     ['build2-ratio-input', 'change'],
   };
@@ -1286,20 +1358,22 @@
 
     // Per-recipe breakdown + aggregate
     const aggregate = {}; // lowercased name -> { name, grams }
-    const levainByProcess = { loaf: 0, muffin: 0 };
+    const levainByProcess = { loaf: 0, muffin: 0, bagel: 0 };
     let totalDough = 0;
     const perRecipeHtml = activeRecipes.map(r => {
       const count = plan[r.id];
       const unit = r.unit || 'loaf';
       const unitLabel = count === 1 ? unit : pluralize(unit);
-      const isMuffin = getProcessType(r) === 'sourdough-muffin';
-      const mixerCap = SCHED.MUFFIN_MIXER_CAPACITY;
-      const batchCount = isMuffin ? Math.max(1, Math.ceil(count / mixerCap)) : 1;
+      const procType = getProcessType(r);
+      const isMuffin = procType === 'sourdough-muffin';
+      const isBagel = procType === 'bagel';
+      const mixerCap = isBagel ? SCHED.BAGEL_MIXER_CAPACITY : SCHED.MUFFIN_MIXER_CAPACITY;
+      const batchCount = (isMuffin || isBagel) ? Math.max(1, Math.ceil(count / mixerCap)) : 1;
       const showBatches = batchCount > 1;
 
       // Aggregate the full recipe's ingredients into the running totals once.
       const fullWeights = computeIngredientWeights(r, count);
-      const procBucket = isMuffin ? 'muffin' : 'loaf';
+      const procBucket = isMuffin ? 'muffin' : (isBagel ? 'bagel' : 'loaf');
       for (const w of fullWeights) {
         const key = w.name.trim().toLowerCase();
         if (!aggregate[key]) aggregate[key] = { name: w.name.trim(), grams: 0 };
@@ -1324,10 +1398,11 @@
       let body;
       if (showBatches) {
         const perBatch = splitEvenly(count, batchCount);
-        body = `<p class="muted" style="font-size: 0.85rem; margin: 6px 0 8px">Mixer holds max ${mixerCap} muffins — split evenly across ${batchCount} batches.</p>`;
+        const unitPlural = pluralize(unit);
+        body = `<p class="muted" style="font-size: 0.85rem; margin: 6px 0 8px">Mixer holds max ${mixerCap} ${unitPlural} — split evenly across ${batchCount} batches.</p>`;
         body += perBatch.map((bCount, i) => `
           <div style="margin-top: 10px;">
-            <div style="font-weight: 600; font-size: 0.9rem; color: var(--accent-dark); margin-bottom: 4px;">Batch ${i + 1}: ${bCount} muffins</div>
+            <div style="font-weight: 600; font-size: 0.9rem; color: var(--accent-dark); margin-bottom: 4px;">Batch ${i + 1}: ${bCount} ${pluralize(unit)}</div>
             ${renderTable(computeIngredientWeights(r, bCount))}
           </div>`).join('');
       } else {
@@ -1536,11 +1611,17 @@
     const muffinBakeTime = document.getElementById('bake-time-muffin-input').value;
     const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
     const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
+    const bagelDeadlineStr = document.getElementById('deadline-bagel-input').value;
+    const bagelDeadline = bagelDeadlineStr ? new Date(bagelDeadlineStr) : (effMuffinStr ? muffinDeadline : loafDeadline);
+    const bagelBakeTime = document.getElementById('bake-time-bagel-input').value;
+    const bagelColdProofRaw = document.getElementById('coldproof-bagel-input').value;
+    const bagelBatchSize = getBagelBatchSize();
     const resolveColdProofWindow = (raw, fallbackMin) => {
       const parsed = parseColdProofWindow(raw);
       if (parsed) return parsed;
       return { min: fallbackMin, max: fallbackMin + COLD_PROOF_WINDOW_WIDTH };
     };
+    const bagelW = resolveColdProofWindow(bagelColdProofRaw, PROCESS_TEMPLATES.bagel.coldProofHr);
     let loafColdProofHours;
     let loafColdProofMaxHr;
     if (loafColdProofRaw === '') {
@@ -1551,8 +1632,13 @@
       // then 18, 20, ..., 44.
       const candidates = [16, 14, 12, 10, 8, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44];
       const trials = candidates.map(c => {
-        const trial = buildSchedule(loafDeadline, muffinDeadline, c, SCHED.COLD_PROOF_HOURS, loafBakeTime, muffinBakeTime,
-          c + COLD_PROOF_WINDOW_WIDTH, SCHED.COLD_PROOF_HOURS + COLD_PROOF_WINDOW_WIDTH);
+        const trial = buildSchedule({
+          loafDeadline, muffinDeadline, bagelDeadline,
+          loafColdProofHours: c, muffinColdProofHours: SCHED.COLD_PROOF_HOURS, bagelColdProofHours: bagelW.min,
+          loafBakeTime, muffinBakeTime, bagelBakeTime,
+          loafColdProofMaxHr: c + COLD_PROOF_WINDOW_WIDTH, muffinColdProofMaxHr: SCHED.COLD_PROOF_HOURS + COLD_PROOF_WINDOW_WIDTH, bagelColdProofMaxHr: bagelW.max,
+          bagelBatchSize,
+        });
         const lateCount = trial.totalLoaves === 0 ? 0 : lateNightActiveSteps(trial.events, 'loaf').length;
         return { c, total: trial.totalLoaves, lateCount };
       });
@@ -1570,13 +1656,22 @@
     const muffinColdProofHours = muffinW.min;
     const muffinColdProofMaxHr = muffinW.max;
 
-    const result = buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime, loafColdProofMaxHr, muffinColdProofMaxHr);
+    const result = buildSchedule({
+      loafDeadline, muffinDeadline, bagelDeadline,
+      loafColdProofHours, muffinColdProofHours, bagelColdProofHours: bagelW.min,
+      loafBakeTime, muffinBakeTime, bagelBakeTime,
+      loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr: bagelW.max,
+      bagelBatchSize,
+    });
     return {
       build1: result.build1Opt || defaults.build1,
       build2: result.build2Opt || defaults.build2,
       useSeparateLevains: !!result.useSeparateLevains,
       muffinBuild1: result.muffinBuild1Opt || null,
       muffinBuild2: result.muffinBuild2Opt || null,
+      useBagelSeparateLevain: !!result.useBagelSeparateLevain,
+      bagelBuild1: result.bagelBuild1Opt || null,
+      bagelBuild2: result.bagelBuild2Opt || null,
     };
   }
 
@@ -1586,7 +1681,8 @@
 
     const loafLevain = levainByProcess?.loaf || 0;
     const muffinLevain = levainByProcess?.muffin || 0;
-    const levainTotal = loafLevain + muffinLevain;
+    const bagelLevain = levainByProcess?.bagel || 0;
+    const levainTotal = loafLevain + muffinLevain + bagelLevain;
 
     if (levainTotal <= 0) {
       levainCard.style.display = 'none';
@@ -1629,19 +1725,32 @@
       `;
     };
 
-    if (ratios.useSeparateLevains && loafLevain > 0 && muffinLevain > 0) {
-      const muffinB1 = ratios.muffinBuild1 || ratios.build1;
-      const muffinB2 = ratios.muffinBuild2 || ratios.build2;
-      levainOut.innerHTML = `
-        <p class="muted" style="margin-top:0">Loaf and muffin bake times are far enough apart that one Build 2 can't ripen for both — build two separate levains.</p>
-        <h2 style="font-size:1rem; margin: 14px 0 6px; color: var(--accent-dark);">Loaf levain</h2>
-        ${buildHtml(loafLevain, ratios.build1, ratios.build2)}
-        <hr class="sep" />
-        <h2 style="font-size:1rem; margin: 14px 0 6px; color: var(--accent-dark);">Muffin levain</h2>
-        ${buildHtml(muffinLevain, muffinB1, muffinB2)}
-      `;
-    } else {
+    const muffinSep = ratios.useSeparateLevains && muffinLevain > 0;
+    const bagelSep = ratios.useBagelSeparateLevain && bagelLevain > 0;
+    const sectionHead = (label) => `<h2 style="font-size:1rem; margin: 14px 0 6px; color: var(--accent-dark);">${label}</h2>`;
+
+    if (!muffinSep && !bagelSep) {
+      // One levain shared across every process in the plan.
       levainOut.innerHTML = buildHtml(levainTotal, ratios.build1, ratios.build2);
+    } else {
+      // The shared levain serves loaves plus any secondary not split off.
+      const sharedGrams = loafLevain + (muffinSep ? 0 : muffinLevain) + (bagelSep ? 0 : bagelLevain);
+      const sharedNames = ['loaves'];
+      if (!muffinSep && muffinLevain > 0) sharedNames.push('muffins');
+      if (!bagelSep && bagelLevain > 0) sharedNames.push('bagels');
+      let html = `<p class="muted" style="margin-top:0">Some bake times are far enough apart that one Build 2 can't ripen for all of them — build separate levains.</p>`;
+      html += sectionHead(`Shared levain (${sharedNames.join(' + ')})`) + buildHtml(sharedGrams, ratios.build1, ratios.build2);
+      if (muffinSep) {
+        const muffinB1 = ratios.muffinBuild1 || ratios.build1;
+        const muffinB2 = ratios.muffinBuild2 || ratios.build2;
+        html += `<hr class="sep" />` + sectionHead('Muffin levain') + buildHtml(muffinLevain, muffinB1, muffinB2);
+      }
+      if (bagelSep) {
+        const bagelB1 = ratios.bagelBuild1 || ratios.build1;
+        const bagelB2 = ratios.bagelBuild2 || ratios.build2;
+        html += `<hr class="sep" />` + sectionHead('Bagel levain') + buildHtml(bagelLevain, bagelB1, bagelB2);
+      }
+      levainOut.innerHTML = html;
     }
     levainCard.style.display = '';
   }
@@ -1909,6 +2018,13 @@
     if (Number.isFinite(n) && n > 0) return { min: n, max: n + COLD_PROOF_WINDOW_WIDTH };
     return null;
   }
+  // Bagels are boiled+baked in user-set batches (boil → top → bake per batch).
+  // Reads the batch-size input, falling back to the default when blank/invalid.
+  function getBagelBatchSize() {
+    const el = document.getElementById('batchsize-bagel-input');
+    const n = el ? Math.floor(Number(el.value)) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : SCHED.BAGEL_BATCH_SIZE;
+  }
   // Titles of events that require the baker to be awake at a specific moment.
   // The auto cold-proof picker rejects schedules where any of these fall in
   // the late-night window. Bake events and oven preheat are deliberately
@@ -1930,8 +2046,17 @@
     /^Muffins into fridge/,
     /^Muffins out of fridge/,
   ];
+  // Bagel boil/top/bake steps are anchored to the chosen bake window (like
+  // loaf/muffin bakes), so only the pre-fridge prep counts as awake-time work.
+  const ACTIVE_BAGEL_TITLE_PATTERNS = [
+    /^Mix bagel/,
+    /^Shape bagels/,
+    /^Bagels into fridge/,
+  ];
   function isActiveStep(ev, kind) {
-    const patterns = kind === 'loaf' ? ACTIVE_LOAF_TITLE_PATTERNS : ACTIVE_MUFFIN_TITLE_PATTERNS;
+    const patterns = kind === 'loaf' ? ACTIVE_LOAF_TITLE_PATTERNS
+      : kind === 'bagel' ? ACTIVE_BAGEL_TITLE_PATTERNS
+      : ACTIVE_MUFFIN_TITLE_PATTERNS;
     return patterns.some(p => p.test(ev.title));
   }
   function lateNightActiveSteps(events, kind) {
@@ -2054,14 +2179,23 @@
     return v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v));
   }
 
-  function buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime, loafColdProofMaxHr, muffinColdProofMaxHr) {
+  function buildSchedule(opts) {
+    let {
+      loafDeadline, muffinDeadline, bagelDeadline = null,
+      loafColdProofHours, muffinColdProofHours, bagelColdProofHours = null,
+      loafBakeTime, muffinBakeTime, bagelBakeTime = null,
+      loafColdProofMaxHr = null, muffinColdProofMaxHr = null, bagelColdProofMaxHr = null,
+      bagelBatchSize = null,
+    } = opts;
     const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf' && (plan[r.id] || 0) > 0);
     const totalLoaves = loafRecipes.reduce((s, r) => s + plan[r.id], 0);
     const muffinRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-muffin' && (plan[r.id] || 0) > 0);
     const totalMuffins = muffinRecipes.reduce((s, r) => s + plan[r.id], 0);
+    const bagelRecipes = recipes.filter(r => getProcessType(r) === 'bagel' && (plan[r.id] || 0) > 0);
+    const totalBagels = bagelRecipes.reduce((s, r) => s + plan[r.id], 0);
     const unschedRecipes = recipes.filter(r => {
       const t = getProcessType(r);
-      return (t === 'focaccia' || t === 'bagel') && (plan[r.id] || 0) > 0;
+      return t === 'focaccia' && (plan[r.id] || 0) > 0;
     });
     const warnings = [];
     if (unschedRecipes.length) {
@@ -2070,10 +2204,12 @@
         .join(', ');
       warnings.push({ msg: `Not yet on the timeline — schedule a separate session for: ${names}.`, issue: 'unscheduled' });
     }
-    if (totalLoaves === 0 && totalMuffins === 0) return { totalLoaves: 0, batches: 0, events: [], warnings };
+    if (totalLoaves === 0 && totalMuffins === 0 && totalBagels === 0) return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, batches: 0, events: [], warnings };
     if (totalLoaves === 0) {
-      warnings.push({ msg: 'Muffins only — no sourdough loaves in the bake plan. (Muffin-only schedule not yet supported.)', issue: 'muffin-only' });
-      return { totalLoaves: 0, batches: 0, events: [], warnings };
+      // Loaves anchor the timeline; muffin/bagel-only days aren't woven in yet.
+      const only = totalMuffins > 0 && totalBagels > 0 ? 'Muffins and bagels' : (totalMuffins > 0 ? 'Muffins' : 'Bagels');
+      warnings.push({ msg: `${only} only — no sourdough loaves in the bake plan. Loaves currently anchor the schedule, so add at least one loaf or schedule these separately.`, issue: 'muffin-only' });
+      return { totalLoaves: 0, totalMuffins, totalBagels: 0, batches: 0, events: [], warnings };
     }
 
     const specialtyFlourNames = new Set();
@@ -2102,6 +2238,12 @@
       bulkMin:      maxOr(muffinSpecs.map(s => s.bulkMin), SCHED.MUFFIN_BULK_MIN),
       warmupMin:    maxOr(muffinSpecs.map(s => s.warmupMin), SCHED.MUFFIN_WARMUP_MIN),
     } : null;
+    const bagelSpecs = bagelRecipes.map(getRecipeSpec);
+    const bagelAgg = totalBagels > 0 ? {
+      bakeMin:    maxOr(bagelSpecs.map(s => s.bakeMin), PROCESS_TEMPLATES.bagel.bakeMin),
+      bulkMin:    maxOr(bagelSpecs.map(s => s.bulkMin), PROCESS_TEMPLATES.bagel.bulkMin),
+      shapeMinPerUnit: maxOr(bagelSpecs.map(s => s.shapeMinPerUnit), PROCESS_TEMPLATES.bagel.shapeMinPerUnit),
+    } : null;
 
     // Cold proof: extend each process's setting upward to honor any explicit
     // recipe override of that process type.
@@ -2121,6 +2263,15 @@
       if (muffinColdProofMaxHr != null) muffinColdProofMaxHr += (newMin - muffinColdProofHours);
       muffinColdProofHours = newMin;
     }
+    if (bagelColdProofHours == null) bagelColdProofHours = PROCESS_TEMPLATES.bagel.coldProofHr;
+    const explicitBagelColdProofs = bagelRecipes
+      .filter(r => hasExplicitOverride(r, 'coldProofHr'))
+      .map(r => Number(r.coldProofHr));
+    if (explicitBagelColdProofs.length) {
+      const newMin = Math.max(bagelColdProofHours, ...explicitBagelColdProofs);
+      if (bagelColdProofMaxHr != null) bagelColdProofMaxHr += (newMin - bagelColdProofHours);
+      bagelColdProofHours = newMin;
+    }
 
     // Plan the actual oven loads up-front (per-deck packing with per-recipe
     // caps). Downstream batch counts and timings derive from these plans so
@@ -2130,15 +2281,26 @@
     const muffinOvenPlan = totalMuffins > 0 ? planMuffinBakes(muffinRecipes, plan) : [];
     const breadBatches = ovenPlan.length;
     const muffinBatches = muffinOvenPlan.length;
-    const batches = breadBatches + muffinBatches;
     const loafBakeTotalMin = breadBatches * loafAgg.bakeMin + Math.max(0, breadBatches - 1) * SCHED.REHEAT_MIN;
     const muffinBakeTotalMin = totalMuffins > 0
       ? muffinBatches * muffinAgg.bakeMin + Math.max(0, muffinBatches - 1) * SCHED.REHEAT_MIN
       : 0;
 
+    // Bagels: user-set batch size governs the morning boil→top→bake cycle.
+    // Each batch runs strictly sequentially (boil, then top, then bake) before
+    // the next batch's boil begins, so the total oven-occupancy span is just
+    // the per-batch cycle times the batch count.
+    const bagelBatchSizeEff = (bagelBatchSize && bagelBatchSize > 0) ? Math.floor(bagelBatchSize) : SCHED.BAGEL_BATCH_SIZE;
+    const bagelBatches = totalBagels > 0 ? Math.ceil(totalBagels / bagelBatchSizeEff) : 0;
+    const bagelCycleMin = SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN + (bagelAgg ? bagelAgg.bakeMin : PROCESS_TEMPLATES.bagel.bakeMin);
+    const bagelOvenSpanMin = bagelBatches * bagelCycleMin;
+    const batches = breadBatches + muffinBatches + bagelBatches;
+
     // Muffin deadline + bake time fall back to the loaf values when not set.
     const effMuffinDeadline = muffinDeadline || loafDeadline;
     const effMuffinBakeTime = muffinBakeTime || loafBakeTime;
+    const effBagelDeadline = bagelDeadline || loafDeadline;
+    const effBagelBakeTime = bagelBakeTime || loafBakeTime;
 
     const computeBakeSlot = (deadline, bakeTimePref, bakeTotalMin, kindLabel, kind) => {
       const D = new Date(deadline);
@@ -2182,6 +2344,11 @@
     const muffinSlot = totalMuffins > 0
       ? computeBakeSlot(effMuffinDeadline, effMuffinBakeTime, muffinBakeTotalMin, 'Muffins', 'muffin')
       : null;
+    // Bagel slot: firstBakeStart here is the first BOIL start (active oven work
+    // begins there); lastBakeEnd is when the final batch leaves the oven.
+    const bagelSlot = totalBagels > 0
+      ? computeBakeSlot(effBagelDeadline, effBagelBakeTime, bagelOvenSpanMin, 'Bagels', 'bagel')
+      : null;
     const firstBakeStart = loafSlot.firstBakeStart;
     const lastBakeEnd = loafSlot.lastBakeEnd;
     const packageReady = loafSlot.packageReady;
@@ -2212,7 +2379,8 @@
     }
     const numContainers = Math.max(1, containerInfo.length);
     const muffinMixBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
-    const totalMixBatches = numContainers + muffinMixBatches;
+    const bagelMixBatches = totalBagels > 0 ? Math.ceil(totalBagels / SCHED.BAGEL_MIXER_CAPACITY) : 0;
+    const totalMixBatches = numContainers + muffinMixBatches + bagelMixBatches;
 
     const PRESHAPE_RATIO = SCHED.PRESHAPE_MIN_PER_LOAF /
       (SCHED.PRESHAPE_MIN_PER_LOAF + SCHED.FINAL_SHAPE_MIN_PER_LOAF);
@@ -2322,22 +2490,45 @@
       muffinMixStart = addMinutes(muffinBulkStart, -SCHED.MUFFIN_MIX_ACTIVE_MIN);
       muffinTimes = { muffinBakeStart, muffinOutFridge, muffinFridgeIn, muffinShapeStart };
     }
-    const build1Pref = (document.getElementById('build1-ratio-input')?.value) || '';
-    const build2Pref = (document.getElementById('build2-ratio-input')?.value) || '';
-    // Decide whether the two processes can share one Build 2 or need separate
-    // levains. They share if the gap between mix times fits within Build 2's
-    // ripe window. We use a tentative shared pick to measure that window.
-    const sharedMixAnchor = muffinMixStart && muffinMixStart < mixTime ? muffinMixStart : mixTime;
-    const tentativeBuild2 = pickLevainBuild('build2', sharedMixAnchor, build2Pref);
-    let useSeparateLevains = false;
-    if (muffinMixStart) {
-      const mixGapHr = Math.abs(muffinMixStart - mixTime) / (60 * 60 * 1000);
-      const ripeWindowHr = tentativeBuild2.max - tentativeBuild2.min;
-      if (mixGapHr > ripeWindowHr) useSeparateLevains = true;
+
+    // Bagel sub-timeline (mirrors muffins). Bagels are boiled straight from the
+    // cold fridge — no warm-up — so the fridge step ends at the first boil.
+    const totalBagelShapeMin = totalBagels > 0 ? bagelRecipes.reduce(
+      (s, r) => s + plan[r.id] * getRecipeSpec(r).shapeMinPerUnit,
+      0
+    ) : 0;
+    let bagelMixStart = null;
+    let bagelTimes = null;
+    if (totalBagels > 0 && bagelSlot) {
+      const bagelFirstBoil = bagelSlot.firstBakeStart; // active oven work begins here
+      const bagelFridgeIn = addMinutes(bagelFirstBoil, -bagelColdProofHours * 60);
+      const bagelShapeStart = addMinutes(bagelFridgeIn, -totalBagelShapeMin);
+      const bagelBulkStart = addMinutes(bagelShapeStart, -bagelAgg.bulkMin);
+      bagelMixStart = addMinutes(bagelBulkStart, -bagelMixBatches * SCHED.BAGEL_MIX_ACTIVE_MIN);
+      bagelTimes = { bagelFirstBoil, bagelFridgeIn, bagelShapeStart, bagelBulkStart };
     }
 
-    // Loaf levain: anchored to loaf mix; if shared, anchored to earlier mix.
-    const loafLevainAnchor = useSeparateLevains ? mixTime : sharedMixAnchor;
+    const build1Pref = (document.getElementById('build1-ratio-input')?.value) || '';
+    const build2Pref = (document.getElementById('build2-ratio-input')?.value) || '';
+    // Decide whether each secondary process (muffin, bagel) can share one
+    // Build 2 with the loaves or needs its own levain. A process shares if its
+    // mix time is within Build 2's ripe window of the loaf mix. The tentative
+    // window is measured from the earliest mix among all present processes.
+    let earliestMix = mixTime;
+    if (muffinMixStart && muffinMixStart < earliestMix) earliestMix = muffinMixStart;
+    if (bagelMixStart && bagelMixStart < earliestMix) earliestMix = bagelMixStart;
+    const tentativeBuild2 = pickLevainBuild('build2', earliestMix, build2Pref);
+    const ripeWindowHr = tentativeBuild2.max - tentativeBuild2.min;
+    const useSeparateLevains = muffinMixStart
+      ? Math.abs(muffinMixStart - mixTime) / (60 * 60 * 1000) > ripeWindowHr : false;
+    const useBagelSeparateLevain = bagelMixStart
+      ? Math.abs(bagelMixStart - mixTime) / (60 * 60 * 1000) > ripeWindowHr : false;
+
+    // Loaf (shared) levain: anchored to the earliest mix among the processes
+    // that share it (loaf + any secondary not split off to its own levain).
+    let loafLevainAnchor = mixTime;
+    if (muffinMixStart && !useSeparateLevains && muffinMixStart < loafLevainAnchor) loafLevainAnchor = muffinMixStart;
+    if (bagelMixStart && !useBagelSeparateLevain && bagelMixStart < loafLevainAnchor) loafLevainAnchor = bagelMixStart;
     const build2Opt = pickLevainBuild('build2', loafLevainAnchor, build2Pref);
     const levainBuild2Mid = addHours(loafLevainAnchor, -build2Opt.mid);
     const levainBuild2EarliestStart = roundToHalfHour(addHours(loafLevainAnchor, -build2Opt.max));
@@ -2364,6 +2555,23 @@
       muffinLevainBuild1LatestStart = roundToHalfHour(addHours(muffinLevainBuild2Mid, -muffinBuild1Opt.min));
     }
 
+    // Bagel levain (only when split off to its own levain): anchored to bagel mix.
+    let bagelBuild2Opt = null;
+    let bagelBuild1Opt = null;
+    let bagelLevainBuild2EarliestStart = null;
+    let bagelLevainBuild2LatestStart = null;
+    let bagelLevainBuild1EarliestStart = null;
+    let bagelLevainBuild1LatestStart = null;
+    if (useBagelSeparateLevain && bagelMixStart) {
+      bagelBuild2Opt = pickLevainBuild('build2', bagelMixStart, build2Pref);
+      const bagelLevainBuild2Mid = addHours(bagelMixStart, -bagelBuild2Opt.mid);
+      bagelLevainBuild2EarliestStart = roundToHalfHour(addHours(bagelMixStart, -bagelBuild2Opt.max));
+      bagelLevainBuild2LatestStart = roundToHalfHour(addHours(bagelMixStart, -bagelBuild2Opt.min));
+      bagelBuild1Opt = pickLevainBuild('build1', bagelLevainBuild2Mid, build1Pref);
+      bagelLevainBuild1EarliestStart = roundToHalfHour(addHours(bagelLevainBuild2Mid, -bagelBuild1Opt.max));
+      bagelLevainBuild1LatestStart = roundToHalfHour(addHours(bagelLevainBuild2Mid, -bagelBuild1Opt.min));
+    }
+
     const events = [];
     const autoNote = (opt) => {
       if (opt.kind === 'medium') return ' (medium ratio chosen to avoid a late-night refresh)';
@@ -2372,8 +2580,14 @@
     };
     const build1Note = build1Opt.manual ? ' (manually selected)' : autoNote(build1Opt);
     const build2Note = build2Opt.manual ? ' (manually selected)' : autoNote(build2Opt);
-    const loafLevainSuffix = useSeparateLevains ? ' (loaves)' : '';
-    const loafLevainProcess = useSeparateLevains ? 'loaf' : 'shared';
+    // Which processes draw on the shared levain (loaf always, plus any
+    // secondary not split off). Suffix/label only when something IS split.
+    const sharedProcs = ['loaves'];
+    if (muffinMixStart && !useSeparateLevains) sharedProcs.push('muffins');
+    if (bagelMixStart && !useBagelSeparateLevain) sharedProcs.push('bagels');
+    const anyLevainSplit = (muffinMixStart && useSeparateLevains) || (bagelMixStart && useBagelSeparateLevain);
+    const loafLevainSuffix = anyLevainSplit ? ` (${sharedProcs.join(' + ')})` : '';
+    const loafLevainProcess = anyLevainSplit ? 'loaf' : 'shared';
     events.push({
       time: levainBuild1EarliestStart,
       timeEnd: levainBuild1LatestStart,
@@ -2404,6 +2618,24 @@
         title: 'Levain Build 2 — final build (muffins)',
         detail: `${muffinBuild2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${muffinBuild2Opt.min}–${muffinBuild2Opt.max} hr${mb2Note}`,
         process: 'muffin',
+      });
+    }
+    if (useBagelSeparateLevain && bagelBuild1Opt && bagelBuild2Opt) {
+      const bb1Note = bagelBuild1Opt.manual ? ' (manually selected)' : autoNote(bagelBuild1Opt);
+      const bb2Note = bagelBuild2Opt.manual ? ' (manually selected)' : autoNote(bagelBuild2Opt);
+      events.push({
+        time: bagelLevainBuild1EarliestStart,
+        timeEnd: bagelLevainBuild1LatestStart,
+        title: 'Levain Build 1 — first refresh (bagels)',
+        detail: `${bagelBuild1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${bagelBuild1Opt.min}–${bagelBuild1Opt.max} hr${bb1Note}`,
+        process: 'bagel',
+      });
+      events.push({
+        time: bagelLevainBuild2EarliestStart,
+        timeEnd: bagelLevainBuild2LatestStart,
+        title: 'Levain Build 2 — final build (bagels)',
+        detail: `${bagelBuild2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${bagelBuild2Opt.min}–${bagelBuild2Opt.max} hr${bb2Note}`,
+        process: 'bagel',
       });
     }
     if (specialtyFlourNames.size > 0) {
@@ -2575,6 +2807,18 @@
         process: 'muffin',
       });
     }
+    // Bagel oven preheat: the first bagel bake is one boil+top cycle after the
+    // first boil starts; the oven must reach temp by then. Always its own
+    // preheat event (bagels run on their own deadline/bake window).
+    if (bagelSlot) {
+      const firstBagelBake = addMinutes(bagelSlot.firstBakeStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
+      events.push({
+        time: addMinutes(firstBagelBake, -SCHED.OVEN_PREHEAT_MIN),
+        title: 'Turn on oven (bagels)',
+        detail: preheatDetail,
+        process: 'bagel',
+      });
+    }
 
     // --- Loaf bake loop ---
     for (let b = 0; b < breadBatches; b++) {
@@ -2617,6 +2861,34 @@
       }
     }
 
+    // --- Bagel boil → top → bake loop (strictly sequential per batch) ---
+    if (totalBagels > 0 && bagelSlot) {
+      const firstBoil = bagelSlot.firstBakeStart;
+      events.push({
+        time: addMinutes(firstBoil, -SCHED.BAGEL_KETTLE_HEATUP_MIN),
+        title: 'Bring kettle to a boil',
+        detail: `${SCHED.BAGEL_KETTLE_HEATUP_MIN} min · bagels are boiled straight from the cold fridge`,
+        process: 'bagel',
+      });
+      for (let b = 0; b < bagelBatches; b++) {
+        const boilStart = addMinutes(firstBoil, b * bagelCycleMin);
+        const bakeStart = addMinutes(boilStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
+        const countThis = Math.min(bagelBatchSizeEff, totalBagels - b * bagelBatchSizeEff);
+        events.push({
+          time: boilStart,
+          title: `Boil & top batch ${b + 1} of ${bagelBatches}`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_BOIL_MIN} min boil · ${SCHED.BAGEL_TOP_MIN} min top`,
+          process: 'bagel',
+        });
+        events.push({
+          time: bakeStart,
+          title: `Bake batch ${b + 1} of ${bagelBatches} — bagels into oven`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake`,
+          process: 'bagel',
+        });
+      }
+    }
+
     // --- Muffin mix / shape / fridge events (using precomputed muffinTimes) ---
     if (totalMuffins > 0 && muffinTimes) {
       const muffinBulkHrLabel = (muffinAgg.bulkMin / 60).toFixed(muffinAgg.bulkMin % 60 === 0 ? 0 : 1);
@@ -2656,6 +2928,40 @@
       }
     }
 
+    // --- Bagel mix / shape / fridge events (using precomputed bagelTimes) ---
+    if (totalBagels > 0 && bagelTimes) {
+      const bagelBulkHrLabel = (bagelAgg.bulkMin / 60).toFixed(bagelAgg.bulkMin % 60 === 0 ? 0 : 1);
+      const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses ripe Build 2 levain shared with bread)';
+      const bagelMixDetail = bagelMixBatches > 1
+        ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${bagelMixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * bagelMixBatches} min active (mixer holds max ${SCHED.BAGEL_MIXER_CAPACITY} bagels; all batches go into the same container for proofing) · then ${bagelBulkHrLabel} hr bulk ferment ${bagelLevainNote}`
+        : `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix · then ${bagelBulkHrLabel} hr bulk ferment ${bagelLevainNote}`;
+      events.push({
+        time: bagelMixStart,
+        title: 'Mix bagel dough',
+        detail: bagelMixDetail,
+        process: 'bagel',
+      });
+      const bagelShapeDetail = bagelRecipes.length === 1
+        ? `${getRecipeSpec(bagelRecipes[0]).shapeMinPerUnit} min × ${totalBagels} bagels = ${totalBagelShapeMin} min total`
+        : bagelRecipes
+            .map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`)
+            .join(' + ') + ` = ${totalBagelShapeMin} min total`;
+      events.push({
+        time: bagelTimes.bagelShapeStart,
+        title: 'Shape bagels',
+        detail: bagelShapeDetail,
+        process: 'bagel',
+      });
+      if (bagelColdProofHours > 0) {
+        events.push({
+          time: bagelTimes.bagelFridgeIn,
+          title: 'Bagels into fridge — cold proof',
+          detail: `${bagelColdProofHours} hr in fridge · boiled straight from cold`,
+          process: 'bagel',
+        });
+      }
+    }
+
     // --- Per-process cooling + package-ready ---
     const lastLoafBakeEnd = breadBatches > 0
       ? addMinutes(firstBakeStart, breadBatches * loafAgg.bakeMin + Math.max(0, breadBatches - 1) * SCHED.REHEAT_MIN)
@@ -2673,20 +2979,21 @@
       const muffinCoolDetail = `${fmtCoolHr(muffinSlot.packageReady - muffinSlot.lastBakeEnd)} cool`;
       events.push({ time: muffinSlot.lastBakeEnd, title: 'Last muffins out — start cooling', detail: muffinCoolDetail, process: 'muffin' });
     }
-    // Package-ready: one combined event if both processes finish within a
-    // minute of each other; otherwise separate per-process events.
-    const muffinReady = muffinSlot ? muffinSlot.packageReady : null;
-    if (muffinReady && Math.abs(muffinReady - packageReady) < 60 * 1000) {
-      events.push({ time: packageReady, title: 'Package & ready for sale', detail: '', process: 'shared' });
+    if (totalBagels > 0 && bagelSlot) {
+      const bagelCoolDetail = `${fmtCoolHr(bagelSlot.packageReady - bagelSlot.lastBakeEnd)} cool`;
+      events.push({ time: bagelSlot.lastBakeEnd, title: 'Last bagels out — start cooling', detail: bagelCoolDetail, process: 'bagel' });
+    }
+    // Package-ready: collapse to one combined event when every present process
+    // finishes within a minute of the others; otherwise per-process events.
+    const readyEntries = [{ time: packageReady, label: 'Loaves', process: 'loaf' }];
+    if (muffinSlot) readyEntries.push({ time: muffinSlot.packageReady, label: 'Muffins', process: 'muffin' });
+    if (bagelSlot) readyEntries.push({ time: bagelSlot.packageReady, label: 'Bagels', process: 'bagel' });
+    const allReadyClose = readyEntries.every(e => Math.abs(e.time - readyEntries[0].time) < 60 * 1000);
+    if (readyEntries.length === 1 || allReadyClose) {
+      events.push({ time: readyEntries[0].time, title: 'Package & ready for sale', detail: '', process: 'shared' });
     } else {
-      events.push({
-        time: packageReady,
-        title: totalMuffins > 0 ? 'Loaves ready for sale' : 'Package & ready for sale',
-        detail: '',
-        process: totalMuffins > 0 ? 'loaf' : 'shared',
-      });
-      if (muffinReady) {
-        events.push({ time: muffinReady, title: 'Muffins ready for sale', detail: '', process: 'muffin' });
+      for (const e of readyEntries) {
+        events.push({ time: e.time, title: `${e.label} ready for sale`, detail: '', process: e.process });
       }
     }
 
@@ -2716,12 +3023,34 @@
     if (lateMuffin.length > 0) {
       warnings.push({ msg: `${lateMuffin.length} active muffin step${lateMuffin.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateMuffin)}). Try a different muffin cold proof or bake time.`, issue: 'late-night', kind: 'muffin' });
     }
+    const lateBagel = totalBagels > 0 ? lateNightActiveSteps(events, 'bagel') : [];
+    if (lateBagel.length > 0) {
+      warnings.push({ msg: `${lateBagel.length} active bagel step${lateBagel.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateBagel)}). Try a different bagel cold proof or bake time.`, issue: 'late-night', kind: 'bagel' });
+    }
+
+    // Oven contention: bagel boil+bake share the single oven (and the baker's
+    // attention) with the bread and muffin bakes. Warn if their oven windows
+    // overlap so the baker can shift the bagel bake time / deadline.
+    if (bagelSlot) {
+      const bStart = bagelSlot.firstBakeStart; // first boil
+      const bEnd = bagelSlot.lastBakeEnd;
+      const overlaps = (s, e) => s && e && bStart < e && s < bEnd;
+      const conflicts = [];
+      if (breadBatches > 0 && overlaps(firstBakeStart, lastLoafBakeEnd)) conflicts.push('bread');
+      if (muffinSlot && overlaps(muffinSlot.firstBakeStart, muffinSlot.lastBakeEnd)) conflicts.push('muffin');
+      if (conflicts.length) {
+        warnings.push({ msg: `Bagel boiling & baking overlaps the ${conflicts.join(' and ')} bake — they share one oven and your attention. Shift the bagel bake time or deadline so they don't collide.`, issue: 'oven-overlap', kind: 'bagel' });
+      }
+    }
     events.sort((a, b) => a.time - b.time);
     return {
-      totalLoaves, totalMuffins, batches, events, warnings,
+      totalLoaves, totalMuffins, totalBagels, batches, events, warnings,
       build1Opt, build2Opt,
       muffinBuild1Opt, muffinBuild2Opt,
       useSeparateLevains,
+      bagelBuild1Opt, bagelBuild2Opt,
+      useBagelSeparateLevain,
+      bagelBatches,
       loafColdProofRange,
       mixBatches: totalMixBatches,
     };
@@ -2730,12 +3059,19 @@
   function updateProcessRowVisibility() {
     const hasLoaf = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'sourdough-loaf');
     const hasMuffin = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'sourdough-muffin');
+    const hasBagel = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'bagel');
     const loafCol = document.getElementById('schedule-input-loaf-col');
     const muffinCol = document.getElementById('schedule-input-muffin-col');
+    const bagelCol = document.getElementById('schedule-input-bagel-col');
     if (loafCol) loafCol.style.display = hasLoaf ? '' : 'none';
     if (muffinCol) muffinCol.style.display = hasMuffin ? '' : 'none';
+    if (bagelCol) bagelCol.style.display = hasBagel ? '' : 'none';
     const grid = document.getElementById('schedule-inputs-grid');
-    if (grid) grid.classList.toggle('single-col', !(hasLoaf && hasMuffin));
+    if (grid) {
+      const n = (hasLoaf ? 1 : 0) + (hasMuffin ? 1 : 0) + (hasBagel ? 1 : 0);
+      grid.classList.remove('single-col', 'cols-1', 'cols-2', 'cols-3');
+      grid.classList.add('cols-' + Math.max(1, n));
+    }
   }
 
   function renderSchedule() {
@@ -2771,10 +3107,25 @@
       out.innerHTML = '<p class="muted">Invalid muffin deadline.</p>';
       return;
     }
+    const bagelDeadlineStr = document.getElementById('deadline-bagel-input').value;
+    const hasBagelPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'bagel');
+    const effBagelDeadlineStr = bagelDeadlineStr || effLoafDeadlineStr || effMuffinDeadlineStr;
+    if (hasBagelPlan && !effBagelDeadlineStr) {
+      out.innerHTML = '<p class="muted">Set a bagel deadline to see the schedule.</p>';
+      return;
+    }
+    const bagelDeadline = effBagelDeadlineStr ? new Date(effBagelDeadlineStr) : null;
+    if (bagelDeadline && isNaN(bagelDeadline.getTime())) {
+      out.innerHTML = '<p class="muted">Invalid bagel deadline.</p>';
+      return;
+    }
     const loafBakeTime = document.getElementById('bake-time-loaf-input').value;
     const muffinBakeTime = document.getElementById('bake-time-muffin-input').value;
+    const bagelBakeTime = document.getElementById('bake-time-bagel-input').value;
     const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
     const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
+    const bagelColdProofRaw = document.getElementById('coldproof-bagel-input').value;
+    const bagelBatchSize = getBagelBatchSize();
     const clampColdProofWindow = (raw, fallbackMin) => {
       const parsed = parseColdProofWindow(raw);
       if (parsed) {
@@ -2797,9 +3148,15 @@
       const trials = candidates.map(c => {
         const loaf = kind === 'loaf' ? c : otherFixed;
         const muffin = kind === 'muffin' ? c : otherFixed;
-        const trial = buildSchedule(loafDeadline, muffinDeadline, loaf, muffin, loafBakeTime, muffinBakeTime,
-          loaf + COLD_PROOF_WINDOW_WIDTH, muffin + COLD_PROOF_WINDOW_WIDTH);
-        const total = kind === 'loaf' ? trial.totalLoaves : (trial.totalMuffins || 0);
+        const bagel = kind === 'bagel' ? c : otherFixed;
+        const trial = buildSchedule({
+          loafDeadline, muffinDeadline, bagelDeadline,
+          loafColdProofHours: loaf, muffinColdProofHours: muffin, bagelColdProofHours: bagel,
+          loafBakeTime, muffinBakeTime, bagelBakeTime,
+          loafColdProofMaxHr: loaf + COLD_PROOF_WINDOW_WIDTH, muffinColdProofMaxHr: muffin + COLD_PROOF_WINDOW_WIDTH, bagelColdProofMaxHr: bagel + COLD_PROOF_WINDOW_WIDTH,
+          bagelBatchSize,
+        });
+        const total = kind === 'loaf' ? trial.totalLoaves : (kind === 'muffin' ? (trial.totalMuffins || 0) : (trial.totalBagels || 0));
         const lateCount = total === 0 ? 0 : lateNightActiveSteps(trial.events, kind).length;
         return { c, total, lateCount };
       });
@@ -2830,11 +3187,33 @@
     const muffinColdProofHours = muffinColdProofWindow.min;
     const muffinColdProofMaxHr = muffinColdProofWindow.max;
 
-    const result = buildSchedule(loafDeadline, muffinDeadline, loafColdProofHours, muffinColdProofHours, loafBakeTime, muffinBakeTime, loafColdProofMaxHr, muffinColdProofMaxHr);
+    let bagelColdProofWindow;
+    let bagelColdProofAuto = false;
+    if (bagelColdProofRaw === '') {
+      bagelColdProofAuto = true;
+      bagelColdProofWindow = findBestColdProof('bagel', PROCESS_TEMPLATES.bagel.coldProofHr);
+    } else {
+      bagelColdProofWindow = clampColdProofWindow(bagelColdProofRaw, PROCESS_TEMPLATES.bagel.coldProofHr);
+    }
+    const bagelColdProofHours = bagelColdProofWindow.min;
+    const bagelColdProofMaxHr = bagelColdProofWindow.max;
+
+    const result = buildSchedule({
+      loafDeadline, muffinDeadline, bagelDeadline,
+      loafColdProofHours, muffinColdProofHours, bagelColdProofHours,
+      loafBakeTime, muffinBakeTime, bagelBakeTime,
+      loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr,
+      bagelBatchSize,
+    });
     const anchors = getAnchors();
     const anchoredTitles = applyAnchorsToEvents(result.events, anchors);
     if (result.totalLoaves === 0) {
-      out.innerHTML = '<p class="muted">No sourdough loaves in the current Bake Plan. Add some to see the schedule.</p>';
+      // No loaves to anchor the timeline. Surface the buildSchedule guidance
+      // (muffin/bagel-only) if present, else a generic empty-plan message.
+      const guide = (result.warnings || []).find(x => x.issue === 'muffin-only');
+      out.innerHTML = guide
+        ? `<div class="schedule-warn">${escapeHtml(guide.msg)}</div>`
+        : '<p class="muted">No schedulable items in the current Bake Plan. Add sourdough loaves, muffins, or bagels to see the schedule.</p>';
       return;
     }
 
@@ -2922,7 +3301,12 @@
 
     const hasLoaves = result.totalLoaves > 0;
     const hasMuffins = (result.totalMuffins || 0) > 0;
-    const splitView = hasLoaves && hasMuffins;
+    const hasBagels = (result.totalBagels || 0) > 0;
+    // Columns present in the split view, in fixed order.
+    const PROC_LABELS = { loaf: 'Sourdough loaves', muffin: 'English muffins', bagel: 'Bagels' };
+    const presentCols = ['loaf', 'muffin', 'bagel'].filter(p =>
+      p === 'loaf' ? hasLoaves : p === 'muffin' ? hasMuffins : hasBagels);
+    const splitView = presentCols.length >= 2;
 
     // ---- Verified one-click fixes for scheduling issues ----
     // For each issue we re-run the scheduler with a single input changed and
@@ -2936,7 +3320,7 @@
     const bakeLabel = (v) => v === '' ? 'any (use deadline)' : v.charAt(0).toUpperCase() + v.slice(1);
     const ratioLabel = (v) => v.charAt(0).toUpperCase() + v.slice(1);
     const cpFixLabel = (v) => v === '0' ? 'no cold proof' : v.replace('-', '–') + ' hr';
-    const kindWord = (k) => k === 'muffin' ? 'Muffin' : 'Loaf';
+    const kindWord = (k) => k === 'muffin' ? 'Muffin' : k === 'bagel' ? 'Bagel' : 'Loaf';
     const pad2 = (n) => (n < 10 ? '0' : '') + n;
     const toDatetimeLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
     const dlFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
@@ -2944,10 +3328,13 @@
     const runTrial = (o) => {
       const lcp = o.loafCp || { min: loafColdProofHours, max: loafColdProofMaxHr };
       const mcp = o.muffinCp || { min: muffinColdProofHours, max: muffinColdProofMaxHr };
+      const bcp = o.bagelCp || { min: bagelColdProofHours, max: bagelColdProofMaxHr };
       const lbt = o.loafBake !== undefined ? o.loafBake : loafBakeTime;
       const mbt = o.muffinBake !== undefined ? o.muffinBake : muffinBakeTime;
+      const bbt = o.bagelBake !== undefined ? o.bagelBake : bagelBakeTime;
       const ld = o.loafDeadline || loafDeadline;
       const md = o.muffinDeadline || muffinDeadline;
+      const bd = o.bagelDeadline || bagelDeadline;
       // Build ratios are read from the DOM inside buildSchedule; override and restore.
       let s1, s2, touched = false;
       if (o.build1Pref !== undefined || o.build2Pref !== undefined) {
@@ -2955,8 +3342,15 @@
         if (o.build1Pref !== undefined) buildInput1El.value = o.build1Pref;
         if (o.build2Pref !== undefined) buildInput2El.value = o.build2Pref;
       }
-      try { return buildSchedule(ld, md, lcp.min, mcp.min, lbt, mbt, lcp.max, mcp.max); }
-      finally { if (touched) { buildInput1El.value = s1; buildInput2El.value = s2; } }
+      try {
+        return buildSchedule({
+          loafDeadline: ld, muffinDeadline: md, bagelDeadline: bd,
+          loafColdProofHours: lcp.min, muffinColdProofHours: mcp.min, bagelColdProofHours: bcp.min,
+          loafBakeTime: lbt, muffinBakeTime: mbt, bagelBakeTime: bbt,
+          loafColdProofMaxHr: lcp.max, muffinColdProofMaxHr: mcp.max, bagelColdProofMaxHr: bcp.max,
+          bagelBatchSize,
+        });
+      } finally { if (touched) { buildInput1El.value = s1; buildInput2El.value = s2; } }
     };
     const fixResolves = (res, w) => {
       if (!res || !res.warnings) return false;
@@ -2967,10 +3361,19 @@
     };
     const computeFixesFor = (w) => {
       if (!w.kind) return [];
-      const isLoaf = w.kind === 'loaf';
-      const curCpMin = isLoaf ? loafColdProofHours : muffinColdProofHours;
-      const curBake = isLoaf ? loafBakeTime : muffinBakeTime;
-      const baseDeadline = isLoaf ? loafDeadline : (muffinDeadline || loafDeadline);
+      const kind = w.kind; // 'loaf' | 'muffin' | 'bagel'
+      const byKind = (loaf, muffin, bagel) => kind === 'loaf' ? loaf : kind === 'muffin' ? muffin : bagel;
+      const curCpMin = byKind(loafColdProofHours, muffinColdProofHours, bagelColdProofHours);
+      const curBake = byKind(loafBakeTime, muffinBakeTime, bagelBakeTime);
+      const baseDeadline = byKind(loafDeadline, muffinDeadline || loafDeadline, bagelDeadline || loafDeadline);
+      const cpControl = byKind('coldproof-loaf', 'coldproof-muffin', 'coldproof-bagel');
+      const bakeControl = byKind('bake-time-loaf', 'bake-time-muffin', 'bake-time-bagel');
+      const deadlineControl = byKind('deadline-loaf', 'deadline-muffin', 'deadline-bagel');
+      const cpOverride = (win) => byKind({ loafCp: win }, { muffinCp: win }, { bagelCp: win });
+      const bakeOverride = (v) => byKind({ loafBake: v }, { muffinBake: v }, { bagelBake: v });
+      const deadlineOverride = (nd) => byKind({ loafDeadline: nd }, { muffinDeadline: nd }, { bagelDeadline: nd });
+      // Cold proof helps late-night/cold-proof-exceeded; oven-overlap only
+      // moves with bake time or deadline. Levain only matters for late-night.
       const wantCp = w.issue === 'late-night' || w.issue === 'coldproof-exceeded';
       const wantLevain = w.issue === 'late-night';
 
@@ -2986,16 +3389,16 @@
             .map(c => {
               const win = c.v === '0' ? { min: 0, max: 0 } : { min: c.min, max: c.min + COLD_PROOF_WINDOW_WIDTH };
               return {
-                override: isLoaf ? { loafCp: win } : { muffinCp: win },
-                step: { control: isLoaf ? 'coldproof-loaf' : 'coldproof-muffin', value: c.v },
+                override: cpOverride(win),
+                step: { control: cpControl, value: c.v },
                 part: { knob: `${kindWord(w.kind)} cold proof`, val: cpFixLabel(c.v) },
               };
             });
         }
         if (knob === 'bake') {
           return BAKE_OPTS.filter(v => v !== curBake).map(v => ({
-            override: isLoaf ? { loafBake: v } : { muffinBake: v },
-            step: { control: isLoaf ? 'bake-time-loaf' : 'bake-time-muffin', value: v },
+            override: bakeOverride(v),
+            step: { control: bakeControl, value: v },
             part: { knob: `${kindWord(w.kind)} bake time`, val: bakeLabel(v) },
           }));
         }
@@ -3004,8 +3407,8 @@
           return [1,-1,2,-2,3,-3,4,-4,6,-6,8,-8,12,-12].map(off => {
             const nd = new Date(baseDeadline.getTime() + off * 3600 * 1000);
             return {
-              override: isLoaf ? { loafDeadline: nd } : { muffinDeadline: nd },
-              step: { control: isLoaf ? 'deadline-loaf' : 'deadline-muffin', value: toDatetimeLocal(nd) },
+              override: deadlineOverride(nd),
+              step: { control: deadlineControl, value: toDatetimeLocal(nd) },
               part: { knob: `Move ${w.kind} deadline`, val: dlFmt.format(nd) },
             };
           });
@@ -3098,30 +3501,39 @@
         return block + `</div>`;
       }).join('');
     }
-    const loafLabel = `${result.totalLoaves} loaves`;
-    const muffinLabel = result.totalMuffins > 0 ? ` + ${result.totalMuffins} muffins` : '';
+    const countLabel = `${result.totalLoaves} loaves`
+      + (result.totalMuffins > 0 ? ` + ${result.totalMuffins} muffins` : '')
+      + (result.totalBagels > 0 ? ` + ${result.totalBagels} bagels` : '');
     // Show the user's selected cold-proof window. (Per-container achieved
     // times appear in each "Into fridge" event detail.)
     const fmtCpLabel = (lo, hi) => (lo === 0 && hi === 0) ? 'none' : `${lo}–${hi} hr`;
     const loafCpWindow = fmtCpLabel(loafColdProofHours, loafColdProofMaxHr);
     const muffinCpWindow = fmtCpLabel(muffinColdProofHours, muffinColdProofMaxHr);
-    const coldProofMetaLabel = (result.totalMuffins || 0) > 0
-      ? `loaf cold proof ${loafCpWindow}${loafColdProofAuto ? ' (auto)' : ''}, muffin cold proof ${muffinCpWindow}${muffinColdProofAuto ? ' (auto)' : ''}`
-      : `cold proof ${loafCpWindow}${loafColdProofAuto ? ' (auto — longest fit)' : ''}`;
-    html += `<p class="schedule-meta">${loafLabel}${muffinLabel} · ${result.mixBatches} mix ${result.mixBatches === 1 ? 'batch' : 'batches'} · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · ${coldProofMetaLabel}</p>`;
+    const bagelCpWindow = fmtCpLabel(bagelColdProofHours, bagelColdProofMaxHr);
+    const multiProc = (result.totalMuffins || 0) > 0 || (result.totalBagels || 0) > 0;
+    const cpParts = [];
+    if (multiProc) {
+      cpParts.push(`loaf cold proof ${loafCpWindow}${loafColdProofAuto ? ' (auto)' : ''}`);
+      if ((result.totalMuffins || 0) > 0) cpParts.push(`muffin cold proof ${muffinCpWindow}${muffinColdProofAuto ? ' (auto)' : ''}`);
+      if ((result.totalBagels || 0) > 0) cpParts.push(`bagel cold proof ${bagelCpWindow}${bagelColdProofAuto ? ' (auto)' : ''}`);
+    } else {
+      cpParts.push(`cold proof ${loafCpWindow}${loafColdProofAuto ? ' (auto — longest fit)' : ''}`);
+    }
+    const coldProofMetaLabel = cpParts.join(', ');
+    html += `<p class="schedule-meta">${countLabel} · ${result.mixBatches} mix ${result.mixBatches === 1 ? 'batch' : 'batches'} · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · ${coldProofMetaLabel}</p>`;
     if (anchoredTitles.size > 0) {
       const word = anchoredTitles.size === 1 ? 'anchor' : 'anchors';
       html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Click any time to set one.</p>`;
     } else {
       html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: click any time to anchor a step — the rest of the schedule will shift.</p>`;
     }
+    const colsStyle = `grid-template-columns: repeat(${presentCols.length}, 1fr);`;
     if (splitView) {
       html += `<div class="schedule-hour-row schedule-hour-header-row schedule-sticky-header">
         <div></div>
         <div class="schedule-hour-content">
-          <div class="schedule-hour-cols">
-            <div class="schedule-col-header">Sourdough loaves</div>
-            <div class="schedule-col-header">English muffins</div>
+          <div class="schedule-hour-cols" style="${colsStyle}">
+            ${presentCols.map(p => `<div class="schedule-col-header">${PROC_LABELS[p]}</div>`).join('')}
           </div>
         </div>
       </div>`;
@@ -3151,13 +3563,14 @@
           startHour.setMinutes(0, 0, 0);
           const key = startHour.getTime();
           if (!hourBuckets.has(key)) {
-            hourBuckets.set(key, { hour: startHour, shared: [], loaf: [], muffin: [] });
+            const b = { hour: startHour, shared: [], byProc: {} };
+            for (const p of presentCols) b.byProc[p] = [];
+            hourBuckets.set(key, b);
           }
           const bucket = hourBuckets.get(key);
           const proc = ev.process || 'shared';
-          if (proc === 'shared') bucket.shared.push(ev);
-          else if (proc === 'muffin') bucket.muffin.push(ev);
-          else bucket.loaf.push(ev);
+          if (proc === 'shared' || !bucket.byProc[proc]) bucket.shared.push(ev);
+          else bucket.byProc[proc].push(ev);
         }
 
         const rows = [];
@@ -3194,21 +3607,25 @@
                   ${renderEventContent(ev)}
                 </div>`;
               }
-              if (bucket.loaf.length > 0 || bucket.muffin.length > 0) {
+              if (presentCols.some(p => bucket.byProc[p].length > 0)) {
                 const quarterMap = new Map();
                 const addToQuarter = (ev, side) => {
                   const q = roundToFiveMin(ev.time);
                   const k = q.getTime();
-                  if (!quarterMap.has(k)) quarterMap.set(k, { quarter: q, loaf: [], muffin: [] });
+                  if (!quarterMap.has(k)) {
+                    const entry = { quarter: q };
+                    for (const p of presentCols) entry[p] = [];
+                    quarterMap.set(k, entry);
+                  }
                   quarterMap.get(k)[side].push(ev);
                 };
-                bucket.loaf.forEach(ev => addToQuarter(ev, 'loaf'));
-                bucket.muffin.forEach(ev => addToQuarter(ev, 'muffin'));
+                for (const p of presentCols) bucket.byProc[p].forEach(ev => addToQuarter(ev, p));
                 const orderedQuarters = [...quarterMap.values()].sort((a, b) => a.quarter - b.quarter);
-                cellHtml += `<div class="schedule-hour-cols">`;
+                cellHtml += `<div class="schedule-hour-cols" style="${colsStyle}">`;
                 for (const q of orderedQuarters) {
-                  cellHtml += `<div class="schedule-bucket-cell">${q.loaf.map(ev => renderEventBlock(ev)).join('')}</div>`;
-                  cellHtml += `<div class="schedule-bucket-cell">${q.muffin.map(ev => renderEventBlock(ev)).join('')}</div>`;
+                  for (const p of presentCols) {
+                    cellHtml += `<div class="schedule-bucket-cell">${q[p].map(ev => renderEventBlock(ev)).join('')}</div>`;
+                  }
                 }
                 cellHtml += `</div>`;
               }
@@ -3414,6 +3831,36 @@
   muffinBaketimeInput.value = localStorage.getItem(MUFFIN_BAKETIME_KEY) || '';
   muffinBaketimeInput.addEventListener('change', () => {
     localStorage.setItem(MUFFIN_BAKETIME_KEY, muffinBaketimeInput.value);
+    renderSchedule();
+    renderTotals();
+  });
+  const bagelDeadlineInput = document.getElementById('deadline-bagel-input');
+  bagelDeadlineInput.value = localStorage.getItem(BAGEL_DEADLINE_KEY) || '';
+  bagelDeadlineInput.addEventListener('input', () => {
+    if (bagelDeadlineInput.value) localStorage.setItem(BAGEL_DEADLINE_KEY, bagelDeadlineInput.value);
+    else localStorage.removeItem(BAGEL_DEADLINE_KEY);
+    renderSchedule();
+    renderTotals();
+  });
+  const bagelColdproofInput = document.getElementById('coldproof-bagel-input');
+  bagelColdproofInput.value = localStorage.getItem(BAGEL_COLDPROOF_KEY) || '';
+  bagelColdproofInput.addEventListener('change', () => {
+    localStorage.setItem(BAGEL_COLDPROOF_KEY, bagelColdproofInput.value);
+    renderSchedule();
+    renderTotals();
+  });
+  const bagelBaketimeInput = document.getElementById('bake-time-bagel-input');
+  bagelBaketimeInput.value = localStorage.getItem(BAGEL_BAKETIME_KEY) || '';
+  bagelBaketimeInput.addEventListener('change', () => {
+    localStorage.setItem(BAGEL_BAKETIME_KEY, bagelBaketimeInput.value);
+    renderSchedule();
+    renderTotals();
+  });
+  const bagelBatchsizeInput = document.getElementById('batchsize-bagel-input');
+  bagelBatchsizeInput.value = localStorage.getItem(BAGEL_BATCHSIZE_KEY) || '';
+  bagelBatchsizeInput.addEventListener('input', () => {
+    if (bagelBatchsizeInput.value) localStorage.setItem(BAGEL_BATCHSIZE_KEY, bagelBatchsizeInput.value);
+    else localStorage.removeItem(BAGEL_BATCHSIZE_KEY);
     renderSchedule();
     renderTotals();
   });
