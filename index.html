@@ -2395,6 +2395,46 @@
     const bagelSlot = totalBagels > 0
       ? computeBakeSlot(effBagelDeadline, effBagelBakeTime, bagelOvenSpanMin, 'Bagels', 'bagel')
       : null;
+
+    // Oven sequencing: all three processes share one oven. Sort their bake slots
+    // by preferred start time and push any slot that would overlap the previous
+    // one so it starts right after the previous ends. If shifting causes a
+    // process to miss its deadline, emit a warning suggesting a fix.
+    {
+      const PROC_DEADLINE = { loaf: loafDeadline, muffin: effMuffinDeadline, bagel: effBagelDeadline };
+      const PROC_LABEL    = { loaf: 'Bread', muffin: 'Muffins', bagel: 'Bagels' };
+      const seq = [
+        loafSlot   ? { s: loafSlot,   kind: 'loaf'   } : null,
+        muffinSlot ? { s: muffinSlot, kind: 'muffin' } : null,
+        bagelSlot  ? { s: bagelSlot,  kind: 'bagel'  } : null,
+      ].filter(Boolean).sort((a, b) => a.s.firstBakeStart - b.s.firstBakeStart);
+
+      for (let i = 1; i < seq.length; i++) {
+        const prev = seq[i - 1];
+        const curr = seq[i];
+        if (curr.s.firstBakeStart < prev.s.lastBakeEnd) {
+          const durationMs = curr.s.lastBakeEnd - curr.s.firstBakeStart;
+          const newStart   = new Date(prev.s.lastBakeEnd.getTime());
+          curr.s.firstBakeStart = newStart;
+          curr.s.lastBakeEnd    = new Date(newStart.getTime() + durationMs);
+          curr.s.packageReady   = addHours(curr.s.lastBakeEnd, SCHED.COOL_HOURS);
+          const deadline = PROC_DEADLINE[curr.kind];
+          if (deadline && curr.s.packageReady > deadline) {
+            const overMin = Math.round((curr.s.packageReady - deadline) / 60000);
+            warnings.push({
+              msg: `${PROC_LABEL[curr.kind]} bake was shifted to avoid oven overlap with ${PROC_LABEL[prev.kind]}, but it now finishes ${overMin} min after its deadline. Try an earlier deadline or a later ${PROC_LABEL[prev.kind].toLowerCase()} bake-time window.`,
+              issue: 'oven-overlap-late', kind: curr.kind,
+            });
+          } else {
+            warnings.push({
+              msg: `${PROC_LABEL[curr.kind]} bake shifted to start after ${PROC_LABEL[prev.kind]} — they share one oven.`,
+              issue: 'oven-shifted', kind: curr.kind,
+            });
+          }
+        }
+      }
+    }
+
     // Loaf backbone. Only computed when there are loaves to anchor it — a
     // muffin-only or bagel-only plan leaves these null/empty and emits no loaf
     // steps; the secondary processes schedule off their own slots.
@@ -3077,20 +3117,6 @@
       warnings.push({ msg: `${lateBagel.length} active bagel step${lateBagel.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateBagel)}). Try a different bagel cold proof or bake time.`, issue: 'late-night', kind: 'bagel' });
     }
 
-    // Oven contention: bagel boil+bake share the single oven (and the baker's
-    // attention) with the bread and muffin bakes. Warn if their oven windows
-    // overlap so the baker can shift the bagel bake time / deadline.
-    if (bagelSlot) {
-      const bStart = bagelSlot.firstBakeStart; // first boil
-      const bEnd = bagelSlot.lastBakeEnd;
-      const overlaps = (s, e) => s && e && bStart < e && s < bEnd;
-      const conflicts = [];
-      if (breadBatches > 0 && overlaps(firstBakeStart, lastLoafBakeEnd)) conflicts.push('bread');
-      if (muffinSlot && overlaps(muffinSlot.firstBakeStart, muffinSlot.lastBakeEnd)) conflicts.push('muffin');
-      if (conflicts.length) {
-        warnings.push({ msg: `Bagel boiling & baking overlaps the ${conflicts.join(' and ')} bake — they share one oven and your attention. Shift the bagel bake time or deadline so they don't collide.`, issue: 'oven-overlap', kind: 'bagel' });
-      }
-    }
     events.sort((a, b) => a.time - b.time);
     return {
       totalLoaves, totalMuffins, totalBagels, batches, events, warnings,
