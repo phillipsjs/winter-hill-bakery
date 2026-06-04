@@ -490,6 +490,19 @@
   button.schedule-fix-btn:hover { background: #f3e7c8; }
   button.schedule-fix-btn .schedule-fix-knob { font-weight: 600; }
   button.schedule-fix-btn .schedule-fix-plus { opacity: 0.6; margin: 0 2px; }
+  .schedule-info {
+    background: #e8f0e8;
+    border: 1px solid #94b496;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    color: #1f4d2e;
+    margin: 0 0 12px;
+  }
+  .schedule-info .schedule-fixes { border-top-color: #94b496; }
+  .schedule-info .schedule-fixes-label { color: #1f4d2e; }
+  .schedule-info button.schedule-fix-btn { color: #1f4d2e; border-color: #6ba06b; }
+  .schedule-info button.schedule-fix-btn:hover { background: #d4e8d4; }
   .settings-select {
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -2422,13 +2435,13 @@
           if (deadline && curr.s.packageReady > deadline) {
             const overMin = Math.round((curr.s.packageReady - deadline) / 60000);
             warnings.push({
-              msg: `${PROC_LABEL[curr.kind]} bake was shifted to avoid oven overlap with ${PROC_LABEL[prev.kind]}, but it now finishes ${overMin} min after its deadline. Try an earlier deadline or a later ${PROC_LABEL[prev.kind].toLowerCase()} bake-time window.`,
-              issue: 'oven-overlap-late', kind: curr.kind,
+              msg: `Oven conflict resolved: ${PROC_LABEL[curr.kind]} bake starts after ${PROC_LABEL[prev.kind]} finishes, but now ends ${overMin} min past its deadline.`,
+              issue: 'oven-overlap-late', kind: curr.kind, type: 'info',
             });
           } else {
             warnings.push({
-              msg: `${PROC_LABEL[curr.kind]} bake shifted to start after ${PROC_LABEL[prev.kind]} — they share one oven.`,
-              issue: 'oven-shifted', kind: curr.kind,
+              msg: `Oven conflict resolved: ${PROC_LABEL[curr.kind]} bake starts after ${PROC_LABEL[prev.kind]} finishes (they share one oven).`,
+              issue: 'oven-shifted', kind: curr.kind, type: 'info',
             });
           }
         }
@@ -3561,9 +3574,12 @@
     if (result.warnings && result.warnings.length) {
       html += result.warnings.map(w => {
         const fixes = computeFixesFor(w);
-        let block = `<div class="schedule-warn">${escapeHtml(w.msg)}`;
+        const blockClass = w.type === 'info' ? 'schedule-info' : 'schedule-warn';
+        let block = `<div class="${blockClass}">${escapeHtml(w.msg)}`;
         if (fixes.length) {
-          const label = fixes.some(f => f.steps.length > 1) ? 'Ways to fix (some change two settings):' : 'Ways to fix:';
+          const label = w.type === 'info'
+            ? 'Alternatives:'
+            : (fixes.some(f => f.steps.length > 1) ? 'Ways to fix (some change two settings):' : 'Ways to fix:');
           block += `<div class="schedule-fixes"><span class="schedule-fixes-label">${label}</span>`
             + fixes.map(renderFixButton).join('')
             + `</div>`;
