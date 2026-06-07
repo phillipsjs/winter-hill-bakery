@@ -148,7 +148,7 @@
   table.ingredients td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .ingredient-edit-row {
     display: grid;
-    grid-template-columns: 1fr 80px 130px 32px;
+    grid-template-columns: 1fr 80px 130px 130px 32px;
     gap: 8px;
     align-items: center;
     margin-bottom: 6px;
@@ -546,6 +546,7 @@
   <button id="tab-plan-btn" class="active" onclick="showTab('plan')">Bake Plan</button>
   <button id="tab-schedule-btn" onclick="showTab('schedule')">Schedule</button>
   <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
+  <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Ingredients</button>
   <button id="tab-history-btn" onclick="showTab('history')">History</button>
   <button id="tab-settings-btn" onclick="showTab('settings')">Account</button>
 </nav>
@@ -630,7 +631,7 @@
       </div>
       <div class="row">
         <label style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
-        <input type="number" id="r-weight" min="0" step="10" />
+        <input type="number" id="r-weight" min="0" step="10" oninput="updateRecipeEditorCostDisplay()" />
         <span class="muted">grams</span>
       </div>
 
@@ -642,14 +643,24 @@
 
       <hr class="sep" />
       <div class="row">
-        <label style="width:120px">MSRP per <span class="r-unit-label2">unit</span></label>
+        <label style="width:140px">MSRP per <span class="r-unit-label2">unit</span></label>
         <span class="muted">$</span>
-        <input type="number" id="r-msrp" min="0" step="0.25" style="width:90px;flex:none" />
+        <input type="number" id="r-msrp" min="0" step="0.25" style="width:90px;flex:none" oninput="updateRecipeEditorCostDisplay()" />
       </div>
       <div class="row">
-        <label style="width:120px">Net profit per <span class="r-unit-label3">unit</span></label>
+        <label style="width:140px">Wholesale per <span class="r-unit-label2b">unit</span></label>
         <span class="muted">$</span>
-        <input type="number" id="r-net-profit" min="0" step="0.25" style="width:90px;flex:none" />
+        <input type="number" id="r-wholesale" min="0" step="0.25" style="width:90px;flex:none" placeholder="optional" oninput="updateRecipeEditorCostDisplay()" />
+      </div>
+      <div class="row" style="align-items:center">
+        <label style="width:140px;color:var(--muted);font-size:0.9rem">Cost per <span class="r-unit-label2c">unit</span></label>
+        <span id="r-cost-display" class="muted" style="font-size:0.9rem">—</span>
+        <span class="muted" style="font-size:0.75rem;margin-left:6px">(from linked ingredients)</span>
+      </div>
+      <div class="row" style="align-items:center">
+        <label style="width:140px;color:var(--muted);font-size:0.9rem">Net profit per <span class="r-unit-label2d">unit</span></label>
+        <span id="r-profit-display" class="muted" style="font-size:0.9rem">—</span>
+        <span class="muted" style="font-size:0.75rem;margin-left:6px">(wholesale or MSRP − cost)</span>
       </div>
 
       <hr class="sep" />
@@ -713,6 +724,31 @@
       <button class="danger" onclick="resetToDefaults()">Reset all recipes to defaults</button>
       <p class="muted" style="font-size: 0.8rem; margin: 8px 0 0">Replaces your recipes with the built-in Winter Hill defaults and clears the current bake plan.</p>
     </div>
+  </section>
+
+  <section id="tab-ingredients" style="display:none">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Ingredient costs</h2>
+        <button onclick="showPantryAddForm()">+ Add ingredient</button>
+      </div>
+      <p class="muted" style="margin:6px 0 0">Enter what you paid and the total weight you bought — the app calculates cost per gram, which is used to auto-price your recipes.</p>
+    </div>
+
+    <div id="pantry-add-form" class="card" style="display:none">
+      <h3 style="margin:0 0 12px">Add ingredient</h3>
+      <div class="row"><label style="width:140px">Name</label><input type="text" id="pantry-name" placeholder="e.g. Bread flour" /></div>
+      <div class="row"><label style="width:140px">Total weight bought</label><input type="number" id="pantry-weight" min="0" step="100" style="width:100px;flex:none" oninput="updatePantryCostPreview()" /><span class="muted">g</span></div>
+      <div class="row"><label style="width:140px">Price paid</label><span class="muted">$</span><input type="number" id="pantry-price" min="0" step="0.01" style="width:90px;flex:none" oninput="updatePantryCostPreview()" /></div>
+      <div id="pantry-cost-preview" class="muted" style="font-size:0.85rem;margin:4px 0 8px 140px"></div>
+      <div class="row" style="gap:8px;justify-content:flex-end">
+        <button class="secondary" onclick="hidePantryAddForm()">Cancel</button>
+        <button onclick="savePantryItem()">Save</button>
+      </div>
+      <p id="pantry-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
+    </div>
+
+    <div id="pantry-list"></div>
   </section>
 
   <section id="tab-schedule" style="display:none">
@@ -1035,6 +1071,8 @@
   const GIST_FILENAME = 'recipes.json';
   const BAKES_FILENAME = 'bakes.json';
   const BAKES_LOCAL_KEY = 'whb-bakes-v1';
+  const PANTRY_LOCAL_KEY = 'whb-pantry-v1';
+  const PANTRY_FILENAME = 'pantry.json';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
 
   const BAKE_TIME_PRESETS = {
@@ -1463,6 +1501,60 @@
 
   // ---- bake history ----
   let bakes = loadBakesLocally();
+  let pantryItems = loadPantryLocally();
+
+  function loadPantryLocally() {
+    try {
+      const raw = localStorage.getItem(PANTRY_LOCAL_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    return [];
+  }
+
+  function savePantryLocally() {
+    localStorage.setItem(PANTRY_LOCAL_KEY, JSON.stringify(pantryItems));
+  }
+
+  async function pushPantryToGist() {
+    const cfg = getGistConfig();
+    if (!cfg) return;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { [PANTRY_FILENAME]: { content: JSON.stringify(pantryItems, null, 2) } } })
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+  }
+
+  async function fetchPantryFromGist() {
+    const cfg = getGistConfig();
+    if (!cfg) return null;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json' }
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    const data = await resp.json();
+    const file = data.files[PANTRY_FILENAME];
+    if (!file) return [];
+    return JSON.parse(file.content);
+  }
+
+  function computeRecipeCostPerItem(recipe) {
+    if (!recipe || !recipe.ingredients || !recipe.loafWeight) return null;
+    const sumPct = recipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
+    if (sumPct <= 0) return null;
+    const flourWeight = recipe.loafWeight / (sumPct / 100);
+    let total = 0, anyLinked = false;
+    for (const ing of recipe.ingredients) {
+      if (!ing.pantryId) continue;
+      const p = pantryItems.find(x => x.id === ing.pantryId);
+      if (!p || !p.costPerGram) continue;
+      const grams = flourWeight * (Number(ing.pct) / 100);
+      total += grams * p.costPerGram;
+      anyLinked = true;
+    }
+    return anyLinked ? total : null;
+  }
 
   function loadBakesLocally() {
     try {
@@ -1519,7 +1611,12 @@
         const n = Number(count);
         const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: n };
         if (recipe && recipe.msrp != null) item.msrp = recipe.msrp;
-        if (recipe && recipe.netProfit != null) item.netProfit = recipe.netProfit;
+        if (recipe && recipe.wholesalePrice != null) item.wholesalePrice = recipe.wholesalePrice;
+        const cost = computeRecipeCostPerItem(recipe);
+        if (cost != null) item.costPerItem = cost;
+        const price = recipe ? (recipe.wholesalePrice ?? recipe.msrp) : null;
+        if (price != null && cost != null) item.netProfit = price - cost;
+        else if (recipe && recipe.netProfit != null) item.netProfit = recipe.netProfit; // backward compat
         if (recipe) {
           const spec = getRecipeSpec(recipe);
           if (spec.bakeMin) item.bakeMin = spec.bakeMin;
@@ -1598,14 +1695,18 @@
         <input type="number" id="manual-count-${n}" placeholder="Count" min="1" step="1" style="width:70px;flex:none" />
         <button class="secondary tiny" onclick="removeManualBakeRow(${n})" style="padding:4px 8px;flex:none">×</button>
       </div>
-      <div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">
-        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;align-self:center">MSRP/unit</label>
+      <div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap;align-items:center">
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap">MSRP/unit</label>
         <span class="muted" style="font-size:0.82rem">$</span>
-        <input type="number" id="manual-msrp-${n}" min="0" step="0.25" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" />
-        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;align-self:center;margin-left:6px">Profit/unit</label>
+        <input type="number" id="manual-msrp-${n}" min="0" step="0.25" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" oninput="updateManualRowProfitDisplay(${n})" />
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;margin-left:6px">Wholesale</label>
         <span class="muted" style="font-size:0.82rem">$</span>
-        <input type="number" id="manual-profit-${n}" min="0" step="0.25" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" />
-        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;align-self:center;margin-left:6px">Oven temp</label>
+        <input type="number" id="manual-wholesale-${n}" min="0" step="0.25" placeholder="optional" style="width:80px;flex:none;font-size:0.85rem" oninput="updateManualRowProfitDisplay(${n})" />
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;margin-left:6px">Cost/unit</label>
+        <span id="manual-cost-display-${n}" class="muted" style="font-size:0.85rem">—</span>
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;margin-left:6px">Profit/unit</label>
+        <span id="manual-profit-display-${n}" class="muted" style="font-size:0.85rem">—</span>
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;margin-left:6px">Oven temp</label>
         <input type="number" id="manual-temp-${n}" min="0" step="5" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" />
         <span class="muted" style="font-size:0.82rem">°F</span>
       </div>
@@ -1644,11 +1745,16 @@
 
     // Auto-fill per-row inputs
     const msrpEl = document.getElementById(`manual-msrp-${n}`);
-    const profitEl = document.getElementById(`manual-profit-${n}`);
     const tempEl = document.getElementById(`manual-temp-${n}`);
     if (msrpEl) msrpEl.value = recipe.msrp != null ? recipe.msrp : '';
-    if (profitEl) profitEl.value = recipe.netProfit != null ? recipe.netProfit : '';
     if (tempEl) tempEl.value = recipe.bakeTempF != null ? recipe.bakeTempF : '';
+    const wholesaleEl = document.getElementById(`manual-wholesale-${n}`);
+    if (wholesaleEl) wholesaleEl.value = recipe.wholesalePrice != null ? recipe.wholesalePrice : '';
+    // Compute and store cost
+    const cost = computeRecipeCostPerItem(recipe);
+    const manualWrap = document.getElementById(`manual-row-${n}`);
+    if (manualWrap) manualWrap.dataset.costPerItem = cost != null ? cost : '';
+    updateManualRowProfitDisplay(n);
 
     // Store per-unit flour weights for use at submission
     const flourPerUnit = calcFlourWeights(recipe, 1);
@@ -1657,7 +1763,7 @@
     // Build preview line
     const parts = [];
     if (recipe.msrp != null) parts.push(`$${recipe.msrp} MSRP`);
-    if (recipe.netProfit != null) parts.push(`$${recipe.netProfit} profit/unit`);
+    if (recipe.wholesalePrice != null) parts.push(`$${recipe.wholesalePrice} wholesale`);
     if (spec.bakeMin) parts.push(`${spec.bakeMin} min bake`);
     const cp = recipe.coldProofHr != null ? recipe.coldProofHr : null;
     if (cp !== null && cp !== '') {
@@ -1705,14 +1811,19 @@
       const item = { recipeName: name, count };
       if (recipeId) item.recipeId = recipeId;
       const msrpEl = document.getElementById(`manual-msrp-${rowN}`);
-      const profitEl = document.getElementById(`manual-profit-${rowN}`);
       const tempEl = document.getElementById(`manual-temp-${rowN}`);
       const msrpVal = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
-      const profitVal = profitEl && profitEl.value !== '' ? Number(profitEl.value) : null;
       const tempVal = tempEl && tempEl.value !== '' ? Number(tempEl.value) : null;
       if (msrpVal != null) item.msrp = msrpVal;
-      if (profitVal != null) item.netProfit = profitVal;
       if (tempVal != null) item.ovenTempF = tempVal;
+      const wholesaleEl = document.getElementById(`manual-wholesale-${rowN}`);
+      const wholesaleVal = wholesaleEl && wholesaleEl.value !== '' ? Number(wholesaleEl.value) : null;
+      if (wholesaleVal != null) item.wholesalePrice = wholesaleVal;
+      const rowWrap = document.getElementById(`manual-row-${rowN}`);
+      const costVal = rowWrap && rowWrap.dataset.costPerItem !== '' ? Number(rowWrap.dataset.costPerItem) || null : null;
+      if (costVal != null) item.costPerItem = costVal;
+      const price = wholesaleVal ?? msrpVal;
+      if (price != null && costVal != null) item.netProfit = price - costVal;
       if (wrap.dataset.bakeMin !== '') item.bakeMin = Number(wrap.dataset.bakeMin);
       if (wrap.dataset.coldProofHr !== '') item.coldProofHr = wrap.dataset.coldProofHr;
       if (wrap.dataset.flourPerUnit) {
@@ -1790,12 +1901,15 @@
       // Override inputs with stored values (may differ from current recipe)
       const countEl = document.getElementById(`manual-count-${n}`);
       const msrpEl = document.getElementById(`manual-msrp-${n}`);
-      const profitEl = document.getElementById(`manual-profit-${n}`);
       const tempEl = document.getElementById(`manual-temp-${n}`);
       if (countEl) countEl.value = item.count;
       if (msrpEl) msrpEl.value = item.msrp != null ? item.msrp : '';
-      if (profitEl) profitEl.value = item.netProfit != null ? item.netProfit : '';
       if (tempEl) tempEl.value = item.ovenTempF != null ? item.ovenTempF : '';
+      const wholesaleEl = document.getElementById(`manual-wholesale-${n}`);
+      if (wholesaleEl) wholesaleEl.value = item.wholesalePrice != null ? item.wholesalePrice : '';
+      const editWrap = document.getElementById(`manual-row-${n}`);
+      if (editWrap) editWrap.dataset.costPerItem = item.costPerItem != null ? item.costPerItem : '';
+      updateManualRowProfitDisplay(n);
     });
 
     editingBakeId = id;
@@ -2069,6 +2183,159 @@
     }
   }
 
+  // ---- pantry CRUD ----
+  function renderPantry() {
+    const list = document.getElementById('pantry-list');
+    if (!list) return;
+    if (pantryItems.length === 0) {
+      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No ingredients yet — click <strong>+ Add ingredient</strong> to get started.</p></div>';
+      return;
+    }
+    list.innerHTML = pantryItems.map(p => `
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <strong>${escapeHtml(p.name)}</strong>
+          <span class="muted" style="margin-left:8px;font-size:0.85rem">${p.weightG.toLocaleString()}g for $${Number(p.pricePaid).toFixed(2)}</span>
+          <span class="pill" style="margin-left:6px">$${p.costPerGram.toFixed(4)}/g</span>
+        </div>
+        <div class="row" style="gap:6px">
+          <button class="secondary tiny" onclick="editPantryItem('${p.id}')">Edit</button>
+          <button class="danger tiny" onclick="deletePantryItem('${p.id}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function showPantryAddForm(prefill) {
+    document.getElementById('pantry-name').value = prefill ? prefill.name : '';
+    document.getElementById('pantry-weight').value = prefill ? prefill.weightG : '';
+    document.getElementById('pantry-price').value = prefill ? prefill.pricePaid : '';
+    document.getElementById('pantry-cost-preview').textContent = prefill ? `$${prefill.costPerGram.toFixed(4)} per gram` : '';
+    document.getElementById('pantry-add-msg').textContent = '';
+    document.getElementById('pantry-add-form').dataset.editId = prefill ? prefill.id : '';
+    document.getElementById('pantry-add-form').style.display = '';
+    document.getElementById('pantry-name').focus();
+  }
+
+  function hidePantryAddForm() {
+    document.getElementById('pantry-add-form').style.display = 'none';
+    document.getElementById('pantry-add-form').dataset.editId = '';
+  }
+
+  function updatePantryCostPreview() {
+    const w = Number(document.getElementById('pantry-weight').value);
+    const p = Number(document.getElementById('pantry-price').value);
+    const el = document.getElementById('pantry-cost-preview');
+    if (el) el.textContent = (w > 0 && p > 0) ? `= $${(p/w).toFixed(4)} per gram` : '';
+  }
+
+  function savePantryItem() {
+    const name = document.getElementById('pantry-name').value.trim();
+    const weightG = Number(document.getElementById('pantry-weight').value);
+    const pricePaid = Number(document.getElementById('pantry-price').value);
+    const msgEl = document.getElementById('pantry-add-msg');
+    if (!name) { msgEl.textContent = 'Please enter a name.'; return; }
+    if (!weightG || weightG <= 0) { msgEl.textContent = 'Please enter a weight greater than 0.'; return; }
+    if (!pricePaid || pricePaid <= 0) { msgEl.textContent = 'Please enter a price greater than 0.'; return; }
+    const costPerGram = pricePaid / weightG;
+    const editId = document.getElementById('pantry-add-form').dataset.editId;
+    if (editId) {
+      const idx = pantryItems.findIndex(p => p.id === editId);
+      if (idx >= 0) pantryItems[idx] = { ...pantryItems[idx], name, weightG, pricePaid, costPerGram };
+    } else {
+      pantryItems.push({ id: uid(), name, weightG, pricePaid, costPerGram });
+    }
+    savePantryLocally();
+    hidePantryAddForm();
+    renderPantry();
+    if (getGistConfig()) pushPantryToGist().catch(() => {});
+    // refresh recipe editor cost display if open
+    updateRecipeEditorCostDisplay();
+  }
+
+  function editPantryItem(id) {
+    const p = pantryItems.find(x => x.id === id);
+    if (p) showPantryAddForm(p);
+  }
+
+  function deletePantryItem(id) {
+    const p = pantryItems.find(x => x.id === id);
+    if (!p || !confirm(`Delete "${p.name}"?`)) return;
+    pantryItems = pantryItems.filter(x => x.id !== id);
+    savePantryLocally();
+    renderPantry();
+    if (getGistConfig()) pushPantryToGist().catch(() => {});
+  }
+
+  // ---- recipe editor cost display ----
+  function updateRecipeEditorCostDisplay() {
+    const costEl = document.getElementById('r-cost-display');
+    const profitEl = document.getElementById('r-profit-display');
+    if (!costEl || !profitEl) return;
+
+    // Build a temporary recipe object from the current editor state
+    const editorRows = document.querySelectorAll('#r-ingredients .ingredient-edit-row');
+    const ingredients = [];
+    editorRows.forEach(row => {
+      const iname = row.querySelector('.ing-name').value.trim();
+      const ipct = Number(row.querySelector('.ing-pct').value);
+      const flourType = row.querySelector('.ing-flour-type').value;
+      const pantrySelect = row.querySelector('.ing-pantry');
+      const pantryId = pantrySelect ? pantrySelect.value : '';
+      if (iname && Number.isFinite(ipct) && ipct >= 0) {
+        const ing = { name: iname, pct: ipct };
+        if (flourType) ing.flourType = flourType;
+        if (pantryId) ing.pantryId = pantryId;
+        ingredients.push(ing);
+      }
+    });
+    const weight = Number(document.getElementById('r-weight') ? document.getElementById('r-weight').value : 0);
+    const tmpRecipe = { ingredients, loafWeight: weight };
+    const cost = computeRecipeCostPerItem(tmpRecipe);
+
+    if (cost != null) {
+      costEl.textContent = `$${cost.toFixed(2)}`;
+      costEl.style.color = '';
+      const msrp = Number(document.getElementById('r-msrp').value) || null;
+      const wholesale = Number(document.getElementById('r-wholesale').value) || null;
+      const price = wholesale !== null ? wholesale : msrp;
+      if (price !== null) {
+        const profit = price - cost;
+        profitEl.textContent = `$${profit.toFixed(2)}`;
+        profitEl.style.color = profit < 0 ? 'var(--danger)' : '';
+      } else {
+        profitEl.textContent = '—';
+        profitEl.style.color = '';
+      }
+    } else {
+      costEl.textContent = '—';
+      profitEl.textContent = '—';
+      profitEl.style.color = '';
+    }
+  }
+
+  // ---- manual bake row profit display ----
+  function updateManualRowProfitDisplay(n) {
+    const costEl = document.getElementById(`manual-cost-display-${n}`);
+    const profitEl = document.getElementById(`manual-profit-display-${n}`);
+    const wrap = document.getElementById(`manual-row-${n}`);
+    if (!costEl || !profitEl || !wrap) return;
+    const costPerItem = wrap.dataset.costPerItem !== '' ? Number(wrap.dataset.costPerItem) || null : null;
+    if (costEl) costEl.textContent = costPerItem != null ? `$${costPerItem.toFixed(2)}` : '—';
+    const msrp = Number(document.getElementById(`manual-msrp-${n}`) ? document.getElementById(`manual-msrp-${n}`).value : '') || null;
+    const wholesale = Number(document.getElementById(`manual-wholesale-${n}`) ? document.getElementById(`manual-wholesale-${n}`).value : '') || null;
+    const price = wholesale !== null ? wholesale : msrp;
+    if (price !== null && costPerItem != null) {
+      const profit = price - costPerItem;
+      if (profitEl) {
+        profitEl.textContent = `$${profit.toFixed(2)}`;
+        profitEl.style.color = profit < 0 ? 'var(--danger)' : '';
+      }
+    } else {
+      if (profitEl) { profitEl.textContent = '—'; profitEl.style.color = ''; }
+    }
+  }
+
   function renderHistory() {
     const list = document.getElementById('history-list');
     const statusEl = document.getElementById('history-sync-status');
@@ -2083,9 +2350,11 @@
     list.innerHTML = bakes.map(b => {
       const rows = b.items.map(it => {
         const priceStr = it.msrp != null ? `$${(it.msrp * it.count).toFixed(2)}` : '';
+        const wholesaleStr = it.wholesalePrice != null ? `Wholesale $${(it.wholesalePrice * it.count).toFixed(2)}` : '';
+        const costStr = it.costPerItem != null ? `Cost $${(it.costPerItem * it.count).toFixed(2)}` : '';
         const profitStr = it.netProfit != null ? `$${(it.netProfit * it.count).toFixed(2)} profit` : '';
         const tempStr = it.ovenTempF != null ? `${it.ovenTempF}°F` : '';
-        const lineDetail = [priceStr, profitStr, tempStr].filter(Boolean).join(' · ');
+        const lineDetail = [priceStr, wholesaleStr, costStr, profitStr, tempStr].filter(Boolean).join(' · ');
         return `<div class="row" style="justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
           <span>${it.recipeName}</span>
           <span style="display:flex;gap:12px;align-items:center">
@@ -2354,16 +2623,19 @@
   function showTab(name) {
     document.getElementById('tab-plan').style.display = name === 'plan' ? '' : 'none';
     document.getElementById('tab-recipes').style.display = name === 'recipes' ? '' : 'none';
+    document.getElementById('tab-ingredients').style.display = name === 'ingredients' ? '' : 'none';
     document.getElementById('tab-schedule').style.display = name === 'schedule' ? '' : 'none';
     document.getElementById('tab-history').style.display = name === 'history' ? '' : 'none';
     document.getElementById('tab-settings').style.display = name === 'settings' ? '' : 'none';
     document.getElementById('tab-plan-btn').classList.toggle('active', name === 'plan');
     document.getElementById('tab-recipes-btn').classList.toggle('active', name === 'recipes');
+    document.getElementById('tab-ingredients-btn').classList.toggle('active', name === 'ingredients');
     document.getElementById('tab-schedule-btn').classList.toggle('active', name === 'schedule');
     document.getElementById('tab-history-btn').classList.toggle('active', name === 'history');
     document.getElementById('tab-settings-btn').classList.toggle('active', name === 'settings');
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
+    if (name === 'ingredients') renderPantry();
     if (name === 'schedule') renderSchedule();
     if (name === 'history') renderHistory();
     if (name === 'settings') {
@@ -2909,6 +3181,15 @@
         ? ''
         : ' <span class="muted" style="font-size:0.75rem">(not yet scheduled)</span>';
       const inPlan = isInPlan(r.id);
+      const cost = computeRecipeCostPerItem(r);
+      const price = r.wholesalePrice ?? r.msrp;
+      const profit = (cost != null && price != null) ? price - cost : null;
+      const pricingParts = [];
+      if (r.msrp != null) pricingParts.push(`MSRP $${r.msrp}`);
+      if (r.wholesalePrice != null) pricingParts.push(`Wholesale $${r.wholesalePrice}`);
+      if (cost != null) pricingParts.push(`Cost $${cost.toFixed(2)}`);
+      if (profit != null) pricingParts.push(`Profit $${profit.toFixed(2)}`);
+      const pricingHtml = pricingParts.length ? `<div class="recipe-summary" style="margin-top:4px">${pricingParts.join(' · ')}</div>` : '';
       card.innerHTML = `
         <div class="row" style="justify-content: space-between">
           <div>
@@ -2932,6 +3213,7 @@
             ${r.ingredients.map(i => `<tr><td>${escapeHtml(i.name)}</td><td class="num">${i.pct}%</td></tr>`).join('')}
           </tbody>
         </table>
+        ${pricingHtml}
       `;
       list.appendChild(card);
     });
@@ -2976,7 +3258,7 @@
 
   function setUnitLabels(unit) {
     document.getElementById('r-unit-label').textContent = unit;
-    document.querySelectorAll('.r-unit-label2, .r-unit-label3').forEach(el => el.textContent = unit);
+    document.querySelectorAll('.r-unit-label2,.r-unit-label2b,.r-unit-label2c,.r-unit-label2d,.r-unit-label3').forEach(el => el.textContent = unit);
   }
 
   function onProcessTypeChange() {
@@ -3006,7 +3288,7 @@
     }
     document.getElementById('r-bake-temp').value = '';
     document.getElementById('r-msrp').value = '';
-    document.getElementById('r-net-profit').value = '';
+    document.getElementById('r-wholesale').value = '';
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -3039,8 +3321,9 @@
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
     document.getElementById('r-msrp').value =
       (r.msrp !== undefined && r.msrp !== null) ? r.msrp : '';
-    document.getElementById('r-net-profit').value =
-      (r.netProfit !== undefined && r.netProfit !== null) ? r.netProfit : '';
+    document.getElementById('r-wholesale').value =
+      (r.wholesalePrice !== undefined && r.wholesalePrice !== null) ? r.wholesalePrice : '';
+    updateRecipeEditorCostDisplay();
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3054,12 +3337,16 @@
     const pct = prefill && prefill.pct !== undefined ? prefill.pct : '';
     const flourType = prefill ? (prefill.flourType || detectFlourType(name)) : '';
     row.innerHTML = `
-      <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
-      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${pct}" oninput="onIngredientPctInput(this)" />
-      <select class="ing-flour-type" onchange="onFlourTypeChange(this)" title="Flour role">
+      <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" oninput="updateRecipeEditorCostDisplay()" />
+      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${pct}" oninput="onIngredientPctInput(this);updateRecipeEditorCostDisplay()" />
+      <select class="ing-flour-type" onchange="onFlourTypeChange(this);updateRecipeEditorCostDisplay()" title="Flour role">
         <option value=""${flourType === '' ? ' selected' : ''}>— not flour —</option>
         <option value="anchor"${flourType === 'anchor' ? ' selected' : ''}>Anchor flour</option>
         <option value="specialty"${flourType === 'specialty' ? ' selected' : ''}>Specialty flour</option>
+      </select>
+      <select class="ing-pantry" title="Link to ingredient cost" onchange="updateRecipeEditorCostDisplay()">
+        <option value="">— no cost link —</option>
+        ${pantryItems.map(p => `<option value="${escapeAttr(p.id)}"${(prefill && prefill.pantryId === p.id) ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
       </select>
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
@@ -3086,6 +3373,7 @@
       const iname = row.querySelector('.ing-name').value.trim();
       const ipct = Number(row.querySelector('.ing-pct').value);
       const flourType = row.querySelector('.ing-flour-type').value;
+      const pantryId = row.querySelector('.ing-pantry') ? row.querySelector('.ing-pantry').value || undefined : undefined;
       if (!iname) continue;
       if (!Number.isFinite(ipct) || ipct < 0) {
         alert(`Ingredient "${iname}" needs a non-negative percentage.`);
@@ -3093,6 +3381,7 @@
       }
       const ing = { name: iname, pct: ipct };
       if (flourType) ing.flourType = flourType;
+      if (pantryId) ing.pantryId = pantryId;
       ingredients.push(ing);
     }
     if (ingredients.length === 0) { alert('Add at least one ingredient.'); return; }
@@ -3113,10 +3402,12 @@
     const bakeTempF = bakeTempRaw ? Number(bakeTempRaw) : null;
     const msrpRaw = document.getElementById('r-msrp').value.trim();
     const msrp = msrpRaw ? Number(msrpRaw) : null;
-    const netProfitRaw = document.getElementById('r-net-profit').value.trim();
-    const netProfit = netProfitRaw ? Number(netProfitRaw) : null;
+    const wholesaleRaw = document.getElementById('r-wholesale').value.trim();
+    const wholesalePrice = wholesaleRaw ? Number(wholesaleRaw) : null;
+    const tmpRecipe = { ingredients, loafWeight };
+    const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, msrp, netProfit, ...overrides };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, msrp, wholesalePrice, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides };
 
     if (editingId) {
       const idx = recipes.findIndex(x => x.id === editingId);
@@ -5093,6 +5384,7 @@
   updateFooterNote();
   renderSyncBadge();
   renderPlan();
+  renderPantry();
 
   // Load recipes and bakes from Gist on startup if configured.
   (async () => {
