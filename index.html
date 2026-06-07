@@ -1562,15 +1562,77 @@
   function addManualBakeRow() {
     manualRowCount++;
     const n = manualRowCount;
-    const div = document.createElement('div');
-    div.className = 'row';
-    div.id = `manual-row-${n}`;
-    div.style.marginBottom = '6px';
-    div.innerHTML = `
-      <input type="text" placeholder="Recipe name" style="flex:2;min-width:120px" id="manual-name-${n}" />
-      <input type="number" placeholder="Count" min="1" step="1" style="width:70px;flex:none" id="manual-count-${n}" />
-      <button class="secondary tiny" onclick="removeManualBakeRow(${n})" style="padding:4px 8px;flex:none">×</button>`;
-    document.getElementById('manual-items').appendChild(div);
+    const wrap = document.createElement('div');
+    wrap.id = `manual-row-${n}`;
+    wrap.style.marginBottom = '8px';
+
+    const recipeOptions = recipes.map(r =>
+      `<option value="${escapeAttr(r.id)}">${escapeHtml(r.name)}</option>`
+    ).join('');
+
+    wrap.innerHTML = `
+      <div class="row" style="gap:6px">
+        <select id="manual-sel-${n}" onchange="onManualRecipeSelect(${n})" style="flex:2;min-width:120px">
+          <option value="">— choose recipe —</option>
+          ${recipeOptions}
+          <option value="__manual__">Enter name manually…</option>
+        </select>
+        <input type="text" id="manual-name-${n}" placeholder="Recipe name" style="flex:2;min-width:120px;display:none" />
+        <input type="number" id="manual-count-${n}" placeholder="Count" min="1" step="1" style="width:70px;flex:none" />
+        <button class="secondary tiny" onclick="removeManualBakeRow(${n})" style="padding:4px 8px;flex:none">×</button>
+      </div>
+      <div id="manual-preview-${n}" style="font-size:0.78rem;color:var(--muted);margin:2px 0 0 4px"></div>`;
+    document.getElementById('manual-items').appendChild(wrap);
+  }
+
+  function onManualRecipeSelect(n) {
+    const sel = document.getElementById(`manual-sel-${n}`);
+    const nameInput = document.getElementById(`manual-name-${n}`);
+    const preview = document.getElementById(`manual-preview-${n}`);
+    const wrap = document.getElementById(`manual-row-${n}`);
+    const val = sel.value;
+
+    if (val === '__manual__') {
+      nameInput.style.display = '';
+      nameInput.focus();
+      if (preview) preview.textContent = '';
+      wrap.dataset.recipeId = '';
+      return;
+    }
+    nameInput.style.display = 'none';
+    if (!val) {
+      if (preview) preview.textContent = '';
+      wrap.dataset.recipeId = '';
+      return;
+    }
+
+    const recipe = recipes.find(r => r.id === val);
+    if (!recipe) return;
+    const spec = getRecipeSpec(recipe);
+
+    wrap.dataset.recipeId = recipe.id;
+    wrap.dataset.msrp = recipe.msrp != null ? recipe.msrp : '';
+    wrap.dataset.netProfit = recipe.netProfit != null ? recipe.netProfit : '';
+    wrap.dataset.bakeMin = spec.bakeMin != null ? spec.bakeMin : '';
+    wrap.dataset.coldProofHr = recipe.coldProofHr != null ? recipe.coldProofHr : (spec.coldProofHr != null ? spec.coldProofHr : '');
+    wrap.dataset.bakeTempF = recipe.bakeTempF != null ? recipe.bakeTempF : '';
+
+    // Auto-fill oven temp if field is empty
+    if (recipe.bakeTempF) {
+      const ovenEl = document.getElementById('manual-oven-temp');
+      if (ovenEl && !ovenEl.value) ovenEl.value = recipe.bakeTempF;
+    }
+
+    // Build preview line
+    const parts = [];
+    if (recipe.msrp != null) parts.push(`$${recipe.msrp} MSRP`);
+    if (recipe.netProfit != null) parts.push(`$${recipe.netProfit} profit/unit`);
+    if (spec.bakeMin) parts.push(`${spec.bakeMin} min bake`);
+    const cp = recipe.coldProofHr != null ? recipe.coldProofHr : null;
+    if (cp !== null && cp !== '') {
+      parts.push(String(cp) === '0' ? 'no cold proof' : `${cp} hr cold proof`);
+    }
+    if (preview) preview.textContent = parts.length ? parts.join(' · ') : '';
   }
 
   function removeManualBakeRow(n) {
@@ -1585,12 +1647,33 @@
     const [y, mo, d] = dateVal.split('-').map(Number);
     const savedAt = new Date(y, mo - 1, d, 8, 0, 0).getTime();
     const items = [];
-    document.querySelectorAll('#manual-items .row').forEach(row => {
-      const nameEl = row.querySelector('input[type="text"]');
-      const countEl = row.querySelector('input[type="number"]');
-      const name = nameEl ? nameEl.value.trim() : '';
+    document.querySelectorAll('#manual-items > div').forEach(wrap => {
+      const sel = wrap.querySelector('select');
+      const nameInput = wrap.querySelector('input[type="text"]');
+      const countEl = wrap.querySelector('input[type="number"]');
       const count = countEl ? Number(countEl.value) : 0;
-      if (name && count > 0) items.push({ recipeName: name, count });
+      if (count <= 0) return;
+
+      let name, recipeId;
+      if (sel && sel.value === '__manual__') {
+        name = nameInput ? nameInput.value.trim() : '';
+        recipeId = null;
+      } else if (sel && sel.value) {
+        const r = recipes.find(x => x.id === sel.value);
+        name = r ? r.name : '';
+        recipeId = sel.value;
+      } else {
+        return;
+      }
+      if (!name) return;
+
+      const item = { recipeName: name, count };
+      if (recipeId) item.recipeId = recipeId;
+      if (wrap.dataset.msrp !== '') item.msrp = Number(wrap.dataset.msrp);
+      if (wrap.dataset.netProfit !== '') item.netProfit = Number(wrap.dataset.netProfit);
+      if (wrap.dataset.bakeMin !== '') item.bakeMin = Number(wrap.dataset.bakeMin);
+      if (wrap.dataset.coldProofHr !== '') item.coldProofHr = wrap.dataset.coldProofHr;
+      items.push(item);
     });
     if (items.length === 0) { msg.textContent = 'Add at least one recipe with a count.'; msg.style.color = 'var(--danger)'; return; }
     const notes = (document.getElementById('manual-notes').value || '').trim();
