@@ -1512,9 +1512,17 @@
       .filter(([, count]) => Number(count) > 0)
       .map(([id, count]) => {
         const recipe = recipes.find(r => r.id === id);
-        const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: Number(count) };
+        const n = Number(count);
+        const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: n };
         if (recipe && recipe.msrp != null) item.msrp = recipe.msrp;
         if (recipe && recipe.netProfit != null) item.netProfit = recipe.netProfit;
+        if (recipe) {
+          const spec = getRecipeSpec(recipe);
+          if (spec.bakeMin) item.bakeMin = spec.bakeMin;
+          if (recipe.coldProofHr != null) item.coldProofHr = recipe.coldProofHr;
+          const fw = calcFlourWeights(recipe, n);
+          if (fw.length) item.flourWeights = fw;
+        }
         return item;
       });
     const msg = document.getElementById('save-bake-msg');
@@ -1623,6 +1631,10 @@
       if (ovenEl && !ovenEl.value) ovenEl.value = recipe.bakeTempF;
     }
 
+    // Store per-unit flour weights for use at submission
+    const flourPerUnit = calcFlourWeights(recipe, 1);
+    wrap.dataset.flourPerUnit = JSON.stringify(flourPerUnit);
+
     // Build preview line
     const parts = [];
     if (recipe.msrp != null) parts.push(`$${recipe.msrp} MSRP`);
@@ -1631,6 +1643,9 @@
     const cp = recipe.coldProofHr != null ? recipe.coldProofHr : null;
     if (cp !== null && cp !== '') {
       parts.push(String(cp) === '0' ? 'no cold proof' : `${cp} hr cold proof`);
+    }
+    if (flourPerUnit.length) {
+      parts.push('Flours/unit: ' + flourPerUnit.map(f => `${f.name} ${formatGrams(f.grams)}`).join(', '));
     }
     if (preview) preview.textContent = parts.length ? parts.join(' · ') : '';
   }
@@ -1673,6 +1688,12 @@
       if (wrap.dataset.netProfit !== '') item.netProfit = Number(wrap.dataset.netProfit);
       if (wrap.dataset.bakeMin !== '') item.bakeMin = Number(wrap.dataset.bakeMin);
       if (wrap.dataset.coldProofHr !== '') item.coldProofHr = wrap.dataset.coldProofHr;
+      if (wrap.dataset.flourPerUnit) {
+        try {
+          const perUnit = JSON.parse(wrap.dataset.flourPerUnit);
+          if (perUnit.length) item.flourWeights = perUnit.map(f => ({ name: f.name, grams: f.grams * count }));
+        } catch (e) {}
+      }
       items.push(item);
     });
     if (items.length === 0) { msg.textContent = 'Add at least one recipe with a count.'; msg.style.color = 'var(--danger)'; return; }
@@ -1856,6 +1877,18 @@
       if (b.ovenTempF) meta.push(`${b.ovenTempF}°F`);
       const metaHtml = meta.length ? `<span style="color:var(--muted);font-size:0.8rem">${meta.join(' · ')}</span>` : '<span></span>';
       const notesHtml = b.notes ? `<p style="margin:8px 0 0;font-size:0.88rem;color:var(--muted);font-style:italic">${b.notes}</p>` : '';
+      // Aggregate flour weights across all items
+      const flourMap = new Map();
+      b.items.forEach(it => {
+        if (it.flourWeights) it.flourWeights.forEach(f => {
+          flourMap.set(f.name, (flourMap.get(f.name) || 0) + f.grams);
+        });
+      });
+      const flourSectionHtml = flourMap.size ? `<details style="margin-top:8px"><summary style="font-size:0.82rem;color:var(--muted);cursor:pointer">Flour used</summary><div style="margin-top:4px">${
+        [...flourMap.entries()].map(([name, g]) =>
+          `<div class="row" style="justify-content:space-between;padding:2px 0;font-size:0.82rem"><span style="color:var(--muted)">${escapeHtml(name)}</span><span>${formatGrams(g)}</span></div>`
+        ).join('')
+      }</div></details>` : '';
       const totalsRight = [
         hasRevenue ? `$${totalRevenue.toFixed(2)} revenue` : '',
         hasProfit ? `$${totalProfit.toFixed(2)} profit` : '',
@@ -1872,6 +1905,7 @@
           <span style="color:var(--muted);font-size:0.8rem">${totalsRight}</span>
         </div>
         ${notesHtml}
+        ${flourSectionHtml}
       </div>`;
     }).join('');
   }
@@ -2617,6 +2651,16 @@
   function formatGrams(g) {
     if (g < 9) return g.toFixed(1) + ' g';
     return Math.round(g) + ' g';
+  }
+
+  function calcFlourWeights(recipe, count) {
+    if (!recipe || !recipe.ingredients || !count) return [];
+    const sumPct = recipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
+    if (!sumPct) return [];
+    const totalFlourG = (recipe.loafWeight * count) / (sumPct / 100);
+    return recipe.ingredients
+      .filter(i => i.flourType === 'anchor' || i.flourType === 'specialty')
+      .map(i => ({ name: i.name, grams: totalFlourG * (Number(i.pct) / 100) }));
   }
 
   // ---- render: recipes tab ----
