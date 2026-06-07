@@ -924,11 +924,6 @@
           <label style="width:120px">Notes</label>
           <textarea id="manual-notes" rows="2" placeholder="Optional — anything notable about this bake…"></textarea>
         </div>
-        <div class="row" style="margin-top:8px">
-          <label style="width:120px">Oven temp</label>
-          <input type="number" id="manual-oven-temp" min="0" step="5" placeholder="e.g. 500" style="width:90px;flex:none" />
-          <span class="muted">°F</span>
-        </div>
         <div class="row" style="margin-top:12px;gap:8px;justify-content:flex-end">
           <button class="secondary" onclick="toggleManualBakeForm()">Cancel</button>
           <button onclick="submitManualBake()">Save past bake</button>
@@ -1559,7 +1554,6 @@
       const dd = String(today.getDate()).padStart(2, '0');
       document.getElementById('manual-date').value = `${yyyy}-${mm}-${dd}`;
       document.getElementById('manual-notes').value = '';
-      document.getElementById('manual-oven-temp').value = '';
       document.getElementById('manual-bake-msg').textContent = '';
       manualRowCount = 0;
       document.getElementById('manual-items').innerHTML = '';
@@ -1588,6 +1582,17 @@
         <input type="text" id="manual-name-${n}" placeholder="Recipe name" style="flex:2;min-width:120px;display:none" />
         <input type="number" id="manual-count-${n}" placeholder="Count" min="1" step="1" style="width:70px;flex:none" />
         <button class="secondary tiny" onclick="removeManualBakeRow(${n})" style="padding:4px 8px;flex:none">×</button>
+      </div>
+      <div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;align-self:center">MSRP/unit</label>
+        <span class="muted" style="font-size:0.82rem">$</span>
+        <input type="number" id="manual-msrp-${n}" min="0" step="0.25" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" />
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;align-self:center;margin-left:6px">Profit/unit</label>
+        <span class="muted" style="font-size:0.82rem">$</span>
+        <input type="number" id="manual-profit-${n}" min="0" step="0.25" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" />
+        <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;align-self:center;margin-left:6px">Oven temp</label>
+        <input type="number" id="manual-temp-${n}" min="0" step="5" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" />
+        <span class="muted" style="font-size:0.82rem">°F</span>
       </div>
       <div id="manual-preview-${n}" style="font-size:0.78rem;color:var(--muted);margin:2px 0 0 4px"></div>`;
     document.getElementById('manual-items').appendChild(wrap);
@@ -1619,17 +1624,16 @@
     const spec = getRecipeSpec(recipe);
 
     wrap.dataset.recipeId = recipe.id;
-    wrap.dataset.msrp = recipe.msrp != null ? recipe.msrp : '';
-    wrap.dataset.netProfit = recipe.netProfit != null ? recipe.netProfit : '';
     wrap.dataset.bakeMin = spec.bakeMin != null ? spec.bakeMin : '';
     wrap.dataset.coldProofHr = recipe.coldProofHr != null ? recipe.coldProofHr : (spec.coldProofHr != null ? spec.coldProofHr : '');
-    wrap.dataset.bakeTempF = recipe.bakeTempF != null ? recipe.bakeTempF : '';
 
-    // Auto-fill oven temp if field is empty
-    if (recipe.bakeTempF) {
-      const ovenEl = document.getElementById('manual-oven-temp');
-      if (ovenEl && !ovenEl.value) ovenEl.value = recipe.bakeTempF;
-    }
+    // Auto-fill per-row inputs
+    const msrpEl = document.getElementById(`manual-msrp-${n}`);
+    const profitEl = document.getElementById(`manual-profit-${n}`);
+    const tempEl = document.getElementById(`manual-temp-${n}`);
+    if (msrpEl) msrpEl.value = recipe.msrp != null ? recipe.msrp : '';
+    if (profitEl) profitEl.value = recipe.netProfit != null ? recipe.netProfit : '';
+    if (tempEl) tempEl.value = recipe.bakeTempF != null ? recipe.bakeTempF : '';
 
     // Store per-unit flour weights for use at submission
     const flourPerUnit = calcFlourWeights(recipe, 1);
@@ -1663,9 +1667,10 @@
     const savedAt = new Date(y, mo - 1, d, 8, 0, 0).getTime();
     const items = [];
     document.querySelectorAll('#manual-items > div').forEach(wrap => {
+      const rowN = wrap.id.replace('manual-row-', '');
       const sel = wrap.querySelector('select');
-      const nameInput = wrap.querySelector('input[type="text"]');
-      const countEl = wrap.querySelector('input[type="number"]');
+      const nameInput = document.getElementById(`manual-name-${rowN}`);
+      const countEl = document.getElementById(`manual-count-${rowN}`);
       const count = countEl ? Number(countEl.value) : 0;
       if (count <= 0) return;
 
@@ -1684,8 +1689,15 @@
 
       const item = { recipeName: name, count };
       if (recipeId) item.recipeId = recipeId;
-      if (wrap.dataset.msrp !== '') item.msrp = Number(wrap.dataset.msrp);
-      if (wrap.dataset.netProfit !== '') item.netProfit = Number(wrap.dataset.netProfit);
+      const msrpEl = document.getElementById(`manual-msrp-${rowN}`);
+      const profitEl = document.getElementById(`manual-profit-${rowN}`);
+      const tempEl = document.getElementById(`manual-temp-${rowN}`);
+      const msrpVal = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
+      const profitVal = profitEl && profitEl.value !== '' ? Number(profitEl.value) : null;
+      const tempVal = tempEl && tempEl.value !== '' ? Number(tempEl.value) : null;
+      if (msrpVal != null) item.msrp = msrpVal;
+      if (profitVal != null) item.netProfit = profitVal;
+      if (tempVal != null) item.ovenTempF = tempVal;
       if (wrap.dataset.bakeMin !== '') item.bakeMin = Number(wrap.dataset.bakeMin);
       if (wrap.dataset.coldProofHr !== '') item.coldProofHr = wrap.dataset.coldProofHr;
       if (wrap.dataset.flourPerUnit) {
@@ -1698,11 +1710,8 @@
     });
     if (items.length === 0) { msg.textContent = 'Add at least one recipe with a count.'; msg.style.color = 'var(--danger)'; return; }
     const notes = (document.getElementById('manual-notes').value || '').trim();
-    const ovenTempRaw = document.getElementById('manual-oven-temp').value;
-    const ovenTempF = ovenTempRaw ? Number(ovenTempRaw) : null;
     const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt, items };
     if (notes) entry.notes = notes;
-    if (ovenTempF) entry.ovenTempF = ovenTempF;
     bakes = [entry, ...bakes].sort((a, b) => b.savedAt - a.savedAt);
     saveBakesLocally();
     toggleManualBakeForm();
@@ -1859,7 +1868,8 @@
       const rows = b.items.map(it => {
         const priceStr = it.msrp != null ? `$${(it.msrp * it.count).toFixed(2)}` : '';
         const profitStr = it.netProfit != null ? `$${(it.netProfit * it.count).toFixed(2)} profit` : '';
-        const lineDetail = [priceStr, profitStr].filter(Boolean).join(' · ');
+        const tempStr = it.ovenTempF != null ? `${it.ovenTempF}°F` : '';
+        const lineDetail = [priceStr, profitStr, tempStr].filter(Boolean).join(' · ');
         return `<div class="row" style="justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
           <span>${it.recipeName}</span>
           <span style="display:flex;gap:12px;align-items:center">
