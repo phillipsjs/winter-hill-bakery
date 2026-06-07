@@ -92,16 +92,18 @@
   }
   .row + .row { margin-top: 8px; }
   label { font-size: 0.9rem; color: var(--muted); }
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], input[type="date"], textarea {
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 6px 8px;
     font-size: 0.95rem;
     background: white;
     color: var(--ink);
+    font-family: inherit;
   }
   input[type="number"] { width: 90px; text-align: right; }
-  input[type="text"] { flex: 1; min-width: 120px; }
+  input[type="text"], input[type="date"] { flex: 1; min-width: 120px; }
+  textarea { flex: 1; resize: vertical; min-height: 56px; }
   button {
     background: var(--accent);
     color: white;
@@ -552,9 +554,24 @@
           <h2 style="margin:0 0 4px">This bake</h2>
           <p class="muted" style="margin:0">Add recipes from the <strong>Recipes</strong> tab, then enter how many of each you'll bake.</p>
         </div>
-        <button class="secondary" onclick="saveCurrentBake()" style="white-space:nowrap;flex-shrink:0">Save to history</button>
+        <button class="secondary" onclick="toggleSavePanel()" id="save-panel-btn" style="white-space:nowrap;flex-shrink:0">Save to history</button>
       </div>
-      <div id="save-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
+      <div id="save-panel" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+        <div class="row">
+          <label style="width:120px">Notes</label>
+          <textarea id="save-notes" rows="2" placeholder="Optional — describe the bake, any adjustments…"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="width:120px">Oven temp</label>
+          <input type="number" id="save-oven-temp" min="0" step="5" placeholder="e.g. 500" style="width:90px;flex:none" />
+          <span class="muted">°F</span>
+        </div>
+        <div class="row" style="margin-top:10px;gap:8px;justify-content:flex-end">
+          <button class="secondary" onclick="toggleSavePanel()">Cancel</button>
+          <button onclick="saveCurrentBake()">Confirm save</button>
+        </div>
+        <div id="save-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
+      </div>
       <div id="plan-list" style="margin-top:10px"></div>
     </div>
 
@@ -836,11 +853,37 @@
 
   <section id="tab-history" style="display:none">
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center">
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h2 style="margin:0">Bake history</h2>
-        <span id="history-sync-status" style="font-size:0.8rem;color:var(--muted)"></span>
+        <div class="row" style="gap:10px;flex-wrap:wrap">
+          <span id="history-sync-status" style="font-size:0.8rem;color:var(--muted)"></span>
+          <button class="secondary" onclick="toggleManualBakeForm()">Log a past bake</button>
+        </div>
       </div>
-      <p class="muted" style="margin:4px 0 0;font-size:0.9rem">Each saved bake records the recipes and quantities from your bake plan at the time you clicked Save.</p>
+      <p class="muted" style="margin:6px 0 0;font-size:0.9rem">Saves from the Bake Plan tab capture the current plan. You can also log past bakes manually below.</p>
+
+      <div id="manual-bake-form" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+        <div class="row">
+          <label style="width:120px">Date</label>
+          <input type="date" id="manual-date" style="flex:none;width:auto" />
+        </div>
+        <div id="manual-items" style="margin:10px 0 4px"></div>
+        <button class="secondary tiny" onclick="addManualBakeRow()" style="margin-bottom:12px">+ Add recipe</button>
+        <div class="row">
+          <label style="width:120px">Notes</label>
+          <textarea id="manual-notes" rows="2" placeholder="Optional — anything notable about this bake…"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="width:120px">Oven temp</label>
+          <input type="number" id="manual-oven-temp" min="0" step="5" placeholder="e.g. 500" style="width:90px;flex:none" />
+          <span class="muted">°F</span>
+        </div>
+        <div class="row" style="margin-top:12px;gap:8px;justify-content:flex-end">
+          <button class="secondary" onclick="toggleManualBakeForm()">Cancel</button>
+          <button onclick="submitManualBake()">Save past bake</button>
+        </div>
+        <div id="manual-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
+      </div>
     </div>
     <div id="history-list"></div>
   </section>
@@ -1375,6 +1418,13 @@
     if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
   }
 
+  function toggleSavePanel() {
+    const panel = document.getElementById('save-panel');
+    const isOpen = panel.style.display !== 'none';
+    panel.style.display = isOpen ? 'none' : '';
+    if (isOpen) document.getElementById('save-bake-msg').textContent = '';
+  }
+
   function saveCurrentBake() {
     const items = Object.entries(plan)
       .filter(([, count]) => Number(count) > 0)
@@ -1382,19 +1432,93 @@
         const recipe = recipes.find(r => r.id === id);
         return { recipeId: id, recipeName: recipe ? recipe.name : id, count: Number(count) };
       });
+    const msg = document.getElementById('save-bake-msg');
     if (items.length === 0) {
-      const msg = document.getElementById('save-bake-msg');
       if (msg) { msg.textContent = 'Nothing in the current bake plan to save.'; msg.style.color = 'var(--muted)'; }
       return;
     }
+    const notes = (document.getElementById('save-notes').value || '').trim();
+    const ovenTempRaw = document.getElementById('save-oven-temp').value;
+    const ovenTempF = ovenTempRaw ? Number(ovenTempRaw) : null;
     const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt: Date.now(), items };
+    if (notes) entry.notes = notes;
+    if (ovenTempF) entry.ovenTempF = ovenTempF;
     bakes = [entry, ...bakes];
     saveBakesLocally();
-    const msg = document.getElementById('save-bake-msg');
-    if (msg) { msg.textContent = 'Bake saved to history.'; msg.style.color = 'var(--ok)'; setTimeout(() => { msg.textContent = ''; }, 3000); }
-    if (getGistConfig()) {
-      pushBakesToGist().catch(() => {});
+    if (msg) {
+      msg.textContent = 'Bake saved.';
+      msg.style.color = 'var(--ok)';
+      setTimeout(() => { toggleSavePanel(); document.getElementById('save-notes').value = ''; document.getElementById('save-oven-temp').value = ''; }, 1200);
     }
+    if (getGistConfig()) pushBakesToGist().catch(() => {});
+  }
+
+  let manualRowCount = 0;
+
+  function toggleManualBakeForm() {
+    const form = document.getElementById('manual-bake-form');
+    const isOpen = form.style.display !== 'none';
+    form.style.display = isOpen ? 'none' : '';
+    if (!isOpen) {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      document.getElementById('manual-date').value = `${yyyy}-${mm}-${dd}`;
+      document.getElementById('manual-notes').value = '';
+      document.getElementById('manual-oven-temp').value = '';
+      document.getElementById('manual-bake-msg').textContent = '';
+      manualRowCount = 0;
+      document.getElementById('manual-items').innerHTML = '';
+      addManualBakeRow();
+    }
+  }
+
+  function addManualBakeRow() {
+    manualRowCount++;
+    const n = manualRowCount;
+    const div = document.createElement('div');
+    div.className = 'row';
+    div.id = `manual-row-${n}`;
+    div.style.marginBottom = '6px';
+    div.innerHTML = `
+      <input type="text" placeholder="Recipe name" style="flex:2;min-width:120px" id="manual-name-${n}" />
+      <input type="number" placeholder="Count" min="1" step="1" style="width:70px;flex:none" id="manual-count-${n}" />
+      <button class="secondary tiny" onclick="removeManualBakeRow(${n})" style="padding:4px 8px;flex:none">×</button>`;
+    document.getElementById('manual-items').appendChild(div);
+  }
+
+  function removeManualBakeRow(n) {
+    const el = document.getElementById(`manual-row-${n}`);
+    if (el) el.remove();
+  }
+
+  function submitManualBake() {
+    const msg = document.getElementById('manual-bake-msg');
+    const dateVal = document.getElementById('manual-date').value;
+    if (!dateVal) { msg.textContent = 'Please set a date.'; msg.style.color = 'var(--danger)'; return; }
+    const [y, mo, d] = dateVal.split('-').map(Number);
+    const savedAt = new Date(y, mo - 1, d, 8, 0, 0).getTime();
+    const items = [];
+    document.querySelectorAll('#manual-items .row').forEach(row => {
+      const nameEl = row.querySelector('input[type="text"]');
+      const countEl = row.querySelector('input[type="number"]');
+      const name = nameEl ? nameEl.value.trim() : '';
+      const count = countEl ? Number(countEl.value) : 0;
+      if (name && count > 0) items.push({ recipeName: name, count });
+    });
+    if (items.length === 0) { msg.textContent = 'Add at least one recipe with a count.'; msg.style.color = 'var(--danger)'; return; }
+    const notes = (document.getElementById('manual-notes').value || '').trim();
+    const ovenTempRaw = document.getElementById('manual-oven-temp').value;
+    const ovenTempF = ovenTempRaw ? Number(ovenTempRaw) : null;
+    const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt, items };
+    if (notes) entry.notes = notes;
+    if (ovenTempF) entry.ovenTempF = ovenTempF;
+    bakes = [entry, ...bakes].sort((a, b) => b.savedAt - a.savedAt);
+    saveBakesLocally();
+    toggleManualBakeForm();
+    renderHistory();
+    if (getGistConfig()) pushBakesToGist().catch(() => {});
   }
 
   function deleteBake(id) {
@@ -1410,7 +1534,7 @@
     if (!list) return;
     if (statusEl) statusEl.textContent = getGistConfig() ? 'Synced to Gist' : 'Local only';
     if (bakes.length === 0) {
-      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet. Use <strong>Save to history</strong> on the Bake Plan tab.</p></div>';
+      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet — use <strong>Save to history</strong> on the Bake Plan tab, or <strong>Log a past bake</strong> above.</p></div>';
       return;
     }
     const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -1421,15 +1545,21 @@
           <strong>${it.count}</strong>
         </div>`
       ).join('');
+      const meta = [];
+      if (b.ovenTempF) meta.push(`${b.ovenTempF}°F`);
+      const metaHtml = meta.length ? `<span style="color:var(--muted);font-size:0.8rem">${meta.join(' · ')}</span>` : '<span></span>';
+      const notesHtml = b.notes ? `<p style="margin:8px 0 0;font-size:0.88rem;color:var(--muted);font-style:italic">${b.notes}</p>` : '';
       return `<div class="card">
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
           <span style="font-weight:600">${fmt.format(new Date(b.savedAt))}</span>
           <button class="secondary tiny" onclick="deleteBake('${b.id}')" style="color:var(--danger);border-color:var(--danger)">Delete</button>
         </div>
         ${rows}
-        <div class="row" style="justify-content:flex-end;margin-top:8px;color:var(--muted);font-size:0.8rem">
-          ${b.items.reduce((s, it) => s + it.count, 0)} items total
+        <div class="row" style="justify-content:space-between;margin-top:8px">
+          ${metaHtml}
+          <span style="color:var(--muted);font-size:0.8rem">${b.items.reduce((s, it) => s + it.count, 0)} items total</span>
         </div>
+        ${notesHtml}
       </div>`;
     }).join('');
   }
