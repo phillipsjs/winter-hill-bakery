@@ -640,6 +640,18 @@
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
 
       <hr class="sep" />
+      <div class="row">
+        <label style="width:120px">MSRP per <span class="r-unit-label2">unit</span></label>
+        <span class="muted">$</span>
+        <input type="number" id="r-msrp" min="0" step="0.25" style="width:90px;flex:none" />
+      </div>
+      <div class="row">
+        <label style="width:120px">Net profit per <span class="r-unit-label3">unit</span></label>
+        <span class="muted">$</span>
+        <input type="number" id="r-net-profit" min="0" step="0.25" style="width:90px;flex:none" />
+      </div>
+
+      <hr class="sep" />
       <details id="r-recipe-settings" open>
         <summary>Recipe settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
         <div class="scheduler-overrides">
@@ -1492,7 +1504,10 @@
       .filter(([, count]) => Number(count) > 0)
       .map(([id, count]) => {
         const recipe = recipes.find(r => r.id === id);
-        return { recipeId: id, recipeName: recipe ? recipe.name : id, count: Number(count) };
+        const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: Number(count) };
+        if (recipe && recipe.msrp != null) item.msrp = recipe.msrp;
+        if (recipe && recipe.netProfit != null) item.netProfit = recipe.netProfit;
+        return item;
       });
     const msg = document.getElementById('save-bake-msg');
     if (items.length === 0) {
@@ -1682,16 +1697,32 @@
     }
     const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
     list.innerHTML = bakes.map(b => {
-      const rows = b.items.map(it =>
-        `<div class="row" style="justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+      const rows = b.items.map(it => {
+        const priceStr = it.msrp != null ? `$${(it.msrp * it.count).toFixed(2)}` : '';
+        const profitStr = it.netProfit != null ? `$${(it.netProfit * it.count).toFixed(2)} profit` : '';
+        const lineDetail = [priceStr, profitStr].filter(Boolean).join(' · ');
+        return `<div class="row" style="justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
           <span>${it.recipeName}</span>
-          <strong>${it.count}</strong>
-        </div>`
-      ).join('');
+          <span style="display:flex;gap:12px;align-items:center">
+            ${lineDetail ? `<span class="muted" style="font-size:0.8rem">${lineDetail}</span>` : ''}
+            <strong>${it.count}</strong>
+          </span>
+        </div>`;
+      }).join('');
+      const totalItems = b.items.reduce((s, it) => s + it.count, 0);
+      const totalRevenue = b.items.reduce((s, it) => it.msrp != null ? s + it.msrp * it.count : s, 0);
+      const totalProfit = b.items.reduce((s, it) => it.netProfit != null ? s + it.netProfit * it.count : s, 0);
+      const hasRevenue = b.items.some(it => it.msrp != null);
+      const hasProfit = b.items.some(it => it.netProfit != null);
       const meta = [];
       if (b.ovenTempF) meta.push(`${b.ovenTempF}°F`);
       const metaHtml = meta.length ? `<span style="color:var(--muted);font-size:0.8rem">${meta.join(' · ')}</span>` : '<span></span>';
       const notesHtml = b.notes ? `<p style="margin:8px 0 0;font-size:0.88rem;color:var(--muted);font-style:italic">${b.notes}</p>` : '';
+      const totalsRight = [
+        hasRevenue ? `$${totalRevenue.toFixed(2)} revenue` : '',
+        hasProfit ? `$${totalProfit.toFixed(2)} profit` : '',
+        `${totalItems} items`,
+      ].filter(Boolean).join(' · ');
       return `<div class="card">
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
           <span style="font-weight:600">${fmt.format(new Date(b.savedAt))}</span>
@@ -1700,7 +1731,7 @@
         ${rows}
         <div class="row" style="justify-content:space-between;margin-top:8px">
           ${metaHtml}
-          <span style="color:var(--muted);font-size:0.8rem">${b.items.reduce((s, it) => s + it.count, 0)} items total</span>
+          <span style="color:var(--muted);font-size:0.8rem">${totalsRight}</span>
         </div>
         ${notesHtml}
       </div>`;
@@ -2532,6 +2563,11 @@
     }
   }
 
+  function setUnitLabels(unit) {
+    document.getElementById('r-unit-label').textContent = unit;
+    document.querySelectorAll('.r-unit-label2, .r-unit-label3').forEach(el => el.textContent = unit);
+  }
+
   function onProcessTypeChange() {
     const sel = document.getElementById('r-process-type');
     const processType = sel.value;
@@ -2540,7 +2576,7 @@
     const unitInput = document.getElementById('r-unit');
     if (!unitInput.value.trim()) {
       unitInput.value = tmpl.unit;
-      document.getElementById('r-unit-label').textContent = tmpl.unit;
+      setUnitLabels(tmpl.unit);
     }
     applyOverridePlaceholders(processType);
   }
@@ -2551,13 +2587,15 @@
     document.getElementById('r-name').value = '';
     document.getElementById('r-process-type').value = 'sourdough-loaf';
     document.getElementById('r-unit').value = 'loaf';
-    document.getElementById('r-unit-label').textContent = 'loaf';
+    setUnitLabels('loaf');
     document.getElementById('r-weight').value = 500;
     document.getElementById('r-ingredients').innerHTML = '';
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
     }
     document.getElementById('r-bake-temp').value = '';
+    document.getElementById('r-msrp').value = '';
+    document.getElementById('r-net-profit').value = '';
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -2577,7 +2615,7 @@
     document.getElementById('r-process-type').value = processType;
     const unit = r.unit || PROCESS_TEMPLATES[processType].unit;
     document.getElementById('r-unit').value = unit;
-    document.getElementById('r-unit-label').textContent = unit;
+    setUnitLabels(unit);
     document.getElementById('r-weight').value = r.loafWeight;
     document.getElementById('r-ingredients').innerHTML = '';
     r.ingredients.forEach(i => addIngredientRow(i));
@@ -2588,6 +2626,10 @@
     }
     document.getElementById('r-bake-temp').value =
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
+    document.getElementById('r-msrp').value =
+      (r.msrp !== undefined && r.msrp !== null) ? r.msrp : '';
+    document.getElementById('r-net-profit').value =
+      (r.netProfit !== undefined && r.netProfit !== null) ? r.netProfit : '';
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2658,8 +2700,12 @@
     }
     const bakeTempRaw = document.getElementById('r-bake-temp').value.trim();
     const bakeTempF = bakeTempRaw ? Number(bakeTempRaw) : null;
+    const msrpRaw = document.getElementById('r-msrp').value.trim();
+    const msrp = msrpRaw ? Number(msrpRaw) : null;
+    const netProfitRaw = document.getElementById('r-net-profit').value.trim();
+    const netProfit = netProfitRaw ? Number(netProfitRaw) : null;
 
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, ...overrides };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, msrp, netProfit, ...overrides };
 
     if (editingId) {
       const idx = recipes.findIndex(x => x.id === editingId);
