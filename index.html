@@ -640,17 +640,51 @@
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
 
       <hr class="sep" />
-      <details id="r-scheduler-details">
-        <summary>Scheduler settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
+      <details id="r-recipe-settings" open>
+        <summary>Recipe settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
         <div class="scheduler-overrides">
+          <div class="row"><label style="width:160px">Cold proof</label>
+            <select id="r-cold-proof" class="settings-select" style="flex:none;width:auto">
+              <option value="">— use process default —</option>
+              <option value="0">None (bake after shape)</option>
+              <option value="2-6">2–6 hours</option>
+              <option value="4-8">4–8 hours</option>
+              <option value="6-10">6–10 hours</option>
+              <option value="8-12">8–12 hours</option>
+              <option value="10-14">10–14 hours</option>
+              <option value="12-16">12–16 hours</option>
+              <option value="14-18">14–18 hours</option>
+              <option value="16-20">16–20 hours</option>
+              <option value="18-22">18–22 hours</option>
+              <option value="20-24">20–24 hours</option>
+              <option value="22-26">22–26 hours</option>
+              <option value="24-28">24–28 hours</option>
+              <option value="26-30">26–30 hours</option>
+              <option value="28-32">28–32 hours</option>
+              <option value="30-34">30–34 hours</option>
+              <option value="32-36">32–36 hours</option>
+              <option value="34-38">34–38 hours</option>
+              <option value="36-40">36–40 hours</option>
+              <option value="38-42">38–42 hours</option>
+              <option value="40-44">40–44 hours</option>
+              <option value="42-46">42–46 hours</option>
+              <option value="44-48">44–48 hours</option>
+            </select>
+          </div>
           <div class="row"><label style="width:160px">Bake time</label><input type="number" id="r-bake-min" min="0" step="1" /> <span class="muted">min</span></div>
-          <div class="row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
-          <div class="row"><label style="width:160px">Deck capacity</label><input type="number" id="r-deck-cap" min="0" step="1" /> <span class="muted">per deck — kept in sync</span></div>
-          <div class="row"><label style="width:160px">Cold proof</label><input type="number" id="r-cold-proof" min="0" step="0.5" /> <span class="muted">hours</span></div>
-          <div class="row"><label style="width:160px">Warm-up before bake</label><input type="number" id="r-warmup" min="0" step="5" /> <span class="muted">min</span></div>
           <div class="row"><label style="width:160px">Autolyse</label><input type="number" id="r-autolyse" min="0" step="5" /> <span class="muted">min</span></div>
+          <div class="row"><label style="width:160px">Bake temp</label><input type="number" id="r-bake-temp" min="0" step="5" /> <span class="muted">°F</span></div>
+          <div class="row"><label style="width:160px">Warm-up before bake</label><input type="number" id="r-warmup" min="0" step="5" /> <span class="muted">min</span></div>
           <div class="row"><label style="width:160px">Bulk ferment</label><input type="number" id="r-bulk" min="0" step="5" /> <span class="muted">min</span></div>
           <div class="row"><label style="width:160px">Shape time per unit</label><input type="number" id="r-shape-per" min="0" step="0.5" /> <span class="muted">min</span></div>
+        </div>
+      </details>
+
+      <details id="r-oven-settings">
+        <summary>Oven settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
+        <div class="scheduler-overrides">
+          <div class="row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
+          <div class="row"><label style="width:160px">Deck capacity</label><input type="number" id="r-deck-cap" min="0" step="1" /> <span class="muted">per deck — kept in sync</span></div>
         </div>
       </details>
 
@@ -997,6 +1031,7 @@
       autolyseMin: 60,
       bulkMin: 240,
       shapeMinPerUnit: 7,
+      bakeTempF: 500,
       schedulable: true,
     },
     'sourdough-muffin': {
@@ -1009,6 +1044,7 @@
       autolyseMin: 0,
       bulkMin: 120,
       shapeMinPerUnit: 1,
+      bakeTempF: 375,
       schedulable: true,
     },
     'focaccia': {
@@ -1021,6 +1057,7 @@
       autolyseMin: 30,
       bulkMin: 240,
       shapeMinPerUnit: 5,
+      bakeTempF: 450,
       schedulable: false,
     },
     'bagel': {
@@ -1034,6 +1071,7 @@
       autolyseMin: 0,
       bulkMin: 120,
       shapeMinPerUnit: 2,
+      bakeTempF: 450,
       schedulable: true,
     },
   };
@@ -1065,10 +1103,22 @@
     };
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
       const raw = recipe ? recipe[field] : undefined;
+      if (raw === undefined || raw === null || raw === '') {
+        spec[field] = template[field];
+        continue;
+      }
+      if (field === 'coldProofHr') {
+        const parts = String(raw).split('-');
+        if (parts.length === 2 && Number.isFinite(Number(parts[0])) && Number.isFinite(Number(parts[1]))) {
+          spec[field] = (Number(parts[0]) + Number(parts[1])) / 2;
+        } else {
+          const n = Number(raw);
+          spec[field] = Number.isFinite(n) ? n : template[field];
+        }
+        continue;
+      }
       const num = Number(raw);
-      spec[field] = (raw !== undefined && raw !== null && raw !== '' && Number.isFinite(num))
-        ? num
-        : template[field];
+      spec[field] = Number.isFinite(num) ? num : template[field];
     }
     // Weight-based fallback: heavy loaves (>750 g) only fit 3 per deck instead
     // of the default 4, which means 9 per oven (3 decks × 3) instead of 12.
@@ -2455,9 +2505,19 @@
   function applyOverridePlaceholders(processType) {
     const tmpl = PROCESS_TEMPLATES[processType] || PROCESS_TEMPLATES['sourdough-loaf'];
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
-      const el = document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]);
-      if (el) el.placeholder = String(tmpl[field]);
+      const id = OVERRIDE_FIELD_TO_INPUT[field];
+      if (!id) continue;
+      const el = document.getElementById(id);
+      if (!el) continue;
+      if (el.tagName === 'SELECT') {
+        if (el.options[0]) el.options[0].text = `— use process default (${tmpl[field]} hr) —`;
+      } else {
+        el.placeholder = String(tmpl[field]);
+      }
     }
+    // bake temp placeholder (not in SCHEDULER_OVERRIDE_FIELDS)
+    const tempEl = document.getElementById('r-bake-temp');
+    if (tempEl) tempEl.placeholder = String(tmpl.bakeTempF || '');
     const note = document.getElementById('r-process-note');
     if (note) {
       note.textContent = tmpl.schedulable
@@ -2491,6 +2551,7 @@
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
     }
+    document.getElementById('r-bake-temp').value = '';
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -2519,6 +2580,8 @@
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value =
         (val === undefined || val === null || val === '') ? '' : val;
     }
+    document.getElementById('r-bake-temp').value =
+      (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2579,6 +2642,7 @@
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
       const raw = document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value.trim();
       if (raw === '') { overrides[field] = null; continue; }
+      if (field === 'coldProofHr') { overrides[field] = raw; continue; }
       const num = Number(raw);
       if (!Number.isFinite(num) || num < 0) {
         alert(`Scheduler override "${field}" must be a non-negative number.`);
@@ -2586,8 +2650,10 @@
       }
       overrides[field] = num;
     }
+    const bakeTempRaw = document.getElementById('r-bake-temp').value.trim();
+    const bakeTempF = bakeTempRaw ? Number(bakeTempRaw) : null;
 
-    const base = { name, processType, unit, loafWeight, ingredients, ...overrides };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, ...overrides };
 
     if (editingId) {
       const idx = recipes.findIndex(x => x.id === editingId);
