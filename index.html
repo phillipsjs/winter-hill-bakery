@@ -540,15 +540,22 @@
   <button id="tab-plan-btn" class="active" onclick="showTab('plan')">Bake Plan</button>
   <button id="tab-schedule-btn" onclick="showTab('schedule')">Schedule</button>
   <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
+  <button id="tab-history-btn" onclick="showTab('history')">History</button>
   <button id="tab-settings-btn" onclick="showTab('settings')">Settings</button>
 </nav>
 
 <main>
   <section id="tab-plan">
     <div class="card">
-      <h2>This bake</h2>
-      <p class="muted">Add recipes to this bake from the <strong>Recipes</strong> tab, then enter how many of each you'll bake. Totals appear below.</p>
-      <div id="plan-list"></div>
+      <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+        <div>
+          <h2 style="margin:0 0 4px">This bake</h2>
+          <p class="muted" style="margin:0">Add recipes from the <strong>Recipes</strong> tab, then enter how many of each you'll bake.</p>
+        </div>
+        <button class="secondary" onclick="saveCurrentBake()" style="white-space:nowrap;flex-shrink:0">Save to history</button>
+      </div>
+      <div id="save-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
+      <div id="plan-list" style="margin-top:10px"></div>
     </div>
 
     <div class="card totals" id="totals-card" style="display:none">
@@ -827,6 +834,17 @@
     </div>
   </section>
 
+  <section id="tab-history" style="display:none">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Bake history</h2>
+        <span id="history-sync-status" style="font-size:0.8rem;color:var(--muted)"></span>
+      </div>
+      <p class="muted" style="margin:4px 0 0;font-size:0.9rem">Each saved bake records the recipes and quantities from your bake plan at the time you clicked Save.</p>
+    </div>
+    <div id="history-list"></div>
+  </section>
+
   <section id="tab-settings" class="settings-section" style="display:none">
     <div class="card">
       <h2>Cloud sync</h2>
@@ -906,6 +924,8 @@
   const GIST_TOKEN_KEY = 'whb-gist-token';
   const GIST_ID_KEY = 'whb-gist-id';
   const GIST_FILENAME = 'recipes.json';
+  const BAKES_FILENAME = 'bakes.json';
+  const BAKES_LOCAL_KEY = 'whb-bakes-v1';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
 
   const BAKE_TIME_PRESETS = {
@@ -1308,8 +1328,110 @@
     const el = document.getElementById('footer-note');
     if (!el) return;
     el.textContent = getGistConfig()
-      ? 'Recipes sync to GitHub Gist. Schedule settings are local to this device.'
+      ? 'Recipes and bake history sync to GitHub Gist. Schedule settings are local to this device.'
       : 'All data is stored locally in your browser.';
+  }
+
+  // ---- bake history ----
+  let bakes = loadBakesLocally();
+
+  function loadBakesLocally() {
+    try {
+      const raw = localStorage.getItem(BAKES_LOCAL_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return [];
+  }
+
+  function saveBakesLocally() {
+    localStorage.setItem(BAKES_LOCAL_KEY, JSON.stringify(bakes));
+  }
+
+  async function fetchBakesFromGist() {
+    const cfg = getGistConfig();
+    if (!cfg) return null;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json' }
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    const data = await resp.json();
+    const file = data.files[BAKES_FILENAME];
+    if (!file) return [];
+    return JSON.parse(file.content);
+  }
+
+  async function pushBakesToGist() {
+    const cfg = getGistConfig();
+    if (!cfg) return;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${cfg.token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ files: { [BAKES_FILENAME]: { content: JSON.stringify(bakes, null, 2) } } })
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+  }
+
+  function saveCurrentBake() {
+    const items = Object.entries(plan)
+      .filter(([, count]) => Number(count) > 0)
+      .map(([id, count]) => {
+        const recipe = recipes.find(r => r.id === id);
+        return { recipeId: id, recipeName: recipe ? recipe.name : id, count: Number(count) };
+      });
+    if (items.length === 0) {
+      const msg = document.getElementById('save-bake-msg');
+      if (msg) { msg.textContent = 'Nothing in the current bake plan to save.'; msg.style.color = 'var(--muted)'; }
+      return;
+    }
+    const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt: Date.now(), items };
+    bakes = [entry, ...bakes];
+    saveBakesLocally();
+    const msg = document.getElementById('save-bake-msg');
+    if (msg) { msg.textContent = 'Bake saved to history.'; msg.style.color = 'var(--ok)'; setTimeout(() => { msg.textContent = ''; }, 3000); }
+    if (getGistConfig()) {
+      pushBakesToGist().catch(() => {});
+    }
+  }
+
+  function deleteBake(id) {
+    bakes = bakes.filter(b => b.id !== id);
+    saveBakesLocally();
+    renderHistory();
+    if (getGistConfig()) pushBakesToGist().catch(() => {});
+  }
+
+  function renderHistory() {
+    const list = document.getElementById('history-list');
+    const statusEl = document.getElementById('history-sync-status');
+    if (!list) return;
+    if (statusEl) statusEl.textContent = getGistConfig() ? 'Synced to Gist' : 'Local only';
+    if (bakes.length === 0) {
+      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet. Use <strong>Save to history</strong> on the Bake Plan tab.</p></div>';
+      return;
+    }
+    const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    list.innerHTML = bakes.map(b => {
+      const rows = b.items.map(it =>
+        `<div class="row" style="justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+          <span>${it.recipeName}</span>
+          <strong>${it.count}</strong>
+        </div>`
+      ).join('');
+      return `<div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-weight:600">${fmt.format(new Date(b.savedAt))}</span>
+          <button class="secondary tiny" onclick="deleteBake('${b.id}')" style="color:var(--danger);border-color:var(--danger)">Delete</button>
+        </div>
+        ${rows}
+        <div class="row" style="justify-content:flex-end;margin-top:8px;color:var(--muted);font-size:0.8rem">
+          ${b.items.reduce((s, it) => s + it.count, 0)} items total
+        </div>
+      </div>`;
+    }).join('');
   }
 
   // ---- state ----
@@ -1528,14 +1650,17 @@
     document.getElementById('tab-plan').style.display = name === 'plan' ? '' : 'none';
     document.getElementById('tab-recipes').style.display = name === 'recipes' ? '' : 'none';
     document.getElementById('tab-schedule').style.display = name === 'schedule' ? '' : 'none';
+    document.getElementById('tab-history').style.display = name === 'history' ? '' : 'none';
     document.getElementById('tab-settings').style.display = name === 'settings' ? '' : 'none';
     document.getElementById('tab-plan-btn').classList.toggle('active', name === 'plan');
     document.getElementById('tab-recipes-btn').classList.toggle('active', name === 'recipes');
     document.getElementById('tab-schedule-btn').classList.toggle('active', name === 'schedule');
+    document.getElementById('tab-history-btn').classList.toggle('active', name === 'history');
     document.getElementById('tab-settings-btn').classList.toggle('active', name === 'settings');
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
     if (name === 'schedule') renderSchedule();
+    if (name === 'history') renderHistory();
     if (name === 'settings') {
       const cfg = getGistConfig();
       document.getElementById('settings-token').value = cfg ? localStorage.getItem(GIST_TOKEN_KEY) : '';
@@ -4221,17 +4346,21 @@
   renderSyncBadge();
   renderPlan();
 
-  // Load recipes from Gist on startup if configured.
+  // Load recipes and bakes from Gist on startup if configured.
   (async () => {
     if (!getGistConfig()) return;
     setSyncStatus('syncing');
     try {
-      const remote = await fetchFromGist();
-      if (Array.isArray(remote) && remote.length > 0) {
-        recipes = remote.map(r => ({ ...r, processType: getProcessType(r) }));
+      const [remoteRecipes, remoteBakes] = await Promise.all([fetchFromGist(), fetchBakesFromGist()]);
+      if (Array.isArray(remoteRecipes) && remoteRecipes.length > 0) {
+        recipes = remoteRecipes.map(r => ({ ...r, processType: getProcessType(r) }));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
         renderPlan();
         renderRecipes();
+      }
+      if (Array.isArray(remoteBakes)) {
+        bakes = remoteBakes;
+        saveBakesLocally();
       }
       setSyncStatus('synced');
     } catch (e) {
