@@ -936,8 +936,9 @@
         <h3 style="margin:0" id="bake-chart-title">Items baked over time</h3>
         <div class="row" style="gap:4px">
           <button id="chart-mode-count" class="secondary tiny active" onclick="setChartMode('count')">Items</button>
-          <button id="chart-mode-revenue" class="secondary tiny" onclick="setChartMode('revenue')">Revenue</button>
+          <button id="chart-mode-revenue" class="secondary tiny" onclick="setChartMode('revenue')">Sales</button>
           <button id="chart-mode-profit" class="secondary tiny" onclick="setChartMode('profit')">Profit</button>
+          <button id="chart-mode-flours" class="secondary tiny" onclick="setChartMode('flours')">Flours</button>
         </div>
       </div>
       <div class="row" style="gap:4px;margin-bottom:10px;flex-wrap:wrap">
@@ -1803,7 +1804,7 @@
   }
 
   let _bakeChart = null;
-  let _chartMode = 'count'; // 'count' | 'revenue' | 'profit'
+  let _chartMode = 'count'; // 'count' | 'revenue' | 'profit' | 'flours'
   let _chartTimeframe = 'all'; // 'month' | '6months' | 'year' | 'all'
   let _hiddenRecipes = new Set();
   let _showTotal = true;
@@ -1816,13 +1817,15 @@
 
   const CHART_META = {
     count:   { title: 'Items baked over time',    yLabel: 'Items baked',    prefix: '',  decimals: 0 },
-    revenue: { title: 'Revenue over time',         yLabel: 'Revenue ($)',    prefix: '$', decimals: 2 },
+    revenue: { title: 'Sales over time',           yLabel: 'Sales ($)',      prefix: '$', decimals: 2 },
     profit:  { title: 'Net profit over time',      yLabel: 'Net profit ($)', prefix: '$', decimals: 2 },
+    flours:  { title: 'Flour used over time',      yLabel: 'Flour (g)',      prefix: '',  decimals: 0 },
   };
 
   function setChartMode(mode) {
     _chartMode = mode;
-    ['count','revenue','profit'].forEach(m => {
+    _hiddenRecipes = new Set();
+    ['count','revenue','profit','flours'].forEach(m => {
       const btn = document.getElementById('chart-mode-' + m);
       if (btn) btn.classList.toggle('active', m === mode);
     });
@@ -1870,11 +1873,17 @@
     const titleEl = document.getElementById('bake-chart-title');
     if (titleEl) titleEl.textContent = meta.title;
 
-    // Collect all recipe names in filtered bakes (used for stable color assignment)
+    // Collect all series names (recipes or flour types) for stable color assignment
     const allNameSet = new Set();
-    filteredBakes.forEach(b => b.items.forEach(it => {
-      if (!valueKey || it[valueKey] != null) allNameSet.add(it.recipeName);
-    }));
+    if (_chartMode === 'flours') {
+      filteredBakes.forEach(b => b.items.forEach(it => {
+        if (it.flourWeights) it.flourWeights.forEach(f => allNameSet.add(f.name));
+      }));
+    } else {
+      filteredBakes.forEach(b => b.items.forEach(it => {
+        if (!valueKey || it[valueKey] != null) allNameSet.add(it.recipeName);
+      }));
+    }
     const allNames = [...allNameSet];
     _chartAllNames = allNames;
 
@@ -1907,42 +1916,60 @@
     // Visible names (not hidden)
     const visibleNames = allNames.filter(n => !_hiddenRecipes.has(n));
 
-    // Build per-recipe datasets
+    // Build per-series datasets (recipes or flour types)
     const recipeDatasets = visibleNames.map(name => {
       const colorIdx = allNames.indexOf(name);
       const color = CHART_PALETTE[colorIdx % CHART_PALETTE.length];
       const data = [];
-      filteredBakes.forEach(b => {
-        const item = b.items.find(it => it.recipeName === name);
-        if (!item) return;
-        let y;
-        if (!valueKey) {
-          y = item.count;
-        } else if (item[valueKey] != null) {
-          y = item[valueKey] * item.count;
-        } else {
-          return;
-        }
-        data.push({ x: b.savedAt, y });
-      });
+      if (_chartMode === 'flours') {
+        filteredBakes.forEach(b => {
+          let totalGrams = 0, hasAny = false;
+          b.items.forEach(it => {
+            if (!it.flourWeights) return;
+            const fw = it.flourWeights.find(f => f.name === name);
+            if (fw) { totalGrams += fw.grams; hasAny = true; }
+          });
+          if (hasAny) data.push({ x: b.savedAt, y: totalGrams });
+        });
+      } else {
+        filteredBakes.forEach(b => {
+          const item = b.items.find(it => it.recipeName === name);
+          if (!item) return;
+          let y;
+          if (!valueKey) { y = item.count; }
+          else if (item[valueKey] != null) { y = item[valueKey] * item.count; }
+          else { return; }
+          data.push({ x: b.savedAt, y });
+        });
+      }
       data.sort((a, b) => a.x - b.x);
       return { label: name, data, borderColor: color, backgroundColor: color, pointRadius: 5, pointHoverRadius: 7, tension: 0.3, spanGaps: false };
     });
 
-    // Build total dataset (sum across visible recipes per bake)
+    // Build total dataset (sum across visible series per bake)
     const datasets = [...recipeDatasets];
     if (_showTotal) {
       const totalData = [];
       filteredBakes.forEach(b => {
         let total = 0, hasAny = false;
-        b.items.forEach(it => {
-          if (!visibleNames.includes(it.recipeName)) return;
-          let y;
-          if (!valueKey) { y = it.count; }
-          else if (it[valueKey] != null) { y = it[valueKey] * it.count; }
-          else { return; }
-          total += y; hasAny = true;
-        });
+        if (_chartMode === 'flours') {
+          b.items.forEach(it => {
+            if (!it.flourWeights) return;
+            it.flourWeights.forEach(f => {
+              if (!visibleNames.includes(f.name)) return;
+              total += f.grams; hasAny = true;
+            });
+          });
+        } else {
+          b.items.forEach(it => {
+            if (!visibleNames.includes(it.recipeName)) return;
+            let y;
+            if (!valueKey) { y = it.count; }
+            else if (it[valueKey] != null) { y = it[valueKey] * it.count; }
+            else { return; }
+            total += y; hasAny = true;
+          });
+        }
         if (hasAny) totalData.push({ x: b.savedAt, y: total });
       });
       totalData.sort((a, b) => a.x - b.x);
@@ -1976,8 +2003,8 @@
           y: {
             beginAtZero: true,
             ticks: {
-              stepSize: valueKey ? undefined : 1,
-              callback: v => meta.prefix + (valueKey ? v.toFixed(meta.decimals) : v),
+              stepSize: _chartMode === 'count' ? 1 : undefined,
+              callback: v => meta.prefix + v.toFixed(meta.decimals),
             },
             title: { display: true, text: meta.yLabel },
           }
@@ -1991,8 +2018,7 @@
               },
               label: ctx => {
                 const v = ctx.parsed.y;
-                const formatted = valueKey ? `${meta.prefix}${v.toFixed(meta.decimals)}` : v;
-                return ` ${ctx.dataset.label}: ${formatted}`;
+                return ` ${ctx.dataset.label}: ${meta.prefix}${v.toFixed(meta.decimals)}`;
               },
             }
           },
