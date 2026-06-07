@@ -949,6 +949,7 @@
       </div>
       <div id="chart-recipe-toggles" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-bottom:10px;font-size:0.82rem"></div>
       <canvas id="bake-chart"></canvas>
+      <div id="bake-chart-summary" style="margin-top:16px"></div>
     </div>
     <div id="history-list"></div>
   </section>
@@ -1865,7 +1866,7 @@
     const cutoff = _chartTimeframe !== 'all' ? now - cutoffMs[_chartTimeframe] : 0;
     const filteredBakes = bakes.filter(b => b.savedAt >= cutoff);
 
-    if (filteredBakes.length < 2) { card.style.display = 'none'; return; }
+    if (filteredBakes.length < 2) { card.style.display = 'none'; const se = document.getElementById('bake-chart-summary'); if (se) se.innerHTML = ''; return; }
 
     const meta = CHART_META[_chartMode] || CHART_META.count;
     const valueKey = _chartMode === 'revenue' ? 'msrp' : _chartMode === 'profit' ? 'netProfit' : null;
@@ -1890,6 +1891,7 @@
     if (allNames.length === 0) {
       card.style.display = 'none';
       if (_bakeChart) { _bakeChart.destroy(); _bakeChart = null; }
+      const se = document.getElementById('bake-chart-summary'); if (se) se.innerHTML = '';
       return;
     }
 
@@ -2026,6 +2028,45 @@
         }
       }
     });
+
+    // Summary table
+    const summaryEl = document.getElementById('bake-chart-summary');
+    if (summaryEl) {
+      const leftHeader = _chartMode === 'flours' ? 'Flour' : 'Recipe';
+      const rightHeader = _chartMode === 'count' ? 'Total items baked'
+        : _chartMode === 'revenue' ? 'Total sales'
+        : _chartMode === 'profit' ? 'Total profit'
+        : 'Total flour used';
+      const fmt = v => meta.prefix + v.toFixed(meta.decimals) + (_chartMode === 'flours' ? 'g' : '');
+
+      const rows = visibleNames.map((name, i) => {
+        const total = recipeDatasets[i].data.reduce((s, pt) => s + pt.y, 0);
+        return { name, total };
+      });
+      const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+
+      const rowsHtml = rows.map(r =>
+        `<tr><td style="padding:4px 12px 4px 0">${escapeHtml(r.name)}</td><td style="padding:4px 0;text-align:right">${fmt(r.total)}</td></tr>`
+      ).join('');
+
+      summaryEl.innerHTML = `
+        <div style="font-weight:600;font-size:0.85rem;margin-bottom:6px">${rightHeader}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);color:var(--muted)">
+              <th style="text-align:left;padding:4px 12px 4px 0;font-weight:500">${leftHeader}</th>
+              <th style="text-align:right;padding:4px 0;font-weight:500">Total</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+          <tfoot>
+            <tr style="border-top:1px solid var(--border);font-weight:600">
+              <td style="padding:4px 12px 4px 0">Grand total</td>
+              <td style="padding:4px 0;text-align:right">${fmt(grandTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>`;
+    }
   }
 
   function renderHistory() {
