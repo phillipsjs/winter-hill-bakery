@@ -554,7 +554,7 @@
           <h2 style="margin:0 0 4px">This bake</h2>
           <p class="muted" style="margin:0">Add recipes from the <strong>Recipes</strong> tab, then enter how many of each you'll bake.</p>
         </div>
-        <button class="secondary" onclick="toggleSavePanel()" id="save-panel-btn" style="white-space:nowrap;flex-shrink:0">Save to history</button>
+        <button class="secondary" onclick="toggleSavePanel()" id="save-panel-btn" style="white-space:nowrap;flex-shrink:0">Save this bake</button>
       </div>
       <div id="save-panel" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
         <div class="row">
@@ -857,7 +857,7 @@
         <h2 style="margin:0">Bake history</h2>
         <div class="row" style="gap:10px;flex-wrap:wrap">
           <span id="history-sync-status" style="font-size:0.8rem;color:var(--muted)"></span>
-          <button class="secondary" onclick="toggleManualBakeForm()">Log a past bake</button>
+          <button class="secondary" onclick="toggleManualBakeForm()">Manually add a bake</button>
         </div>
       </div>
       <p class="muted" style="margin:6px 0 0;font-size:0.9rem">Saves from the Bake Plan tab capture the current plan. You can also log past bakes manually below.</p>
@@ -1534,7 +1534,7 @@
     if (!list) return;
     if (statusEl) statusEl.textContent = getGistConfig() ? 'Synced to Gist' : 'Local only';
     if (bakes.length === 0) {
-      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet — use <strong>Save to history</strong> on the Bake Plan tab, or <strong>Log a past bake</strong> above.</p></div>';
+      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet — use <strong>Save this bake</strong> on the Bake Plan tab, or <strong>Manually add a bake</strong> above.</p></div>';
       return;
     }
     const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
