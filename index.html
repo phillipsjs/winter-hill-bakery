@@ -527,7 +527,10 @@
     color: var(--ink);
     font-family: inherit;
   }
+  #bake-chart-card { display:none }
+  #bake-chart-card canvas { max-height: 320px }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -884,6 +887,10 @@
         </div>
         <div id="manual-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
       </div>
+    </div>
+    <div id="bake-chart-card" class="card" style="margin-top:12px">
+      <h3 style="margin:0 0 12px">Items baked over time</h3>
+      <canvas id="bake-chart"></canvas>
     </div>
     <div id="history-list"></div>
   </section>
@@ -1528,11 +1535,92 @@
     if (getGistConfig()) pushBakesToGist().catch(() => {});
   }
 
+  let _bakeChart = null;
+  const CHART_PALETTE = [
+    '#e05c3a','#4a90d9','#4caf74','#f0a429','#9b59b6',
+    '#1abc9c','#e91e8c','#3f51b5','#ff7043','#00bcd4'
+  ];
+
+  function renderHistoryChart() {
+    const card = document.getElementById('bake-chart-card');
+    const canvas = document.getElementById('bake-chart');
+    if (!card || !canvas || typeof Chart === 'undefined') return;
+    if (bakes.length < 2) { card.style.display = 'none'; return; }
+
+    // Collect all unique recipe names
+    const nameSet = new Set();
+    bakes.forEach(b => b.items.forEach(it => nameSet.add(it.recipeName)));
+    const names = [...nameSet];
+
+    // Build one dataset per recipe
+    const datasets = names.map((name, i) => {
+      const data = [];
+      bakes.forEach(b => {
+        const item = b.items.find(it => it.recipeName === name);
+        if (item) data.push({ x: b.savedAt, y: item.count });
+      });
+      data.sort((a, b) => a.x - b.x);
+      const color = CHART_PALETTE[i % CHART_PALETTE.length];
+      return {
+        label: name,
+        data,
+        borderColor: color,
+        backgroundColor: color,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0.3,
+        spanGaps: false,
+      };
+    });
+
+    card.style.display = '';
+    if (_bakeChart) _bakeChart.destroy();
+    _bakeChart = new Chart(canvas, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        scales: {
+          x: {
+            type: 'linear',
+            ticks: {
+              callback: v => {
+                const d = new Date(v);
+                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' });
+              },
+              maxTicksLimit: 8,
+            },
+            title: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1 },
+            title: { display: true, text: 'Items baked' },
+          }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              title: items => {
+                const d = new Date(items[0].parsed.x);
+                return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+              },
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y}`,
+            }
+          },
+          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16 } },
+        }
+      }
+    });
+  }
+
   function renderHistory() {
     const list = document.getElementById('history-list');
     const statusEl = document.getElementById('history-sync-status');
     if (!list) return;
     if (statusEl) statusEl.textContent = getGistConfig() ? 'Synced to Gist' : 'Local only';
+    renderHistoryChart();
     if (bakes.length === 0) {
       list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet — use <strong>Save this bake</strong> on the Bake Plan tab, or <strong>Manually add a bake</strong> above.</p></div>';
       return;
