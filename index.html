@@ -932,7 +932,7 @@
       </div>
     </div>
     <div id="bake-chart-card" class="card" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
         <h3 style="margin:0" id="bake-chart-title">Items baked over time</h3>
         <div class="row" style="gap:4px">
           <button id="chart-mode-count" class="secondary tiny active" onclick="setChartMode('count')">Items</button>
@@ -940,6 +940,13 @@
           <button id="chart-mode-profit" class="secondary tiny" onclick="setChartMode('profit')">Profit</button>
         </div>
       </div>
+      <div class="row" style="gap:4px;margin-bottom:10px;flex-wrap:wrap">
+        <button id="chart-tf-month" class="secondary tiny" onclick="setChartTimeframe('month')">Past month</button>
+        <button id="chart-tf-6months" class="secondary tiny" onclick="setChartTimeframe('6months')">Past 6 months</button>
+        <button id="chart-tf-year" class="secondary tiny" onclick="setChartTimeframe('year')">Past year</button>
+        <button id="chart-tf-all" class="secondary tiny active" onclick="setChartTimeframe('all')">All time</button>
+      </div>
+      <div id="chart-recipe-toggles" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-bottom:10px;font-size:0.82rem"></div>
       <canvas id="bake-chart"></canvas>
     </div>
     <div id="history-list"></div>
@@ -1797,14 +1804,19 @@
 
   let _bakeChart = null;
   let _chartMode = 'count'; // 'count' | 'revenue' | 'profit'
+  let _chartTimeframe = 'all'; // 'month' | '6months' | 'year' | 'all'
+  let _hiddenRecipes = new Set();
+  let _showTotal = true;
+  let _chartAllNames = []; // stable name list for toggle callbacks
+
   const CHART_PALETTE = [
     '#e05c3a','#4a90d9','#4caf74','#f0a429','#9b59b6',
     '#1abc9c','#e91e8c','#3f51b5','#ff7043','#00bcd4'
   ];
 
   const CHART_META = {
-    count:   { title: 'Items baked over time',    yLabel: 'Items baked', prefix: '',  decimals: 0 },
-    revenue: { title: 'Revenue over time',         yLabel: 'Revenue ($)', prefix: '$', decimals: 2 },
+    count:   { title: 'Items baked over time',    yLabel: 'Items baked',    prefix: '',  decimals: 0 },
+    revenue: { title: 'Revenue over time',         yLabel: 'Revenue ($)',    prefix: '$', decimals: 2 },
     profit:  { title: 'Net profit over time',      yLabel: 'Net profit ($)', prefix: '$', decimals: 2 },
   };
 
@@ -1817,36 +1829,90 @@
     renderHistoryChart();
   }
 
+  function setChartTimeframe(tf) {
+    _chartTimeframe = tf;
+    ['month','6months','year','all'].forEach(t => {
+      const btn = document.getElementById('chart-tf-' + t);
+      if (btn) btn.classList.toggle('active', t === tf);
+    });
+    renderHistoryChart();
+  }
+
+  function toggleChartRecipe(i) {
+    const name = _chartAllNames[i];
+    if (!name) return;
+    if (_hiddenRecipes.has(name)) _hiddenRecipes.delete(name);
+    else _hiddenRecipes.add(name);
+    renderHistoryChart();
+  }
+
+  function toggleChartTotal() {
+    _showTotal = !_showTotal;
+    renderHistoryChart();
+  }
+
   function renderHistoryChart() {
     const card = document.getElementById('bake-chart-card');
     const canvas = document.getElementById('bake-chart');
     if (!card || !canvas || typeof Chart === 'undefined') return;
-    if (bakes.length < 2) { card.style.display = 'none'; return; }
+
+    // Apply timeframe filter
+    const now = Date.now();
+    const cutoffMs = { month: 30*24*3600*1000, '6months': 182*24*3600*1000, year: 365*24*3600*1000 };
+    const cutoff = _chartTimeframe !== 'all' ? now - cutoffMs[_chartTimeframe] : 0;
+    const filteredBakes = bakes.filter(b => b.savedAt >= cutoff);
+
+    if (filteredBakes.length < 2) { card.style.display = 'none'; return; }
 
     const meta = CHART_META[_chartMode] || CHART_META.count;
     const valueKey = _chartMode === 'revenue' ? 'msrp' : _chartMode === 'profit' ? 'netProfit' : null;
 
-    // Title
     const titleEl = document.getElementById('bake-chart-title');
     if (titleEl) titleEl.textContent = meta.title;
 
-    // Collect unique recipe names; for revenue/profit, only include recipes that have the field set on at least one bake item
-    const nameSet = new Set();
-    bakes.forEach(b => b.items.forEach(it => {
-      if (!valueKey || it[valueKey] != null) nameSet.add(it.recipeName);
+    // Collect all recipe names in filtered bakes (used for stable color assignment)
+    const allNameSet = new Set();
+    filteredBakes.forEach(b => b.items.forEach(it => {
+      if (!valueKey || it[valueKey] != null) allNameSet.add(it.recipeName);
     }));
-    const names = [...nameSet];
+    const allNames = [...allNameSet];
+    _chartAllNames = allNames;
 
-    if (names.length === 0) {
+    if (allNames.length === 0) {
       card.style.display = 'none';
       if (_bakeChart) { _bakeChart.destroy(); _bakeChart = null; }
       return;
     }
 
-    // Build one dataset per recipe
-    const datasets = names.map((name, i) => {
+    // Render recipe toggle checkboxes
+    const togglesEl = document.getElementById('chart-recipe-toggles');
+    if (togglesEl) {
+      const recipeChecks = allNames.map((n, i) => {
+        const color = CHART_PALETTE[i % CHART_PALETTE.length];
+        const checked = !_hiddenRecipes.has(n) ? 'checked' : '';
+        return `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" ${checked} onchange="toggleChartRecipe(${i})">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};flex:none"></span>
+          ${escapeHtml(n)}
+        </label>`;
+      }).join('');
+      const totalSwatch = `<span style="display:inline-block;width:18px;border-top:2px dashed #555;vertical-align:middle"></span>`;
+      const totalCheck = `<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;padding-left:8px;border-left:1px solid var(--border)">
+        <input type="checkbox" ${_showTotal ? 'checked' : ''} onchange="toggleChartTotal()">
+        ${totalSwatch} Total
+      </label>`;
+      togglesEl.innerHTML = recipeChecks + totalCheck;
+    }
+
+    // Visible names (not hidden)
+    const visibleNames = allNames.filter(n => !_hiddenRecipes.has(n));
+
+    // Build per-recipe datasets
+    const recipeDatasets = visibleNames.map(name => {
+      const colorIdx = allNames.indexOf(name);
+      const color = CHART_PALETTE[colorIdx % CHART_PALETTE.length];
       const data = [];
-      bakes.forEach(b => {
+      filteredBakes.forEach(b => {
         const item = b.items.find(it => it.recipeName === name);
         if (!item) return;
         let y;
@@ -1855,23 +1921,38 @@
         } else if (item[valueKey] != null) {
           y = item[valueKey] * item.count;
         } else {
-          return; // skip bakes where this recipe has no pricing data
+          return;
         }
         data.push({ x: b.savedAt, y });
       });
       data.sort((a, b) => a.x - b.x);
-      const color = CHART_PALETTE[i % CHART_PALETTE.length];
-      return {
-        label: name,
-        data,
-        borderColor: color,
-        backgroundColor: color,
-        pointRadius: 5,
-        pointHoverRadius: 7,
-        tension: 0.3,
-        spanGaps: false,
-      };
+      return { label: name, data, borderColor: color, backgroundColor: color, pointRadius: 5, pointHoverRadius: 7, tension: 0.3, spanGaps: false };
     });
+
+    // Build total dataset (sum across visible recipes per bake)
+    const datasets = [...recipeDatasets];
+    if (_showTotal) {
+      const totalData = [];
+      filteredBakes.forEach(b => {
+        let total = 0, hasAny = false;
+        b.items.forEach(it => {
+          if (!visibleNames.includes(it.recipeName)) return;
+          let y;
+          if (!valueKey) { y = it.count; }
+          else if (it[valueKey] != null) { y = it[valueKey] * it.count; }
+          else { return; }
+          total += y; hasAny = true;
+        });
+        if (hasAny) totalData.push({ x: b.savedAt, y: total });
+      });
+      totalData.sort((a, b) => a.x - b.x);
+      datasets.push({
+        label: 'Total', data: totalData,
+        borderColor: '#555', backgroundColor: '#555',
+        borderDash: [5, 3], pointRadius: 4, pointHoverRadius: 6,
+        tension: 0.3, spanGaps: false,
+      });
+    }
 
     card.style.display = 'block';
     if (_bakeChart) _bakeChart.destroy();
@@ -1891,7 +1972,6 @@
               },
               maxTicksLimit: 8,
             },
-            title: { display: false },
           },
           y: {
             beginAtZero: true,
@@ -1916,7 +1996,7 @@
               },
             }
           },
-          legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16 } },
+          legend: { display: false },
         }
       }
     });
