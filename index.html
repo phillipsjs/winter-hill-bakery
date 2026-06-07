@@ -926,7 +926,7 @@
         </div>
         <div class="row" style="margin-top:12px;gap:8px;justify-content:flex-end">
           <button class="secondary" onclick="toggleManualBakeForm()">Cancel</button>
-          <button onclick="submitManualBake()">Save past bake</button>
+          <button id="manual-submit-btn" onclick="submitManualBake()">Save past bake</button>
         </div>
         <div id="manual-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
       </div>
@@ -1547,7 +1547,13 @@
     const form = document.getElementById('manual-bake-form');
     const isOpen = form.style.display !== 'none';
     form.style.display = isOpen ? 'none' : '';
-    if (!isOpen) {
+    const btn = document.getElementById('manual-submit-btn');
+    if (isOpen) {
+      // Closing — reset edit state
+      editingBakeId = null;
+      if (btn) btn.textContent = 'Save past bake';
+    } else {
+      // Opening fresh
       const today = new Date();
       const yyyy = today.getFullYear();
       const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -1710,9 +1716,14 @@
     });
     if (items.length === 0) { msg.textContent = 'Add at least one recipe with a count.'; msg.style.color = 'var(--danger)'; return; }
     const notes = (document.getElementById('manual-notes').value || '').trim();
-    const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt, items };
-    if (notes) entry.notes = notes;
-    bakes = [entry, ...bakes].sort((a, b) => b.savedAt - a.savedAt);
+    if (editingBakeId) {
+      bakes = bakes.map(b => b.id === editingBakeId ? { ...b, savedAt, items, notes: notes || undefined } : b);
+      editingBakeId = null;
+    } else {
+      const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt, items };
+      if (notes) entry.notes = notes;
+      bakes = [entry, ...bakes].sort((a, b) => b.savedAt - a.savedAt);
+    }
     saveBakesLocally();
     toggleManualBakeForm();
     renderHistory();
@@ -1724,6 +1735,64 @@
     saveBakesLocally();
     renderHistory();
     if (getGistConfig()) pushBakesToGist().catch(() => {});
+  }
+
+  let editingBakeId = null;
+
+  function editBake(id) {
+    const bake = bakes.find(b => b.id === id);
+    if (!bake) return;
+
+    // Open form (or reset it if already open)
+    const form = document.getElementById('manual-bake-form');
+    form.style.display = '';
+
+    // Reset form state
+    manualRowCount = 0;
+    document.getElementById('manual-items').innerHTML = '';
+    document.getElementById('manual-notes').value = bake.notes || '';
+    document.getElementById('manual-bake-msg').textContent = '';
+
+    // Set date
+    const d = new Date(bake.savedAt);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    document.getElementById('manual-date').value = `${yyyy}-${mm}-${dd}`;
+
+    // Populate rows
+    bake.items.forEach(item => {
+      addManualBakeRow();
+      const n = manualRowCount;
+      const wrap = document.getElementById(`manual-row-${n}`);
+      const sel = document.getElementById(`manual-sel-${n}`);
+
+      if (item.recipeId && recipes.find(r => r.id === item.recipeId)) {
+        sel.value = item.recipeId;
+        // Trigger to populate dataset (flour weights etc.)
+        onManualRecipeSelect(n);
+      } else {
+        sel.value = '__manual__';
+        const nameInput = document.getElementById(`manual-name-${n}`);
+        if (nameInput) { nameInput.style.display = ''; nameInput.value = item.recipeName || ''; }
+        wrap.dataset.recipeId = '';
+      }
+
+      // Override inputs with stored values (may differ from current recipe)
+      const countEl = document.getElementById(`manual-count-${n}`);
+      const msrpEl = document.getElementById(`manual-msrp-${n}`);
+      const profitEl = document.getElementById(`manual-profit-${n}`);
+      const tempEl = document.getElementById(`manual-temp-${n}`);
+      if (countEl) countEl.value = item.count;
+      if (msrpEl) msrpEl.value = item.msrp != null ? item.msrp : '';
+      if (profitEl) profitEl.value = item.netProfit != null ? item.netProfit : '';
+      if (tempEl) tempEl.value = item.ovenTempF != null ? item.ovenTempF : '';
+    });
+
+    editingBakeId = id;
+    const btn = document.getElementById('manual-submit-btn');
+    if (btn) btn.textContent = 'Save changes';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   let _bakeChart = null;
@@ -1907,7 +1976,10 @@
       return `<div class="card">
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
           <span style="font-weight:600">${fmt.format(new Date(b.savedAt))}</span>
-          <button class="secondary tiny" onclick="deleteBake('${b.id}')" style="color:var(--danger);border-color:var(--danger)">Delete</button>
+          <div class="row" style="gap:6px">
+            <button class="secondary tiny" onclick="editBake('${b.id}')">Edit</button>
+            <button class="secondary tiny" onclick="deleteBake('${b.id}')" style="color:var(--danger);border-color:var(--danger)">Delete</button>
+          </div>
         </div>
         ${rows}
         <div class="row" style="justify-content:space-between;margin-top:8px">
