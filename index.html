@@ -2810,6 +2810,16 @@ ${notesHtml}
   function deleteBake(id) {
     bakes = bakes.filter(b => b.id !== id);
     saveBakesLocally();
+    // Recompute invoice counter from remaining bakes so no numbers are skipped
+    const maxInv = bakes.reduce((m, b) => {
+      const n = typeof b.invoiceNumber === 'number' ? b.invoiceNumber : parseInt(b.invoiceNumber, 10);
+      return !isNaN(n) ? Math.max(m, n) : m;
+    }, 0);
+    const recomputed = maxInv + 1;
+    if (recomputed !== invoiceSettings.nextInvoiceNumber) {
+      invoiceSettings.nextInvoiceNumber = recomputed;
+      if (getInvoiceGistConfig()) pushInvoiceSettings().catch(() => {});
+    }
     renderHistory();
     if (getGistConfig()) pushBakesToGist().catch(() => {});
   }
