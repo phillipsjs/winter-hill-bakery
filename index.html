@@ -1128,6 +1128,11 @@
             </label>
           </div>
         </div>
+        <div class="row" style="margin-top:8px;align-items:center">
+          <label style="width:120px">Invoice #</label>
+          <input type="text" id="sale-inv-number" placeholder="Leave blank to skip" style="width:110px;flex:none" oninput="onSaleInvNumInput()" />
+          <span id="sale-inv-warn" style="display:none;font-size:0.8rem;color:#d97706;margin-left:8px"></span>
+        </div>
         <div class="row" style="margin-top:10px;gap:8px;justify-content:flex-end">
           <button class="secondary" onclick="toggleSaleSavePanel()">Cancel</button>
           <button onclick="saveCurrentSale()">Confirm save</button>
@@ -2433,6 +2438,8 @@ ${notesHtml}
     const noSetup = !invoiceSettings.company.name && !getInvoiceGistConfig();
     const hint = document.getElementById('sale-inv-hint');
     if (hint) hint.style.display = noSetup ? '' : 'none';
+    const invNumEl = document.getElementById('sale-inv-number');
+    if (invNumEl) invNumEl.placeholder = `Leave blank to skip (next: ${fmtInvNum(invoiceSettings.nextInvoiceNumber)})`;
     onSaleCustChange();
   }
 
@@ -2451,6 +2458,20 @@ ${notesHtml}
       if (nameEl) nameEl.value = '';
       if (addrEl) addrEl.value = '';
       if (saveCb) saveCb.checked = true;
+    }
+  }
+
+  function onSaleInvNumInput() {
+    const val = (document.getElementById('sale-inv-number')?.value || '').trim();
+    const warn = document.getElementById('sale-inv-warn');
+    if (!warn) return;
+    if (!val) { warn.style.display = 'none'; return; }
+    const num = parseInt(val, 10);
+    if (!isNaN(num) && num !== invoiceSettings.nextInvoiceNumber) {
+      warn.textContent = `Expected #${fmtInvNum(invoiceSettings.nextInvoiceNumber)}`;
+      warn.style.display = '';
+    } else {
+      warn.style.display = 'none';
     }
   }
 
@@ -2496,9 +2517,19 @@ ${notesHtml}
     const notes = (document.getElementById('sale-notes').value || '').trim();
     const custName = (document.getElementById('sale-cust-name')?.value || '').trim();
     const custAddr = (document.getElementById('sale-cust-addr')?.value || '').trim();
+    const invNumRaw = (document.getElementById('sale-inv-number')?.value || '').trim();
+    const invNumParsed = invNumRaw ? parseInt(invNumRaw, 10) : NaN;
+    const invNum = invNumRaw ? (!isNaN(invNumParsed) ? invNumParsed : invNumRaw) : null;
     const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt: Date.now(), items };
     if (notes) entry.notes = notes;
     if (custName) entry.customer = { name: custName, address: custAddr };
+    if (invNum != null) {
+      entry.invoiceNumber = invNum;
+      if (!isNaN(invNumParsed) && invNumParsed >= invoiceSettings.nextInvoiceNumber) {
+        invoiceSettings.nextInvoiceNumber = invNumParsed + 1;
+      }
+      if (getInvoiceGistConfig()) pushInvoiceSettings().catch(() => {});
+    }
     // Optionally persist customer to invoice settings
     if (custName && document.getElementById('sale-save-customer')?.checked) {
       const sel = document.getElementById('sale-cust-select');
@@ -2521,6 +2552,10 @@ ${notesHtml}
         document.getElementById('sale-cust-name').value = '';
         document.getElementById('sale-cust-addr').value = '';
         document.getElementById('sale-cust-select').value = '';
+        const invNumEl = document.getElementById('sale-inv-number');
+        if (invNumEl) invNumEl.value = '';
+        const invWarnEl = document.getElementById('sale-inv-warn');
+        if (invWarnEl) invWarnEl.style.display = 'none';
       }, 1200);
     }
     if (getGistConfig()) pushBakesToGist().catch(() => {});
