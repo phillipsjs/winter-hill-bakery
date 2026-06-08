@@ -547,7 +547,7 @@
   <button id="tab-schedule-btn" onclick="showTab('schedule')">Schedule</button>
   <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
   <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Ingredients</button>
-  <button id="tab-history-btn" onclick="showTab('history')">History</button>
+  <button id="tab-history-btn" onclick="showTab('history')">Sales</button>
   <button id="tab-settings-btn" onclick="showTab('settings')">Account</button>
 </nav>
 
@@ -583,11 +583,6 @@
     <div class="card totals" id="totals-card" style="display:none">
       <h2>Ingredient totals</h2>
       <div id="totals-output"></div>
-    </div>
-
-    <div class="card" id="financials-card" style="display:none">
-      <h2 style="margin:0 0 12px">Projected financials</h2>
-      <div id="financials-output"></div>
     </div>
 
     <div class="card totals" id="levain-card" style="display:none">
@@ -963,6 +958,10 @@
   </section>
 
   <section id="tab-history" style="display:none">
+    <div class="card" id="financials-card" style="display:none">
+      <h2 style="margin:0 0 12px">Projected financials</h2>
+      <div id="financials-output"></div>
+    </div>
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h2 style="margin:0">Bake history</h2>
@@ -2709,7 +2708,7 @@
     if (name === 'recipes') renderRecipes();
     if (name === 'ingredients') renderPantry();
     if (name === 'schedule') renderSchedule();
-    if (name === 'history') renderHistory();
+    if (name === 'history') { renderHistory(); renderFinancials(); }
     if (name === 'settings') {
       const cfg = getGistConfig();
       document.getElementById('settings-token').value = cfg ? localStorage.getItem(GIST_TOKEN_KEY) : '';
