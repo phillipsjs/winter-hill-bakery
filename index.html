@@ -586,6 +586,43 @@
   #bake-chart-card { display:none }
   #bake-chart-card canvas { max-height: 320px }
   #bake-chart-card button.tiny.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Bake sheet */
+  .bakesheet-header { margin-bottom: 20px; }
+  .bakesheet-title { font-size: 1.4rem; margin: 0 0 4px; }
+  .bakesheet-summary { color: var(--muted); margin: 0 0 2px; font-size: 0.9rem; }
+  .bakesheet-day { margin-bottom: 28px; }
+  .bakesheet-day-header { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px;
+    padding: 5px 0; border-bottom: 2px solid var(--border); color: var(--accent-dark); }
+  .bakesheet-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .bakesheet-table th { text-align: left; padding: 5px 8px; background: var(--bg);
+    border-bottom: 2px solid var(--border); font-size: 0.78rem; color: var(--muted); }
+  .bakesheet-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .bs-time { color: var(--accent-dark); font-weight: 600; font-size: 0.82rem;
+    white-space: nowrap; width: 110px; }
+  .bs-step strong { font-size: 0.88rem; }
+  .bs-detail { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+  .bs-ings { width: 240px; }
+  .bs-ings table { font-size: 0.78rem; margin: 0; }
+  .bs-ings table td { padding: 1px 4px; border: none; }
+  .bs-ings .bs-recipe-label { font-size: 0.75rem; font-weight: 600;
+    color: var(--accent-dark); margin-bottom: 2px; }
+  .bakesheet-notes { margin-top: 24px; }
+  .bakesheet-notes-header { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px;
+    padding: 5px 0; border-bottom: 2px solid var(--border); }
+  .bakesheet-notes-lines { height: 120px;
+    background: repeating-linear-gradient(to bottom, transparent, transparent 29px,
+      var(--border) 29px, var(--border) 30px); }
+
+  @media print {
+    header, .nav-wrapper, .no-print { display: none !important; }
+    main > section { display: none !important; }
+    #tab-bakesheet { display: block !important; }
+    body { background: white; }
+    .bakesheet-table th { background: #efefef !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .bakesheet-day-header { color: #333 !important; }
+    .bs-time { color: #333 !important; }
+  }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
@@ -602,6 +639,7 @@
   <nav class="tabs">
     <button id="tab-plan-btn" class="active" onclick="showTab('plan')">Bake Plan</button>
     <button id="tab-schedule-btn" onclick="showTab('schedule')">Schedule</button>
+    <button id="tab-bakesheet-btn" onclick="showTab('bakesheet')" style="display:none">Bake Sheet</button>
     <button id="hamburger-btn" class="hamburger-btn" onclick="toggleHamburger(event)" aria-label="More">
       <span></span><span></span><span></span>
     </button>
@@ -986,6 +1024,14 @@
     <div class="card">
       <p class="muted" style="font-size: 0.8rem; margin: 0">Sourdough loaves, English muffins, and bagels are scheduled. Focaccia recipes show up in the bake plan but aren't yet woven into the timeline — schedule those separately.</p>
     </div>
+  </section>
+
+  <section id="tab-bakesheet" style="display:none">
+    <div class="no-print" style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+      <button onclick="window.print()">Print bake sheet</button>
+      <span class="muted" style="font-size:0.82rem">Use your browser's print dialog — landscape works well for wide tables.</span>
+    </div>
+    <div id="bakesheet-content"></div>
   </section>
 
   <section id="tab-history" style="display:none">
@@ -2758,11 +2804,27 @@
   // ---- tabs ----
   const SECONDARY_TABS = ['recipes', 'ingredients', 'prices', 'history', 'settings'];
 
+  function updateBakeSheetTabVisibility() {
+    const hasPlanItems = recipes.some(r => (plan[r.id] || 0) > 0);
+    const hasDeadline = !!(
+      document.getElementById('deadline-loaf-input').value ||
+      document.getElementById('deadline-muffin-input').value ||
+      document.getElementById('deadline-bagel-input').value
+    );
+    const show = hasPlanItems && hasDeadline;
+    const btn = document.getElementById('tab-bakesheet-btn');
+    if (btn) btn.style.display = show ? '' : 'none';
+    // If the bake sheet tab is visible but conditions no longer met, switch to plan
+    if (!show && document.getElementById('tab-bakesheet').style.display !== 'none') {
+      showTab('plan');
+    }
+  }
+
   function showTab(name) {
-    ['plan','recipes','ingredients','prices','schedule','history','settings'].forEach(t => {
+    ['plan','recipes','ingredients','prices','schedule','bakesheet','history','settings'].forEach(t => {
       document.getElementById('tab-' + t).style.display = name === t ? '' : 'none';
     });
-    ['plan','recipes','ingredients','prices','schedule','history','settings'].forEach(t => {
+    ['plan','recipes','ingredients','prices','schedule','bakesheet','history','settings'].forEach(t => {
       const btn = document.getElementById('tab-' + t + '-btn');
       if (btn) btn.classList.toggle('active', name === t);
     });
@@ -2774,6 +2836,7 @@
     if (name === 'ingredients') renderPantry();
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
+    if (name === 'bakesheet') renderBakeSheet();
     if (name === 'history') { renderHistory(); renderFinancials(); }
     if (name === 'settings') {
       const cfg = getGistConfig();
@@ -2864,6 +2927,7 @@
 
     renderTotals();
     renderFinancials();
+    updateBakeSheetTabVisibility();
   }
 
   function setPlanCount(id, val) {
@@ -4993,8 +5057,11 @@
     }
   }
 
+  let _scheduleResult = null;
+
   function renderSchedule() {
     if (suppressScheduleRender) return;
+    _scheduleResult = null;
     updateProcessRowVisibility();
     const out = document.getElementById('schedule-output');
     const loafDeadlineStr = document.getElementById('deadline-loaf-input').value;
@@ -5124,6 +5191,7 @@
       loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr,
       bagelBatchSize,
     });
+    _scheduleResult = result;
     const anchors = getAnchors();
     const anchoredTitles = applyAnchorsToEvents(result.events, anchors);
     if (result.totalLoaves === 0 && (result.totalMuffins || 0) === 0 && (result.totalBagels || 0) === 0) {
@@ -5563,6 +5631,188 @@
       html += `</div>`;
     }
     out.innerHTML = html;
+    updateBakeSheetTabVisibility();
+    if (document.getElementById('tab-bakesheet').style.display !== 'none') renderBakeSheet();
+  }
+
+  // ---- bake sheet ----
+
+  function computeBakeSheetIngredientData() {
+    const BUFFER = 1.10;
+    const ratios = getSelectedLevainRatios();
+
+    const byRecipe = recipes
+      .filter(r => isInPlan(r.id) && (plan[r.id] || 0) > 0)
+      .map(r => ({
+        id: r.id,
+        name: r.name,
+        unit: r.unit || 'unit',
+        count: plan[r.id],
+        ingredients: computeIngredientWeights(r, plan[r.id]),
+        processType: getProcessType(r),
+      }));
+
+    // Aggregate ingredient totals and levain-by-process
+    const levainByProcess = { loaf: 0, muffin: 0, bagel: 0 };
+    byRecipe.forEach(r => {
+      const bucket = r.processType === 'sourdough-muffin' ? 'muffin'
+        : r.processType === 'bagel' ? 'bagel' : 'loaf';
+      r.ingredients.forEach(i => {
+        if (i.name.toLowerCase().includes('levain')) levainByProcess[bucket] += i.grams;
+      });
+    });
+
+    const buildAmounts = (levainGrams, b1Opt, b2Opt) => {
+      if (!levainGrams || !b1Opt || !b2Opt) return null;
+      const buffered = levainGrams * BUFFER;
+      const b1 = ratioParts(b1Opt);
+      const b2 = ratioParts(b2Opt);
+      const build2Starter = buffered * b2.s / b2.total;
+      const build2Flour   = buffered * b2.f / b2.total;
+      const build2Water   = buffered * b2.w / b2.total;
+      const build1Total   = build2Starter;
+      const build1Starter = build1Total * b1.s / b1.total;
+      const build1Flour   = build1Total * b1.f / b1.total;
+      const build1Water   = build1Total * b1.w / b1.total;
+      return {
+        build1: [
+          { name: 'Mature starter', grams: build1Starter },
+          { name: 'AP flour', grams: build1Flour },
+          { name: 'Water', grams: build1Water },
+        ],
+        build2: [
+          { name: 'Ripe levain (Build 1)', grams: build2Starter },
+          { name: 'AP flour', grams: build2Flour },
+          { name: 'Water', grams: build2Water },
+        ],
+      };
+    };
+
+    const muffinSep = ratios.useSeparateLevains && levainByProcess.muffin > 0;
+    const bagelSep  = ratios.useBagelSeparateLevain && levainByProcess.bagel > 0;
+    const sharedGrams = levainByProcess.loaf
+      + (muffinSep ? 0 : levainByProcess.muffin)
+      + (bagelSep  ? 0 : levainByProcess.bagel);
+
+    return {
+      byRecipe,
+      levain: {
+        shared: buildAmounts(sharedGrams, ratios.build1, ratios.build2),
+        muffin: muffinSep ? buildAmounts(levainByProcess.muffin, ratios.muffinBuild1 || ratios.build1, ratios.muffinBuild2 || ratios.build2) : null,
+        bagel:  bagelSep  ? buildAmounts(levainByProcess.bagel,  ratios.bagelBuild1  || ratios.build1, ratios.bagelBuild2  || ratios.build2) : null,
+      },
+    };
+  }
+
+  function renderBakeSheet() {
+    const content = document.getElementById('bakesheet-content');
+    if (!content) return;
+
+    if (!_scheduleResult || !_scheduleResult.events || _scheduleResult.events.length === 0) {
+      content.innerHTML = '<div class="card"><p class="muted" style="margin:0">Set up your Bake Plan and Schedule to generate the bake sheet.</p></div>';
+      return;
+    }
+
+    const ingData = computeBakeSheetIngredientData();
+    const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    const dayFmt  = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const fmtTime = t => timeFmt.format(roundToFiveMin(t));
+    const fmtRange = ev => ev.timeEnd
+      ? `${fmtTime(ev.time)}&nbsp;–&nbsp;${fmtTime(ev.timeEnd)}`
+      : fmtTime(ev.time);
+
+    const ingTableHtml = rows =>
+      `<table><tbody>${rows.map(r =>
+        `<tr><td>${escapeHtml(r.name)}</td><td class="num">${formatGrams(r.grams)}</td></tr>`
+      ).join('')}</tbody></table>`;
+
+    // Map each event to its ingredient data based on title
+    const getEventIngredients = ev => {
+      const t = ev.title;
+      const isMuffin = t.toLowerCase().includes('muffin');
+      const isBagel  = t.toLowerCase().includes('bagel');
+
+      if (t.includes('Levain Build 1')) {
+        const src = isMuffin ? ingData.levain.muffin : isBagel ? ingData.levain.bagel : ingData.levain.shared;
+        return src ? { type: 'simple', rows: src.build1 } : null;
+      }
+      if (t.includes('Levain Build 2')) {
+        const src = isMuffin ? ingData.levain.muffin : isBagel ? ingData.levain.bagel : ingData.levain.shared;
+        return src ? { type: 'simple', rows: src.build2 } : null;
+      }
+      if (t.includes('Weigh out') || t.includes('autolyse') || t.includes('Autolyse')) {
+        // Filter byRecipe to process that matches this event
+        const proc = ev.process;
+        const relevant = ingData.byRecipe.filter(r =>
+          !proc ||
+          (proc === 'loaf'   && r.processType === 'sourdough-loaf') ||
+          (proc === 'muffin' && r.processType === 'sourdough-muffin') ||
+          (proc === 'bagel'  && r.processType === 'bagel')
+        );
+        return relevant.length ? { type: 'byRecipe', recipes: relevant } : null;
+      }
+      return null;
+    };
+
+    const renderIngCol = ev => {
+      const ings = getEventIngredients(ev);
+      if (!ings) return '';
+      if (ings.type === 'simple') return ingTableHtml(ings.rows);
+      // byRecipe
+      return ings.recipes.map(r =>
+        `<div class="bs-recipe-label">${escapeHtml(r.name)} &times; ${r.count}</div>${ingTableHtml(r.ingredients)}`
+      ).join('');
+    };
+
+    // Group events by day
+    const sorted = [..._scheduleResult.events].sort((a, b) => a.time - b.time);
+    const groups = [];
+    let curKey = null;
+    for (const ev of sorted) {
+      const key = ev.time.toDateString();
+      if (key !== curKey) { groups.push({ date: ev.time, events: [] }); curKey = key; }
+      groups[groups.length - 1].events.push(ev);
+    }
+
+    const summaryParts = ingData.byRecipe.map(r => `${r.count} &times; ${escapeHtml(r.name)}`);
+    const totalUnits = ingData.byRecipe.reduce((s, r) => s + r.count, 0);
+
+    const daysHtml = groups.map((g, gi) => {
+      const rowsHtml = g.events.map(ev => `
+        <tr>
+          <td class="bs-time">${fmtRange(ev)}</td>
+          <td class="bs-step">
+            <strong>${escapeHtml(ev.title)}</strong>
+            ${ev.detail ? `<div class="bs-detail">${escapeHtml(ev.detail)}</div>` : ''}
+          </td>
+          <td class="bs-ings">${renderIngCol(ev)}</td>
+        </tr>`).join('');
+      return `
+        <div class="bakesheet-day">
+          <div class="bakesheet-day-header">Day ${gi + 1} &mdash; ${dayFmt.format(g.date)}</div>
+          <table class="bakesheet-table">
+            <thead><tr>
+              <th style="width:110px">Time</th>
+              <th>Step</th>
+              <th style="width:240px">Ingredients</th>
+            </tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+    }).join('');
+
+    content.innerHTML = `
+      <div class="bakesheet-print-area">
+        <div class="bakesheet-header">
+          <div class="bakesheet-title">Bake Sheet</div>
+          <div class="bakesheet-summary">${totalUnits} items &mdash; ${summaryParts.join(', ')}</div>
+        </div>
+        ${daysHtml}
+        <div class="bakesheet-notes">
+          <div class="bakesheet-notes-header">Notes</div>
+          <div class="bakesheet-notes-lines"></div>
+        </div>
+      </div>`;
   }
 
   // ---- flour role detection + rebalancing ----
