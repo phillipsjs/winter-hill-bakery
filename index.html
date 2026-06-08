@@ -1106,7 +1106,10 @@
     <div class="card" id="financials-card" style="display:none">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
         <h2 style="margin:0">Projected financials for this bake</h2>
-        <button class="secondary" onclick="toggleSaleSavePanel()" style="white-space:nowrap;flex-shrink:0">Save this sale</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
+          <button class="secondary" onclick="toggleSaleSavePanel()" style="white-space:nowrap">Save this sale</button>
+          <button onclick="openInvoiceModal()" style="white-space:nowrap">Generate invoice</button>
+        </div>
       </div>
       <div id="sale-panel" style="display:none;margin-bottom:12px;border-top:1px solid var(--border);padding-top:12px">
         <div class="row">
@@ -1205,10 +1208,119 @@
     <div class="card" style="text-align:center">
       <p class="muted" style="font-size:0.85rem;margin:0">Recipes sync automatically a few seconds after each change. Settings and the bake plan stay local to this device.</p>
     </div>
+
+    <div class="card">
+      <h2>Invoice settings</h2>
+      <p class="muted" style="margin-top:0;font-size:0.9rem">Configure your company details for generating invoices from the projected financials. Uses the same GitHub token as recipes.</p>
+
+      <div class="row">
+        <label>Invoice Gist ID</label>
+        <input type="text" id="invoice-gist-id" placeholder="Paste an existing ID, or create a new one →" />
+      </div>
+      <p class="settings-hint">A separate private Gist from your recipes. Stores company info, customers, and invoice counter.</p>
+      <div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">
+        <button onclick="saveInvoiceGistId()">Save ID</button>
+        <button class="secondary" onclick="createInvoiceGistNow()">Create new Gist</button>
+        <button class="secondary" onclick="syncInvoiceSettingsNow()">Sync now</button>
+      </div>
+      <div id="invoice-gist-msg" style="margin-top:6px;font-size:0.9rem"></div>
+
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <h3 style="margin:0 0 12px;font-size:0.95rem">Your company</h3>
+        <div class="row">
+          <label>Name</label>
+          <input type="text" id="inv-company-name" placeholder="Winter Hill Bakery" />
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label>Address</label>
+          <textarea id="inv-company-address" rows="3" placeholder="123 Main St&#10;Cambridge, MA 02139"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px;align-items:flex-start">
+          <label style="padding-top:4px">Logo</label>
+          <div>
+            <input type="file" id="inv-logo-file" accept="image/*" onchange="onLogoFileChange()" />
+            <p class="settings-hint" style="margin-top:4px">Under 150 KB recommended for fast sync. Stored as base64 in your invoice Gist.</p>
+            <div id="inv-logo-preview"></div>
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <button onclick="saveInvoiceCompanySettings()">Save company info</button>
+        </div>
+        <div id="invoice-company-msg" style="margin-top:6px;font-size:0.9rem"></div>
+      </div>
+
+      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <h3 style="margin:0 0 8px;font-size:0.95rem">Saved customers</h3>
+        <div id="inv-customer-list"></div>
+      </div>
+    </div>
   </section>
 
   <p class="footer-note" id="footer-note">All data is stored locally in your browser.</p>
 </main>
+
+<div id="invoice-modal" class="modal-overlay" style="display:none" onclick="closeInvModalOnBg(event)">
+  <div class="modal-content" style="max-width:560px;max-height:90vh;overflow-y:auto">
+    <h3 style="margin-bottom:16px">Generate invoice</h3>
+
+    <div style="margin-bottom:14px">
+      <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600">Customer</label>
+      <select id="inv-cust-select" style="width:100%;margin-bottom:8px" onchange="onInvCustChange()">
+        <option value="">— New customer —</option>
+      </select>
+      <input type="text" id="inv-cust-name" placeholder="Customer name" style="width:100%;margin-bottom:6px;box-sizing:border-box" />
+      <textarea id="inv-cust-addr" rows="2" placeholder="Customer address" style="width:100%;box-sizing:border-box"></textarea>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:0.85rem;cursor:pointer">
+        <input type="checkbox" id="inv-save-customer" checked />
+        Save / update this customer
+      </label>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-bottom:14px">
+      <div style="flex:1">
+        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600">Invoice #</label>
+        <input type="text" id="inv-number" style="width:100%;box-sizing:border-box" />
+      </div>
+      <div style="flex:1">
+        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600">Date</label>
+        <input type="date" id="inv-date" style="width:100%;box-sizing:border-box" />
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px">
+      <label style="display:block;margin-bottom:6px;font-size:0.85rem;font-weight:600">Line items</label>
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:0.85rem;border-collapse:collapse">
+          <thead>
+            <tr style="border-bottom:2px solid var(--border)">
+              <th style="text-align:left;padding:4px 6px;font-weight:600">Item</th>
+              <th style="text-align:right;padding:4px 6px;font-weight:600">Qty</th>
+              <th style="text-align:right;padding:4px 6px;font-weight:600">Price</th>
+              <th style="text-align:right;padding:4px 6px;font-weight:600">Total</th>
+            </tr>
+          </thead>
+          <tbody id="inv-line-items"></tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--border);font-weight:600">
+              <td colspan="3" style="padding:5px 6px;text-align:right">Total</td>
+              <td style="padding:5px 6px;text-align:right" id="inv-line-total">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600">Notes <span class="muted" style="font-weight:400;font-size:0.82rem">(optional)</span></label>
+      <textarea id="inv-notes" rows="2" placeholder="Payment terms, thank-you note…" style="width:100%;box-sizing:border-box"></textarea>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="secondary" onclick="closeInvoiceModal()">Cancel</button>
+      <button onclick="printInvoice()">Print invoice</button>
+    </div>
+  </div>
+</div>
 
 <div id="anchor-modal" class="modal-overlay" style="display:none" onclick="closeAnchorModalOnBg(event)">
   <div class="modal-content">
@@ -1260,6 +1372,8 @@
   const BAKES_LOCAL_KEY = 'whb-bakes-v1';
   const PANTRY_LOCAL_KEY = 'whb-pantry-v1';
   const PANTRY_FILENAME = 'pantry.json';
+  const INVOICE_GIST_ID_KEY = 'whb-invoice-gist-id';
+  const INVOICE_FILENAME = 'invoice-settings.json';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
 
   const BAKE_TIME_PRESETS = {
@@ -1510,6 +1624,10 @@
     },
   ];
 
+  // ---- invoice state ----
+  let invoiceSettings = { company: { name: '', address: '', logo: '' }, customers: [], nextInvoiceNumber: 1 };
+  let invoiceSettingsLoaded = false;
+
   // ---- gist sync ----
   let syncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'error'
   let syncError = '';
@@ -1684,6 +1802,353 @@
     el.textContent = getGistConfig()
       ? 'Recipes and bake history sync to GitHub Gist. Schedule settings are local to this device.'
       : 'All data is stored locally in your browser.';
+  }
+
+  // ---- invoice gist ----
+
+  function getInvoiceGistConfig() {
+    const token = localStorage.getItem(GIST_TOKEN_KEY);
+    const gistId = localStorage.getItem(INVOICE_GIST_ID_KEY);
+    return (token && gistId) ? { token, gistId } : null;
+  }
+
+  async function fetchInvoiceSettings() {
+    const cfg = getInvoiceGistConfig();
+    if (!cfg) return;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json' }
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    const data = await resp.json();
+    const file = data.files[INVOICE_FILENAME];
+    if (!file) throw new Error('invoice-settings.json not found in gist');
+    const parsed = JSON.parse(file.content);
+    invoiceSettings = Object.assign(
+      { company: { name: '', address: '', logo: '' }, customers: [], nextInvoiceNumber: 1 },
+      parsed,
+      { company: Object.assign({ name: '', address: '', logo: '' }, parsed.company) }
+    );
+  }
+
+  async function pushInvoiceSettings() {
+    const cfg = getInvoiceGistConfig();
+    if (!cfg) return;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${cfg.token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ files: { [INVOICE_FILENAME]: { content: JSON.stringify(invoiceSettings, null, 2) } } }),
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+  }
+
+  async function ensureInvoiceSettingsLoaded() {
+    if (invoiceSettingsLoaded) return;
+    invoiceSettingsLoaded = true;
+    if (!getInvoiceGistConfig()) return;
+    try { await fetchInvoiceSettings(); } catch(e) { /* silently use defaults */ }
+  }
+
+  async function createInvoiceGistNow() {
+    const token = localStorage.getItem(GIST_TOKEN_KEY);
+    const msgEl = document.getElementById('invoice-gist-msg');
+    if (!token) { if (msgEl) msgEl.textContent = 'Add your GitHub token in the Cloud sync section first.'; return; }
+    if (msgEl) msgEl.textContent = 'Creating…';
+    try {
+      const resp = await fetch('https://api.github.com/gists', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: 'Winter Hill Bakery — invoice settings',
+          public: false,
+          files: { [INVOICE_FILENAME]: { content: JSON.stringify(invoiceSettings, null, 2) } },
+        }),
+      });
+      if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+      const data = await resp.json();
+      localStorage.setItem(INVOICE_GIST_ID_KEY, data.id);
+      const idInput = document.getElementById('invoice-gist-id');
+      if (idInput) idInput.value = data.id;
+      if (msgEl) msgEl.textContent = `✓ Created. Gist ID saved.`;
+    } catch(e) {
+      if (msgEl) msgEl.textContent = `Error: ${e.message}`;
+    }
+  }
+
+  function saveInvoiceGistId() {
+    const id = (document.getElementById('invoice-gist-id')?.value || '').trim();
+    const msgEl = document.getElementById('invoice-gist-msg');
+    if (!id) { if (msgEl) msgEl.textContent = 'Enter a Gist ID first.'; return; }
+    localStorage.setItem(INVOICE_GIST_ID_KEY, id);
+    invoiceSettingsLoaded = false;
+    if (msgEl) msgEl.textContent = '✓ Saved.';
+  }
+
+  async function syncInvoiceSettingsNow() {
+    const msgEl = document.getElementById('invoice-gist-msg');
+    if (!getInvoiceGistConfig()) { if (msgEl) msgEl.textContent = 'Configure GitHub token and Invoice Gist ID first.'; return; }
+    if (msgEl) msgEl.textContent = 'Syncing…';
+    try {
+      await fetchInvoiceSettings();
+      populateInvoiceSettingsForm();
+      if (msgEl) msgEl.textContent = '✓ Synced.';
+    } catch(e) {
+      if (msgEl) msgEl.textContent = `Error: ${e.message}`;
+    }
+  }
+
+  async function saveInvoiceCompanySettings() {
+    invoiceSettings.company.name    = (document.getElementById('inv-company-name')?.value || '').trim();
+    invoiceSettings.company.address = (document.getElementById('inv-company-address')?.value || '').trim();
+    const msgEl = document.getElementById('invoice-company-msg');
+    if (!getInvoiceGistConfig()) {
+      if (msgEl) msgEl.textContent = 'Saved locally. Add Invoice Gist ID above to sync across devices.';
+      return;
+    }
+    if (msgEl) msgEl.textContent = 'Saving…';
+    try {
+      await pushInvoiceSettings();
+      if (msgEl) msgEl.textContent = '✓ Saved to Gist.';
+    } catch(e) {
+      if (msgEl) msgEl.textContent = `Error: ${e.message}`;
+    }
+  }
+
+  function onLogoFileChange() {
+    const input = document.getElementById('inv-logo-file');
+    const previewEl = document.getElementById('inv-logo-preview');
+    const msgEl = document.getElementById('invoice-company-msg');
+    if (!input || !input.files[0]) return;
+    const file = input.files[0];
+    if (file.size > 150 * 1024 && msgEl) {
+      msgEl.textContent = `⚠ Logo is ${(file.size / 1024).toFixed(0)} KB — images under 150 KB are recommended for fast Gist sync.`;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      invoiceSettings.company.logo = e.target.result;
+      if (previewEl) previewEl.innerHTML = `<img src="${escapeAttr(e.target.result)}" alt="Logo preview" style="max-height:60px;max-width:180px;border-radius:4px;border:1px solid var(--border);margin-top:4px">`;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function populateInvoiceSettingsForm() {
+    const co = invoiceSettings.company;
+    const nameEl   = document.getElementById('inv-company-name');
+    const addrEl   = document.getElementById('inv-company-address');
+    const gistIdEl = document.getElementById('invoice-gist-id');
+    const prevEl   = document.getElementById('inv-logo-preview');
+    if (nameEl)   nameEl.value   = co.name    || '';
+    if (addrEl)   addrEl.value   = co.address || '';
+    if (gistIdEl) gistIdEl.value = localStorage.getItem(INVOICE_GIST_ID_KEY) || '';
+    if (prevEl) prevEl.innerHTML = co.logo
+      ? `<img src="${escapeAttr(co.logo)}" alt="Logo" style="max-height:60px;max-width:180px;border-radius:4px;border:1px solid var(--border);margin-top:4px">`
+      : '';
+    renderSavedCustomerList();
+  }
+
+  function renderSavedCustomerList() {
+    const el = document.getElementById('inv-customer-list');
+    if (!el) return;
+    if (!invoiceSettings.customers.length) {
+      el.innerHTML = '<p class="muted" style="margin:0;font-size:0.88rem">No saved customers yet — they\'ll appear here after you generate your first invoice.</p>';
+      return;
+    }
+    el.innerHTML = invoiceSettings.customers.map((c, i) => `
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:0.9rem">${escapeHtml(c.name)}</div>
+          <div class="muted" style="font-size:0.82rem;white-space:pre-wrap;margin-top:1px">${escapeHtml(c.address || '')}</div>
+        </div>
+        <button class="secondary" style="font-size:0.78rem;padding:3px 8px;flex-shrink:0" onclick="deleteCustomer(${i})">Remove</button>
+      </div>`).join('');
+  }
+
+  async function deleteCustomer(idx) {
+    invoiceSettings.customers.splice(idx, 1);
+    renderSavedCustomerList();
+    if (getInvoiceGistConfig()) {
+      try { await pushInvoiceSettings(); } catch(e) { /* silent */ }
+    }
+  }
+
+  // ---- invoice modal ----
+
+  async function openInvoiceModal() {
+    await ensureInvoiceSettingsLoaded();
+    const modal = document.getElementById('invoice-modal');
+    if (!modal) return;
+
+    const sel = document.getElementById('inv-cust-select');
+    if (sel) {
+      sel.innerHTML = '<option value="">— New customer —</option>' +
+        invoiceSettings.customers.map((c, i) => `<option value="${i}">${escapeHtml(c.name)}</option>`).join('');
+      sel.value = '';
+    }
+    onInvCustChange();
+
+    const numEl = document.getElementById('inv-number');
+    if (numEl) numEl.value = invoiceSettings.nextInvoiceNumber;
+
+    const dateEl = document.getElementById('inv-date');
+    if (dateEl) {
+      const now = new Date();
+      dateEl.value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    }
+
+    document.getElementById('inv-notes').value = '';
+    renderInvoiceLineItems();
+    modal.style.display = 'flex';
+  }
+
+  function closeInvoiceModal() {
+    const modal = document.getElementById('invoice-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function closeInvModalOnBg(e) {
+    if (e.target === document.getElementById('invoice-modal')) closeInvoiceModal();
+  }
+
+  function onInvCustChange() {
+    const sel   = document.getElementById('inv-cust-select');
+    const nameEl = document.getElementById('inv-cust-name');
+    const addrEl = document.getElementById('inv-cust-addr');
+    const saveCb = document.getElementById('inv-save-customer');
+    const idx   = sel ? sel.value : '';
+    if (idx !== '' && invoiceSettings.customers[+idx]) {
+      const c = invoiceSettings.customers[+idx];
+      if (nameEl) nameEl.value = c.name;
+      if (addrEl) addrEl.value = c.address || '';
+      if (saveCb) saveCb.checked = true;
+    } else {
+      if (nameEl) nameEl.value = '';
+      if (addrEl) addrEl.value = '';
+      if (saveCb) saveCb.checked = true;
+    }
+  }
+
+  function renderInvoiceLineItems() {
+    const tbody = document.getElementById('inv-line-items');
+    const totEl  = document.getElementById('inv-line-total');
+    if (!tbody) return;
+    let tot = 0, anyTot = false;
+    let rows = '';
+    for (const d of (_finData || [])) {
+      const rid = escapeAttr(d.id);
+      const input = document.querySelector(`.fin-units-input[data-recipe-id="${rid}"]`);
+      const units = input ? (Number(input.value) || 0) : d.planUnits;
+      const lineTotal = d.price != null ? d.price * units : null;
+      if (lineTotal != null) { tot += lineTotal; anyTot = true; }
+      rows += `<tr>
+        <td style="padding:4px 6px">${escapeHtml(d.name)}</td>
+        <td style="padding:4px 6px;text-align:right">${units}</td>
+        <td style="padding:4px 6px;text-align:right">${d.price != null ? '$'+d.price.toFixed(2) : '<span class="muted">—</span>'}</td>
+        <td style="padding:4px 6px;text-align:right">${lineTotal != null ? '$'+lineTotal.toFixed(2) : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    }
+    tbody.innerHTML = rows;
+    if (totEl) totEl.textContent = anyTot ? '$' + tot.toFixed(2) : '—';
+  }
+
+  async function printInvoice() {
+    const custName  = (document.getElementById('inv-cust-name')?.value || '').trim();
+    const custAddr  = (document.getElementById('inv-cust-addr')?.value || '').trim();
+    const saveIt    = document.getElementById('inv-save-customer')?.checked;
+    const invNum    = (document.getElementById('inv-number')?.value || '').trim() || String(invoiceSettings.nextInvoiceNumber);
+    const invDate   = document.getElementById('inv-date')?.value || '';
+    const notes     = (document.getElementById('inv-notes')?.value || '').trim();
+    const sel       = document.getElementById('inv-cust-select');
+    const existIdx  = sel && sel.value !== '' ? +sel.value : -1;
+
+    if (saveIt && custName) {
+      if (existIdx >= 0 && invoiceSettings.customers[existIdx]) {
+        invoiceSettings.customers[existIdx] = { ...invoiceSettings.customers[existIdx], name: custName, address: custAddr };
+      } else {
+        invoiceSettings.customers.push({ id: 'c' + Date.now(), name: custName, address: custAddr });
+      }
+      renderSavedCustomerList();
+    }
+
+    const usedNum = parseInt(invNum, 10);
+    if (!isNaN(usedNum) && usedNum >= invoiceSettings.nextInvoiceNumber) {
+      invoiceSettings.nextInvoiceNumber = usedNum + 1;
+    }
+
+    const lines = (_finData || []).map(d => {
+      const rid = escapeAttr(d.id);
+      const input = document.querySelector(`.fin-units-input[data-recipe-id="${rid}"]`);
+      const units = input ? (Number(input.value) || 0) : d.planUnits;
+      return { name: d.name, units, price: d.price, total: d.price != null ? d.price * units : null };
+    }).filter(l => l.units > 0);
+
+    if (getInvoiceGistConfig()) {
+      try { await pushInvoiceSettings(); } catch(e) { /* silent */ }
+    }
+
+    openInvoicePrintWindow({ company: invoiceSettings.company, custName, custAddr, invNum, invDate, notes, lines });
+    closeInvoiceModal();
+  }
+
+  function openInvoicePrintWindow({ company, custName, custAddr, invNum, invDate, notes, lines }) {
+    const esc = s => escapeHtml(s || '');
+    const addr = s => esc(s).replace(/\n/g, '<br>');
+    const logo = company.logo
+      ? `<img src="${escapeAttr(company.logo)}" alt="Logo" style="max-height:72px;max-width:200px;display:block;margin-bottom:10px">`
+      : '';
+    const dateFmt = invDate
+      ? new Date(invDate + 'T12:00:00').toLocaleDateString(undefined, { year:'numeric', month:'long', day:'numeric' })
+      : '';
+    const lineRows = lines.map(l => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${esc(l.name)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${l.units}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${l.price != null ? '$'+l.price.toFixed(2) : '—'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right">${l.total != null ? '$'+l.total.toFixed(2) : '—'}</td>
+      </tr>`).join('');
+    const grandTotal = lines.reduce((s, l) => l.total != null ? s + l.total : s, 0);
+    const grandFmt   = lines.some(l => l.total != null) ? '$' + grandTotal.toFixed(2) : '';
+    const notesHtml  = notes
+      ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb">
+           <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#9ca3af;margin-bottom:6px">Notes</div>
+           <div style="font-size:0.9rem;color:#374151;white-space:pre-wrap">${esc(notes)}</div>
+         </div>`
+      : '';
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Invoice #${esc(invNum)}</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;color:#111;margin:0;padding:48px;font-size:14px;line-height:1.5}
+  @media print{body{padding:24px}}
+  th{font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#9ca3af;padding:8px 12px;text-align:left;border-bottom:2px solid #e5e7eb;background:#f9fafb}
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:40px">
+  <div>${logo}<div style="font-weight:700;font-size:1.05rem">${esc(company.name)}</div><div style="color:#6b7280;font-size:0.88rem;margin-top:3px">${addr(company.address)}</div></div>
+  <div style="text-align:right">
+    <div style="font-size:2.2rem;font-weight:800;letter-spacing:-0.03em;line-height:1">INVOICE</div>
+    <div style="margin-top:8px;color:#6b7280;font-size:0.9rem"># ${esc(invNum)}</div>
+    <div style="color:#6b7280;font-size:0.9rem">${dateFmt}</div>
+  </div>
+</div>
+<div style="margin-bottom:32px">
+  <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#9ca3af;margin-bottom:6px">Bill to</div>
+  <div style="font-weight:600">${esc(custName)}</div>
+  <div style="color:#6b7280;font-size:0.88rem;margin-top:2px">${addr(custAddr)}</div>
+</div>
+<table style="width:100%;border-collapse:collapse;font-size:0.9rem">
+  <thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit price</th><th style="text-align:right">Total</th></tr></thead>
+  <tbody>${lineRows}</tbody>
+  <tfoot><tr>
+    <td colspan="3" style="padding:10px 12px;text-align:right;font-weight:700;border-top:2px solid #111">Total</td>
+    <td style="padding:10px 12px;text-align:right;font-weight:700;border-top:2px solid #111">${grandFmt}</td>
+  </tr></tfoot>
+</table>
+${notesHtml}
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`;
+    const w = window.open('', '_blank', 'width=820,height=1060');
+    if (w) { w.document.write(html); w.document.close(); }
   }
 
   // ---- bake history ----
@@ -2881,6 +3346,10 @@
       document.getElementById('settings-gist-id').value = cfg ? cfg.gistId : '';
       document.getElementById('settings-msg').textContent = '';
       renderSettingsSyncStatus();
+      populateInvoiceSettingsForm();
+      if (!invoiceSettingsLoaded && getInvoiceGistConfig()) {
+        fetchInvoiceSettings().then(() => { invoiceSettingsLoaded = true; populateInvoiceSettingsForm(); }).catch(() => {});
+      }
     }
   }
 
