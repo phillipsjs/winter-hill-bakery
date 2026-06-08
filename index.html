@@ -618,28 +618,9 @@
 <main>
   <section id="tab-plan">
     <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
-        <div>
-          <h2 style="margin:0 0 4px">This bake</h2>
-          <p class="muted" style="margin:0">Add recipes from the <strong>Recipes</strong> tab, then enter how many of each you'll bake.</p>
-        </div>
-        <button class="secondary" onclick="toggleSavePanel()" id="save-panel-btn" style="white-space:nowrap;flex-shrink:0">Save this bake</button>
-      </div>
-      <div id="save-panel" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-        <div class="row">
-          <label style="width:120px">Notes</label>
-          <textarea id="save-notes" rows="2" placeholder="Optional — describe the bake, any adjustments…"></textarea>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <label style="width:120px">Oven temp</label>
-          <input type="number" id="save-oven-temp" min="0" step="5" placeholder="e.g. 500" style="width:90px;flex:none" />
-          <span class="muted">°F</span>
-        </div>
-        <div class="row" style="margin-top:10px;gap:8px;justify-content:flex-end">
-          <button class="secondary" onclick="toggleSavePanel()">Cancel</button>
-          <button onclick="saveCurrentBake()">Confirm save</button>
-        </div>
-        <div id="save-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
+      <div>
+        <h2 style="margin:0 0 4px">This bake</h2>
+        <p class="muted" style="margin:0">Add recipes from the <strong>Recipes</strong> tab, then enter how many of each you'll bake.</p>
       </div>
       <div id="plan-list" style="margin-top:10px"></div>
     </div>
@@ -1689,13 +1670,6 @@
     if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
   }
 
-  function toggleSavePanel() {
-    const panel = document.getElementById('save-panel');
-    const isOpen = panel.style.display !== 'none';
-    panel.style.display = isOpen ? 'none' : '';
-    if (isOpen) document.getElementById('save-bake-msg').textContent = '';
-  }
-
   function toggleSaleSavePanel() {
     const panel = document.getElementById('sale-panel');
     const isOpen = panel.style.display !== 'none';
@@ -1704,29 +1678,40 @@
   }
 
   function saveCurrentSale() {
+    const msg = document.getElementById('sale-bake-msg');
+
+    // Read the edited sold-unit counts from the financials table inputs.
+    // Fall back to plan counts if the financials table isn't rendered.
+    const soldCounts = {};
+    document.querySelectorAll('.fin-units-input').forEach(el => {
+      soldCounts[el.dataset.recipeId] = Number(el.value) || 0;
+    });
+
     const items = Object.entries(plan)
       .filter(([, count]) => Number(count) > 0)
       .map(([id, count]) => {
         const recipe = recipes.find(r => r.id === id);
-        const n = Number(count);
-        const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: n };
+        const bakedCount = Number(count);           // original baked units (for ingredients)
+        const soldCount  = soldCounts[id] != null ? soldCounts[id] : bakedCount; // edited sold units
+
+        const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: soldCount };
         if (recipe && recipe.msrp != null) item.msrp = recipe.msrp;
         if (recipe && recipe.wholesalePrice != null) item.wholesalePrice = recipe.wholesalePrice;
         const cost = computeRecipeCostPerItem(recipe);
         if (cost != null) item.costPerItem = cost;
         const price = recipe ? (recipe.wholesalePrice ?? recipe.msrp) : null;
         if (price != null && cost != null) item.netProfit = price - cost;
-        else if (recipe && recipe.netProfit != null) item.netProfit = recipe.netProfit;
         if (recipe) {
           const spec = getRecipeSpec(recipe);
           if (spec.bakeMin) item.bakeMin = spec.bakeMin;
           if (recipe.coldProofHr != null) item.coldProofHr = recipe.coldProofHr;
-          const fw = calcFlourWeights(recipe, n);
+          // Flour weights use the baked count, not the sold count
+          const fw = calcFlourWeights(recipe, bakedCount);
           if (fw.length) item.flourWeights = fw;
         }
         return item;
       });
-    const msg = document.getElementById('sale-bake-msg');
+
     if (items.length === 0) {
       if (msg) { msg.textContent = 'Nothing in the current bake plan to save.'; msg.style.color = 'var(--muted)'; }
       return;
@@ -1747,50 +1732,6 @@
         document.getElementById('sale-notes').value = '';
         document.getElementById('sale-oven-temp').value = '';
       }, 1200);
-    }
-    if (getGistConfig()) pushBakesToGist().catch(() => {});
-  }
-
-  function saveCurrentBake() {
-    const items = Object.entries(plan)
-      .filter(([, count]) => Number(count) > 0)
-      .map(([id, count]) => {
-        const recipe = recipes.find(r => r.id === id);
-        const n = Number(count);
-        const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: n };
-        if (recipe && recipe.msrp != null) item.msrp = recipe.msrp;
-        if (recipe && recipe.wholesalePrice != null) item.wholesalePrice = recipe.wholesalePrice;
-        const cost = computeRecipeCostPerItem(recipe);
-        if (cost != null) item.costPerItem = cost;
-        const price = recipe ? (recipe.wholesalePrice ?? recipe.msrp) : null;
-        if (price != null && cost != null) item.netProfit = price - cost;
-        else if (recipe && recipe.netProfit != null) item.netProfit = recipe.netProfit; // backward compat
-        if (recipe) {
-          const spec = getRecipeSpec(recipe);
-          if (spec.bakeMin) item.bakeMin = spec.bakeMin;
-          if (recipe.coldProofHr != null) item.coldProofHr = recipe.coldProofHr;
-          const fw = calcFlourWeights(recipe, n);
-          if (fw.length) item.flourWeights = fw;
-        }
-        return item;
-      });
-    const msg = document.getElementById('save-bake-msg');
-    if (items.length === 0) {
-      if (msg) { msg.textContent = 'Nothing in the current bake plan to save.'; msg.style.color = 'var(--muted)'; }
-      return;
-    }
-    const notes = (document.getElementById('save-notes').value || '').trim();
-    const ovenTempRaw = document.getElementById('save-oven-temp').value;
-    const ovenTempF = ovenTempRaw ? Number(ovenTempRaw) : null;
-    const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt: Date.now(), items };
-    if (notes) entry.notes = notes;
-    if (ovenTempF) entry.ovenTempF = ovenTempF;
-    bakes = [entry, ...bakes];
-    saveBakesLocally();
-    if (msg) {
-      msg.textContent = 'Bake saved.';
-      msg.style.color = 'var(--ok)';
-      setTimeout(() => { toggleSavePanel(); document.getElementById('save-notes').value = ''; document.getElementById('save-oven-temp').value = ''; }, 1200);
     }
     if (getGistConfig()) pushBakesToGist().catch(() => {});
   }
@@ -2538,7 +2479,7 @@
     if (statusEl) statusEl.textContent = getGistConfig() ? 'Synced to Gist' : 'Local only';
     renderHistoryChart();
     if (bakes.length === 0) {
-      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet — use <strong>Save this bake</strong> on the Bake Plan tab, or <strong>Manually add a bake</strong> above.</p></div>';
+      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No bakes saved yet — use <strong>Save this sale</strong> on the Sales tab, or <strong>Manually add a bake</strong> above.</p></div>';
       return;
     }
     const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -2936,75 +2877,64 @@
     renderFinancials();
   }
 
+  // Per-recipe static pricing data used by renderFinancials + recalcFinancialsTotals.
+  // Stored so recalc doesn't need to re-query recipes.
+  let _finData = [];
+
   function renderFinancials() {
     const card = document.getElementById('financials-card');
     const out  = document.getElementById('financials-output');
     if (!card || !out) return;
 
     const planned = recipes.filter(r => isInPlan(r.id) && (plan[r.id] || 0) > 0);
-    if (planned.length === 0) { card.style.display = 'none'; return; }
+    if (planned.length === 0) { card.style.display = 'none'; _finData = []; return; }
 
-    const $ = v => v == null ? null : `$${v.toFixed(2)}`;
-    const fmtCell = (v, dim) => v == null
-      ? `<td class="num muted" style="color:var(--muted)">—</td>`
-      : `<td class="num"${dim ? ' class="muted"' : ''}>${v}</td>`;
-
-    let totSales = 0, totCost = 0, totProfit = 0;
-    let anySales = false, anyCost = false, anyProfit = false;
+    const fmt = v => v == null ? null : `$${v.toFixed(2)}`;
     const missing = [];
 
-    const rows = planned.map(r => {
-      const units  = plan[r.id];
-      const price  = r.wholesalePrice != null ? r.wholesalePrice : (r.msrp != null ? r.msrp : null);
+    // Build static per-recipe data (price/cost don't change with unit edits)
+    _finData = planned.map(r => {
+      const price = r.wholesalePrice != null ? r.wholesalePrice : (r.msrp != null ? r.msrp : null);
       const priceLabel = r.wholesalePrice != null ? 'wholesale' : (r.msrp != null ? 'MSRP' : null);
-      const cost   = computeRecipeCostPerItem(r);
+      const cost = computeRecipeCostPerItem(r);
       const profit = (price != null && cost != null) ? price - cost : null;
-
-      const sales  = price  != null ? price  * units : null;
-      const tCost  = cost   != null ? cost   * units : null;
-      const tProfit = profit != null ? profit * units : null;
-
-      if (sales   != null) { totSales  += sales;   anySales  = true; }
-      if (tCost   != null) { totCost   += tCost;   anyCost   = true; }
-      if (tProfit != null) { totProfit += tProfit; anyProfit = true; }
-
       if (price == null || cost == null) missing.push(r.name);
-
-      const profitColor = profit != null && profit < 0 ? ' style="color:var(--danger)"' : '';
-
-      return `<tr>
-        <td>${escapeHtml(r.name)}</td>
-        <td class="num">${units}</td>
-        ${fmtCell(price  != null ? `${$(price)} <span class="muted" style="font-size:0.75rem">(${priceLabel})</span>` : null)}
-        ${fmtCell($(sales))}
-        ${fmtCell($(cost))}
-        ${fmtCell($(tCost))}
-        <td class="num"${profit != null ? profitColor : ''}>${profit != null ? $(profit) : '<span class="muted">—</span>'}</td>
-        <td class="num"${tProfit != null ? profitColor : ''}>${tProfit != null ? $(tProfit) : '<span class="muted">—</span>'}</td>
-      </tr>`;
+      return { id: r.id, name: r.name, planUnits: plan[r.id], price, priceLabel, cost, profit };
     });
 
-    const totRow = `<tr style="font-weight:600;border-top:2px solid var(--border)">
-      <td>Total</td>
-      <td></td>
-      <td></td>
-      <td class="num">${anySales  ? $(totSales)  : '<span class="muted">—</span>'}</td>
-      <td></td>
-      <td class="num">${anyCost   ? $(totCost)   : '<span class="muted">—</span>'}</td>
-      <td></td>
-      <td class="num" style="${totProfit < 0 ? 'color:var(--danger)' : ''}">${anyProfit ? $(totProfit) : '<span class="muted">—</span>'}</td>
-    </tr>`;
+    const rows = _finData.map(d => {
+      const rid = escapeAttr(d.id);
+      const profitColor = d.profit != null && d.profit < 0 ? ' style="color:var(--danger)"' : '';
+      const units = d.planUnits;
+      const sales   = d.price  != null ? fmt(d.price  * units) : null;
+      const tCost   = d.cost   != null ? fmt(d.cost   * units) : null;
+      const tProfit = d.profit != null ? fmt(d.profit * units) : null;
+      return `<tr>
+        <td>${escapeHtml(d.name)}</td>
+        <td class="num"><input type="number" class="fin-units-input" data-recipe-id="${rid}"
+          value="${units}" min="0" step="1"
+          style="width:58px;text-align:right;padding:2px 4px;font-size:inherit"
+          oninput="recalcFinancialsTotals()" /></td>
+        <td class="num">${d.price != null ? `${fmt(d.price)} <span class="muted" style="font-size:0.75rem">(${d.priceLabel})</span>` : '<span class="muted">—</span>'}</td>
+        <td class="num" id="fin-sales-${rid}">${sales != null ? sales : '<span class="muted">—</span>'}</td>
+        <td class="num">${d.cost != null ? fmt(d.cost) : '<span class="muted">—</span>'}</td>
+        <td class="num" id="fin-tcost-${rid}">${tCost != null ? tCost : '<span class="muted">—</span>'}</td>
+        <td class="num"${profitColor}>${d.profit != null ? fmt(d.profit) : '<span class="muted">—</span>'}</td>
+        <td class="num" id="fin-tprofit-${rid}"${profitColor}>${tProfit != null ? tProfit : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    });
 
     const missingNote = missing.length
       ? `<p class="muted" style="font-size:0.8rem;margin:8px 0 0">— = pricing or ingredient costs not set for: ${missing.map(escapeHtml).join(', ')}.</p>`
       : '';
 
     out.innerHTML = `
+      <p class="muted" style="font-size:0.8rem;margin:0 0 8px">Units pre-filled from your bake plan — adjust to reflect how many you actually sold.</p>
       <div style="overflow-x:auto">
         <table class="ingredients" style="width:100%">
           <thead><tr>
             <th>Recipe</th>
-            <th class="num">Units</th>
+            <th class="num">Units sold</th>
             <th class="num">Price/unit</th>
             <th class="num">Proj. sales</th>
             <th class="num">Cost/unit</th>
@@ -3013,12 +2943,61 @@
             <th class="num">Proj. profit</th>
           </tr></thead>
           <tbody>${rows.join('')}</tbody>
-          <tfoot>${totRow}</tfoot>
+          <tfoot><tr id="fin-totals-row" style="font-weight:600;border-top:2px solid var(--border)">
+            <td>Total</td><td></td><td></td>
+            <td class="num" id="fin-tot-sales"><span class="muted">—</span></td>
+            <td></td>
+            <td class="num" id="fin-tot-cost"><span class="muted">—</span></td>
+            <td></td>
+            <td class="num" id="fin-tot-profit"><span class="muted">—</span></td>
+          </tr></tfoot>
         </table>
       </div>
       ${missingNote}`;
 
     card.style.display = '';
+    recalcFinancialsTotals();
+  }
+
+  function recalcFinancialsTotals() {
+    const fmt = v => `$${v.toFixed(2)}`;
+    let totSales = 0, totCost = 0, totProfit = 0;
+    let anySales = false, anyCost = false, anyProfit = false;
+
+    for (const d of _finData) {
+      const rid = escapeAttr(d.id);
+      const input = document.querySelector(`.fin-units-input[data-recipe-id="${rid}"]`);
+      const units = input ? (Number(input.value) || 0) : d.planUnits;
+
+      const sales   = d.price  != null ? d.price  * units : null;
+      const tCost   = d.cost   != null ? d.cost   * units : null;
+      const tProfit = d.profit != null ? d.profit * units : null;
+
+      const salesEl   = document.getElementById('fin-sales-'   + rid);
+      const tCostEl   = document.getElementById('fin-tcost-'   + rid);
+      const tProfitEl = document.getElementById('fin-tprofit-' + rid);
+
+      if (salesEl)   salesEl.innerHTML   = sales   != null ? fmt(sales)   : '<span class="muted">—</span>';
+      if (tCostEl)   tCostEl.innerHTML   = tCost   != null ? fmt(tCost)   : '<span class="muted">—</span>';
+      if (tProfitEl) {
+        tProfitEl.innerHTML = tProfit != null ? fmt(tProfit) : '<span class="muted">—</span>';
+        tProfitEl.style.color = (tProfit != null && tProfit < 0) ? 'var(--danger)' : '';
+      }
+
+      if (sales   != null) { totSales  += sales;   anySales  = true; }
+      if (tCost   != null) { totCost   += tCost;   anyCost   = true; }
+      if (tProfit != null) { totProfit += tProfit; anyProfit = true; }
+    }
+
+    const totSalesEl  = document.getElementById('fin-tot-sales');
+    const totCostEl   = document.getElementById('fin-tot-cost');
+    const totProfitEl = document.getElementById('fin-tot-profit');
+    if (totSalesEl)  totSalesEl.innerHTML  = anySales  ? fmt(totSales)  : '<span class="muted">—</span>';
+    if (totCostEl)   totCostEl.innerHTML   = anyCost   ? fmt(totCost)   : '<span class="muted">—</span>';
+    if (totProfitEl) {
+      totProfitEl.innerHTML = anyProfit ? fmt(totProfit) : '<span class="muted">—</span>';
+      totProfitEl.style.color = (anyProfit && totProfit < 0) ? 'var(--danger)' : '';
+    }
   }
 
   // Add/remove a recipe from the bake plan (the "selected" state).
