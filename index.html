@@ -1162,13 +1162,13 @@
           <label style="width:120px">Notes</label>
           <textarea id="manual-notes" rows="2" placeholder="Optional — anything notable about this bake…"></textarea>
         </div>
-        <div class="row" style="margin-top:8px">
-          <label style="width:120px">Customer</label>
-          <input type="text" id="manual-cust-name" placeholder="Optional — who was this sold to?" />
-        </div>
-        <div class="row" style="margin-top:8px">
-          <label style="width:120px">Address</label>
-          <textarea id="manual-cust-addr" rows="2" placeholder="Optional"></textarea>
+        <div class="row" style="margin-top:8px;align-items:flex-start">
+          <label style="width:120px;padding-top:6px">Customer</label>
+          <div style="flex:1;min-width:0">
+            <select id="manual-cust-select" onchange="onManualCustChange()" style="width:100%;margin-bottom:6px"></select>
+            <input type="text" id="manual-cust-name" placeholder="Optional — who was this sold to?" style="width:100%;box-sizing:border-box;margin-bottom:6px" />
+            <textarea id="manual-cust-addr" rows="2" placeholder="Address (optional)" style="width:100%;box-sizing:border-box"></textarea>
+          </div>
         </div>
         <div class="row" style="margin-top:8px">
           <label style="width:120px">Invoice #</label>
@@ -2461,6 +2461,34 @@ ${notesHtml}
     }
   }
 
+  function populateManualCustDropdown(selectedName) {
+    const sel = document.getElementById('manual-cust-select');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— No specific customer —</option>' +
+      invoiceSettings.customers.map((c, i) => `<option value="${i}">${escapeHtml(c.name)}</option>`).join('');
+    if (selectedName) {
+      const idx = invoiceSettings.customers.findIndex(c => c.name === selectedName);
+      sel.value = idx >= 0 ? String(idx) : '';
+    } else {
+      sel.value = '';
+    }
+  }
+
+  function onManualCustChange() {
+    const sel    = document.getElementById('manual-cust-select');
+    const nameEl = document.getElementById('manual-cust-name');
+    const addrEl = document.getElementById('manual-cust-addr');
+    const idx = sel ? sel.value : '';
+    if (idx !== '' && invoiceSettings.customers[+idx]) {
+      const c = invoiceSettings.customers[+idx];
+      if (nameEl) nameEl.value = c.name;
+      if (addrEl) addrEl.value = c.address || '';
+    } else {
+      if (nameEl) nameEl.value = '';
+      if (addrEl) addrEl.value = '';
+    }
+  }
+
   function onSaleInvNumInput() {
     const val = (document.getElementById('sale-inv-number')?.value || '').trim();
     const warn = document.getElementById('sale-inv-warn');
@@ -2584,6 +2612,7 @@ ${notesHtml}
       manualRowCount = 0;
       document.getElementById('manual-items').innerHTML = '';
       addManualBakeRow();
+      ensureInvoiceSettingsLoaded().then(() => populateManualCustDropdown());
     }
   }
 
@@ -2805,6 +2834,7 @@ ${notesHtml}
     const mInvNumEl   = document.getElementById('manual-inv-number');
     if (mCustNameEl) mCustNameEl.value = bake.customer?.name || '';
     if (mCustAddrEl) mCustAddrEl.value = bake.customer?.address || '';
+    ensureInvoiceSettingsLoaded().then(() => populateManualCustDropdown(bake.customer?.name || null));
     if (mInvNumEl)   mInvNumEl.value   = bake.invoiceNumber != null ? String(bake.invoiceNumber) : '';
 
     // Set date
