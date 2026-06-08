@@ -227,18 +227,27 @@
   }
   .bake-row:last-child { border-bottom: none; }
   .bake-row .meta { font-size: 0.8rem; color: var(--muted); }
-  .plan-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.8rem;
-    color: var(--muted);
+  .plan-btn {
+    font-size: 0.82rem;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1.5px solid var(--accent);
+    background: white;
+    color: var(--accent-dark);
     cursor: pointer;
     white-space: nowrap;
-    user-select: none;
+    font-weight: 500;
+    transition: background 0.12s, color 0.12s;
   }
-  .plan-toggle.on { color: var(--accent-dark); font-weight: 600; }
-  .plan-toggle input { cursor: pointer; margin: 0; }
+  .plan-btn:hover { background: var(--accent-light, #e8f0e8); }
+  .plan-btn.on {
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+    border-color: var(--accent);
+  }
+  .plan-btn.on:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+  .plan-picker { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
   .totals {
     background: #c8dcc8;
     border: 1px solid #94b496;
@@ -2899,7 +2908,11 @@
     // Only recipes the user has added to the bake plan (from the Recipes tab).
     const planned = recipes.filter(r => isInPlan(r.id));
     if (planned.length === 0) {
-      list.innerHTML = '<div class="empty">No recipes added to this bake yet. Open the <strong>Recipes</strong> tab and tick <strong>In bake plan</strong> on the ones you want to bake.</div>';
+      const pickerBtns = recipes.map(r =>
+        `<button class="plan-btn" onclick="setInPlan('${r.id}', true)">${escapeHtml(r.name)}</button>`
+      ).join('');
+      list.innerHTML = `<div class="empty" style="margin-bottom:0">No recipes added yet — click one to add it to this bake:</div>
+        <div class="plan-picker">${pickerBtns}</div>`;
       renderTotals();
       return;
     }
@@ -3544,10 +3557,9 @@
             <div class="recipe-summary">${r.ingredients.length} ingredients · sum ${sumPct.toFixed(1)}%</div>
           </div>
           <div class="row" style="gap:6px; align-items:center">
-            <label class="plan-toggle${inPlan ? ' on' : ''}">
-              <input type="checkbox" ${inPlan ? 'checked' : ''} onchange="setInPlan('${r.id}', this.checked)" />
-              ${inPlan ? 'In bake plan' : 'Add to plan'}
-            </label>
+            <button class="plan-btn${inPlan ? ' on' : ''}" onclick="setInPlan('${r.id}', ${!inPlan})">
+              ${inPlan ? '✓ In bake plan' : '+ Add to bake plan'}
+            </button>
             <button class="secondary tiny" onclick="editRecipe('${r.id}')">Edit</button>
             <button class="danger tiny" onclick="deleteRecipe('${r.id}')">Delete</button>
           </div>
