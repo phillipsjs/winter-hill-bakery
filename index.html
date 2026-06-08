@@ -544,32 +544,6 @@
     color: #6a4a10;
     margin: 0 0 12px;
   }
-  .schedule-fixes {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px dashed #d6c79f;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-  }
-  .schedule-fixes-label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #6a4a10;
-    margin-right: 2px;
-  }
-  button.schedule-fix-btn {
-    background: #fff;
-    color: #6a4a10;
-    border: 1px solid #c9a94f;
-    border-radius: 999px;
-    padding: 4px 11px;
-    font-size: 0.8rem;
-  }
-  button.schedule-fix-btn:hover { background: #f3e7c8; }
-  button.schedule-fix-btn .schedule-fix-knob { font-weight: 600; }
-  button.schedule-fix-btn .schedule-fix-plus { opacity: 0.6; margin: 0 2px; }
   .schedule-info {
     background: #e8f0e8;
     border: 1px solid #94b496;
@@ -579,9 +553,6 @@
     color: #1f4d2e;
     margin: 0 0 12px;
   }
-  .schedule-info .schedule-fixes { border-top-color: #94b496; }
-  .schedule-info .schedule-fixes-label { color: #1f4d2e; }
-  .schedule-info button.schedule-fix-btn { color: #1f4d2e; border-color: #6ba06b; }
   /* Stage color coding — left-border stripe per bake phase */
   .schedule-row[data-stage], .schedule-event[data-stage] {
     padding-left: 9px;
@@ -631,7 +602,6 @@
     box-shadow: inset 3px 0 0 #f59e0b;
     border-radius: 4px;
   }
-  .schedule-info button.schedule-fix-btn:hover { background: #d4e8d4; }
   .settings-select {
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -2810,40 +2780,7 @@
   // once after all steps are applied — important for combined fixes, whose
   // half-applied state would otherwise trigger a redundant (and possibly slow)
   // fix search.
-  const SCHEDULE_FIX_CONTROLS = {
-    'coldproof-loaf':   ['coldproof-loaf-input', 'change'],
-    'coldproof-muffin': ['coldproof-muffin-input', 'change'],
-    'bake-time-loaf':   ['bake-time-loaf-input', 'change'],
-    'bake-time-muffin': ['bake-time-muffin-input', 'change'],
-    'bake-time-bagel':  ['bake-time-bagel-input', 'change'],
-    'deadline-loaf':    ['deadline-loaf-input', 'input'],
-    'deadline-muffin':  ['deadline-muffin-input', 'input'],
-    'deadline-bagel':   ['deadline-bagel-input', 'input'],
-    'coldproof-bagel':  ['coldproof-bagel-input', 'change'],
-    'build1-ratio':     ['build1-ratio-input', 'change'],
-    'build2-ratio':     ['build2-ratio-input', 'change'],
-  };
   let suppressScheduleRender = false;
-  function applyScheduleFix(btn) {
-    let steps;
-    try { steps = JSON.parse(btn.dataset.fix); } catch (e) { return; }
-    if (!Array.isArray(steps) || !steps.length) return;
-    suppressScheduleRender = true;
-    try {
-      for (const step of steps) {
-        const entry = SCHEDULE_FIX_CONTROLS[step.control];
-        if (!entry) continue;
-        const el = document.getElementById(entry[0]);
-        if (!el) continue;
-        el.value = step.value;
-        el.dispatchEvent(new Event(entry[1], { bubbles: true }));
-      }
-    } finally {
-      suppressScheduleRender = false;
-    }
-    renderSchedule();
-    renderTotals();
-  }
 
   // For each event, apply the offset from the latest anchor whose anchored
   // event's scheduled time is <= this event's scheduled time. Returns the set
@@ -5460,202 +5397,17 @@
       p === 'loaf' ? hasLoaves : p === 'muffin' ? hasMuffins : hasBagels);
     const splitView = presentCols.length >= 2;
 
-    // ---- Verified one-click fixes for scheduling issues ----
-    // For each issue we re-run the scheduler with a single input changed and
-    // only offer a fix that actually clears that issue (without introducing a
-    // new late-night step). Search runs only when warnings are present.
     const buildInput1El = document.getElementById('build1-ratio-input');
     const buildInput2El = document.getElementById('build2-ratio-input');
-    const CP_WINDOWS = ['0','2-6','4-8','6-10','8-12','10-14','12-16','14-18','16-20','18-22','20-24','22-26','24-28','26-30','28-32','30-34','32-36','34-38','36-40','38-42','40-44','42-46','44-48'];
-    const BAKE_OPTS = ['', 'morning', 'lunch', 'afternoon', 'evening'];
-    const RATIO_OPTS = ['slow', 'medium', 'fast'];
-    const bakeLabel = (v) => v === '' ? 'any (use deadline)' : v.charAt(0).toUpperCase() + v.slice(1);
-    const ratioLabel = (v) => v.charAt(0).toUpperCase() + v.slice(1);
-    const cpFixLabel = (v) => v === '0' ? 'no cold proof' : v.replace('-', '–') + ' hr';
-    const kindWord = (k) => k === 'muffin' ? 'Muffin' : k === 'bagel' ? 'Bagel' : 'Loaf';
-    const pad2 = (n) => (n < 10 ? '0' : '') + n;
-    const toDatetimeLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    const dlFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-
-    const runTrial = (o) => {
-      const lcp = o.loafCp || { min: loafColdProofHours, max: loafColdProofMaxHr };
-      const mcp = o.muffinCp || { min: muffinColdProofHours, max: muffinColdProofMaxHr };
-      const bcp = o.bagelCp || { min: bagelColdProofHours, max: bagelColdProofMaxHr };
-      const lbt = o.loafBake !== undefined ? o.loafBake : loafBakeTime;
-      const mbt = o.muffinBake !== undefined ? o.muffinBake : muffinBakeTime;
-      const bbt = o.bagelBake !== undefined ? o.bagelBake : bagelBakeTime;
-      const ld = o.loafDeadline || loafDeadline;
-      const md = o.muffinDeadline || muffinDeadline;
-      const bd = o.bagelDeadline || bagelDeadline;
-      // Build ratios are read from the DOM inside buildSchedule; override and restore.
-      let s1, s2, touched = false;
-      if (o.build1Pref !== undefined || o.build2Pref !== undefined) {
-        touched = true; s1 = buildInput1El.value; s2 = buildInput2El.value;
-        if (o.build1Pref !== undefined) buildInput1El.value = o.build1Pref;
-        if (o.build2Pref !== undefined) buildInput2El.value = o.build2Pref;
-      }
-      try {
-        return buildSchedule({
-          loafDeadline: ld, muffinDeadline: md, bagelDeadline: bd,
-          loafColdProofHours: lcp.min, muffinColdProofHours: mcp.min, bagelColdProofHours: bcp.min,
-          loafBakeTime: lbt, muffinBakeTime: mbt, bagelBakeTime: bbt,
-          loafColdProofMaxHr: lcp.max, muffinColdProofMaxHr: mcp.max, bagelColdProofMaxHr: bcp.max,
-          bagelBatchSize,
-        });
-      } finally { if (touched) { buildInput1El.value = s1; buildInput2El.value = s2; } }
-    };
-    const fixResolves = (res, w) => {
-      if (!res || !res.warnings) return false;
-      if (res.warnings.some(x => x.issue === w.issue && x.kind === w.kind)) return false;
-      // Don't trade one problem for a fresh late-night one of the same kind.
-      if (w.issue !== 'late-night' && res.warnings.some(x => x.issue === 'late-night' && x.kind === w.kind)) return false;
-      return true;
-    };
-    const computeFixesFor = (w) => {
-      if (!w.kind) return [];
-      const kind = w.kind; // 'loaf' | 'muffin' | 'bagel'
-      const byKind = (loaf, muffin, bagel) => kind === 'loaf' ? loaf : kind === 'muffin' ? muffin : bagel;
-      const curCpMin = byKind(loafColdProofHours, muffinColdProofHours, bagelColdProofHours);
-      const curBake = byKind(loafBakeTime, muffinBakeTime, bagelBakeTime);
-      const baseDeadline = byKind(loafDeadline, muffinDeadline || loafDeadline, bagelDeadline || loafDeadline);
-      const cpControl = byKind('coldproof-loaf', 'coldproof-muffin', 'coldproof-bagel');
-      const bakeControl = byKind('bake-time-loaf', 'bake-time-muffin', 'bake-time-bagel');
-      const deadlineControl = byKind('deadline-loaf', 'deadline-muffin', 'deadline-bagel');
-      const cpOverride = (win) => byKind({ loafCp: win }, { muffinCp: win }, { bagelCp: win });
-      const bakeOverride = (v) => byKind({ loafBake: v }, { muffinBake: v }, { bagelBake: v });
-      const deadlineOverride = (nd) => byKind({ loafDeadline: nd }, { muffinDeadline: nd }, { bagelDeadline: nd });
-      // Cold proof helps late-night/cold-proof-exceeded; oven-overlap only
-      // moves with bake time or deadline. Levain only matters for late-night.
-      const wantCp = w.issue === 'late-night' || w.issue === 'coldproof-exceeded';
-      const wantLevain = w.issue === 'late-night';
-
-      // Candidate values for one knob, each carrying: the runTrial override, the
-      // input step to apply on click, and the {knob,val} label parts. Ordered so
-      // the smallest/closest change to the current setting comes first.
-      const knobCandidates = (knob) => {
-        if (knob === 'cp') {
-          return CP_WINDOWS
-            .map(v => ({ v, min: v === '0' ? 0 : Number(v.split('-')[0]) }))
-            .filter(c => c.min !== curCpMin)
-            .sort((a, b) => Math.abs(a.min - curCpMin) - Math.abs(b.min - curCpMin))
-            .map(c => {
-              const win = c.v === '0' ? { min: 0, max: 0 } : { min: c.min, max: c.min + COLD_PROOF_WINDOW_WIDTH };
-              return {
-                override: cpOverride(win),
-                step: { control: cpControl, value: c.v },
-                part: { knob: `${kindWord(w.kind)} cold proof`, val: cpFixLabel(c.v) },
-              };
-            });
-        }
-        if (knob === 'bake') {
-          return BAKE_OPTS.filter(v => v !== curBake).map(v => ({
-            override: bakeOverride(v),
-            step: { control: bakeControl, value: v },
-            part: { knob: `${kindWord(w.kind)} bake time`, val: bakeLabel(v) },
-          }));
-        }
-        if (knob === 'deadline') {
-          if (!baseDeadline) return [];
-          return [1,-1,2,-2,3,-3,4,-4,6,-6,8,-8,12,-12].map(off => {
-            const nd = new Date(baseDeadline.getTime() + off * 3600 * 1000);
-            return {
-              override: deadlineOverride(nd),
-              step: { control: deadlineControl, value: toDatetimeLocal(nd) },
-              part: { knob: `Move ${w.kind} deadline`, val: dlFmt.format(nd) },
-            };
-          });
-        }
-        if (knob === 'levain') {
-          const out = [];
-          for (const which of ['build2Pref', 'build1Pref']) {
-            const cur = which === 'build1Pref' ? buildInput1El.value : buildInput2El.value;
-            for (const v of RATIO_OPTS) {
-              if (v === cur) continue;
-              out.push({
-                override: { [which]: v },
-                step: { control: which === 'build1Pref' ? 'build1-ratio' : 'build2-ratio', value: v },
-                part: { knob: which === 'build1Pref' ? 'Build 1 ratio' : 'Build 2 ratio', val: ratioLabel(v) },
-              });
-            }
-          }
-          return out;
-        }
-        return [];
-      };
-
-      // Knobs worth turning for this issue, in display order.
-      const knobs = [];
-      if (wantCp) knobs.push('cp');
-      knobs.push('bake', 'deadline');
-      if (wantLevain) knobs.push('levain');
-
-      // Single-knob fixes first: the first candidate per knob that clears the issue.
-      const fixes = [];
-      for (const knob of knobs) {
-        for (const c of knobCandidates(knob)) {
-          if (fixResolves(runTrial(c.override), w)) {
-            fixes.push({ parts: [c.part], steps: [c.step] });
-            break;
-          }
-        }
-      }
-
-      // Combined fixes: only as a fallback when no single knob resolves the
-      // issue (some situations only clear with two changes at once, e.g. an
-      // earlier deadline AND no bake-time preset). Search each pair of knobs
-      // with capped candidate lists; offer up to 2 distinct two-knob fixes.
-      if (fixes.length === 0 && knobs.length >= 2) {
-        const capped = {
-          cp: knobCandidates('cp').slice(0, 10),
-          bake: knobCandidates('bake'),
-          deadline: knobCandidates('deadline').slice(0, 8),
-          levain: knobCandidates('levain'),
-        };
-        for (let i = 0; i < knobs.length && fixes.length < 2; i++) {
-          for (let j = i + 1; j < knobs.length && fixes.length < 2; j++) {
-            const listA = capped[knobs[i]] || [];
-            const listB = capped[knobs[j]] || [];
-            let found = false;
-            for (const a of listA) {
-              for (const b of listB) {
-                if (fixResolves(runTrial({ ...a.override, ...b.override }), w)) {
-                  fixes.push({ parts: [a.part, b.part], steps: [a.step, b.step] });
-                  found = true;
-                  break;
-                }
-              }
-              if (found) break;
-            }
-          }
-        }
-      }
-      return fixes;
-    };
-
-    const renderFixButton = (f) => {
-      const label = f.parts
-        .map(p => `<span class="schedule-fix-knob">${escapeHtml(p.knob)}</span> → ${escapeHtml(p.val)}`)
-        .join(' <span class="schedule-fix-plus">+</span> ');
-      return `<button class="schedule-fix-btn" data-fix="${escapeAttr(JSON.stringify(f.steps))}" onclick="applyScheduleFix(this)">${label}</button>`;
-    };
 
     let html = '';
     if (result.warnings && result.warnings.length) {
       html += result.warnings.map(w => {
-        const fixes = computeFixesFor(w);
         const blockClass = w.type === 'info' ? 'schedule-info' : 'schedule-warn';
         let block = `<div class="${blockClass}">${escapeHtml(w.msg)}`;
         const hlTitles = getHighlightTitlesForWarning(w, result.events);
         if (hlTitles.length) {
           block += `<br><button class="schedule-highlight-btn" data-titles="${escapeAttr(JSON.stringify(hlTitles))}" onclick="highlightScheduleStep(this)">↓ Show in schedule</button>`;
-        }
-        if (fixes.length) {
-          const label = w.type === 'info'
-            ? 'Alternatives:'
-            : (fixes.some(f => f.steps.length > 1) ? 'Ways to fix (some change two settings):' : 'Ways to fix:');
-          block += `<div class="schedule-fixes"><span class="schedule-fixes-label">${label}</span>`
-            + fixes.map(renderFixButton).join('')
-            + `</div>`;
         }
         return block + `</div>`;
       }).join('');
