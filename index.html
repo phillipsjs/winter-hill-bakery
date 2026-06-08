@@ -652,6 +652,16 @@
   .bs-ings table td { padding: 1px 4px; border: none; }
   .bs-ings .bs-recipe-label { font-size: 0.75rem; font-weight: 600;
     color: var(--accent-dark); margin-bottom: 2px; }
+  .bs-stage { width: 24px; text-align: center; vertical-align: middle; padding: 2px 2px; }
+  .bs-stage-label {
+    display: inline-block;
+    writing-mode: vertical-rl;
+    font-size: 0.46rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #666;
+  }
   .bakesheet-notes { margin-top: 24px; }
   .bakesheet-notes-header { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px;
     padding: 5px 0; border-bottom: 2px solid var(--border); }
@@ -5728,7 +5738,9 @@
     const totalUnits = ingData.byRecipe.reduce((s, r) => s + r.count, 0);
 
     const daysHtml = groups.map((g, gi) => {
-      const rowsHtml = g.events.map(ev => `
+      const rowsHtml = g.events.map(ev => {
+        const stage = getEventStage(ev);
+        return `
         <tr>
           <td class="bs-time">${fmtRange(ev)}</td>
           <td class="bs-step">
@@ -5736,7 +5748,9 @@
             ${ev.detail ? `<div class="bs-detail">${escapeHtml(ev.detail)}</div>` : ''}
           </td>
           <td class="bs-ings">${renderIngCol(ev)}</td>
-        </tr>`).join('');
+          <td class="bs-stage">${stage ? `<span class="bs-stage-label">${stage}</span>` : ''}</td>
+        </tr>`;
+      }).join('');
       return `
         <div class="bakesheet-day">
           <div class="bakesheet-day-header">Day ${gi + 1} &mdash; ${dayFmt.format(g.date)}</div>
@@ -5745,6 +5759,7 @@
               <th style="width:110px">Time</th>
               <th>Step</th>
               <th style="width:240px">Ingredients</th>
+              <th style="width:24px"></th>
             </tr></thead>
             <tbody>${rowsHtml}</tbody>
           </table>
