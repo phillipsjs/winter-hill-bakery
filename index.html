@@ -3634,6 +3634,7 @@ ${notesHtml}
   }
 
   function showTab(name) {
+    localStorage.setItem('whb-active-tab', name);
     ['plan','recipes','ingredients','prices','schedule','bakesheet','history','settings'].forEach(t => {
       document.getElementById('tab-' + t).style.display = name === t ? '' : 'none';
     });
@@ -6815,6 +6816,11 @@ ${notesHtml}
   renderSyncBadge();
   renderPlan();
   renderPantry();
+  const _savedTab = localStorage.getItem('whb-active-tab');
+  if (_savedTab && _savedTab !== 'plan') {
+    const _savedBtn = document.getElementById('tab-' + _savedTab + '-btn');
+    if (_savedBtn && _savedBtn.style.display !== 'none') showTab(_savedTab);
+  }
 
   // Load recipes and bakes from Gist on startup if configured.
   (async () => {
