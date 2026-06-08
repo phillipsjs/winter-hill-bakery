@@ -694,6 +694,16 @@
       <div id="container-output"></div>
     </div>
 
+    <div id="plan-schedule-cta" style="display:none;margin-top:8px">
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <p style="margin:0 0 2px;font-weight:600">Ready to plan your schedule?</p>
+          <p class="muted" style="margin:0;font-size:0.88rem">Once you've confirmed your ingredients and equipment, set your deadlines to generate a step-by-step timeline.</p>
+        </div>
+        <button onclick="showTab('schedule')" style="white-space:nowrap;flex-shrink:0">Go to Schedule →</button>
+      </div>
+    </div>
+
   </section>
 
   <section id="tab-recipes" style="display:none">
@@ -3111,15 +3121,18 @@
     const levainCard = document.getElementById('levain-card');
 
     const intro = document.getElementById('bake-summary-intro');
+    const cta = document.getElementById('plan-schedule-cta');
     if (activeRecipes.length === 0) {
       card.style.display = 'none';
       levainCard.style.display = 'none';
       const cc = document.getElementById('container-card');
       if (cc) cc.style.display = 'none';
       if (intro) intro.style.display = 'none';
+      if (cta) cta.style.display = 'none';
       return;
     }
     if (intro) intro.style.display = '';
+    if (cta) cta.style.display = '';
 
     // Per-recipe breakdown + aggregate
     const aggregate = {}; // lowercased name -> { name, grams }
