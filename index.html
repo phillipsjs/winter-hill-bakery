@@ -553,18 +553,35 @@
     color: #1f4d2e;
     margin: 0 0 12px;
   }
-  /* Stage color coding — left-border stripe per bake phase */
+  /* Stage color coding — vertical label pill per bake phase */
   .schedule-row[data-stage], .schedule-event[data-stage] {
-    padding-left: 9px;
-    border-left: 3px solid transparent;
+    position: relative;
+    padding-left: 22px;
   }
-  .schedule-row[data-stage="levain"], .schedule-event[data-stage="levain"] { border-left-color: #d97706; }
-  .schedule-row[data-stage="mix"],    .schedule-event[data-stage="mix"]    { border-left-color: #0e7490; }
-  .schedule-row[data-stage="fold"],   .schedule-event[data-stage="fold"]   { border-left-color: #7c3aed; }
-  .schedule-row[data-stage="shape"],  .schedule-event[data-stage="shape"]  { border-left-color: #be185d; }
-  .schedule-row[data-stage="proof"],  .schedule-event[data-stage="proof"]  { border-left-color: #1d4ed8; }
-  .schedule-row[data-stage="bake"],   .schedule-event[data-stage="bake"]   { border-left-color: #c2410c; }
-  .schedule-row[data-stage="done"],   .schedule-event[data-stage="done"]   { border-left-color: #16a34a; }
+  .schedule-row[data-stage]::before, .schedule-event[data-stage]::before {
+    content: attr(data-stage);
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 16px;
+    writing-mode: vertical-rl;
+    font-size: 0.46rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: white;
+    border-radius: 2px;
+    overflow: hidden;
+    text-align: center;
+  }
+  .schedule-row[data-stage="levain"]::before, .schedule-event[data-stage="levain"]::before { background: #d97706; }
+  .schedule-row[data-stage="mix"]::before,    .schedule-event[data-stage="mix"]::before    { background: #0e7490; }
+  .schedule-row[data-stage="fold"]::before,   .schedule-event[data-stage="fold"]::before   { background: #7c3aed; }
+  .schedule-row[data-stage="shape"]::before,  .schedule-event[data-stage="shape"]::before  { background: #be185d; }
+  .schedule-row[data-stage="proof"]::before,  .schedule-event[data-stage="proof"]::before  { background: #1d4ed8; }
+  .schedule-row[data-stage="bake"]::before,   .schedule-event[data-stage="bake"]::before   { background: #c2410c; }
+  .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before   { background: #16a34a; }
   .schedule-legend {
     display: flex;
     flex-wrap: wrap;
