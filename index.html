@@ -588,25 +588,6 @@
   .schedule-row[data-stage="proof"]::before,  .schedule-event[data-stage="proof"]::before,  .stage-group[data-stage="proof"]::before  { background: #1d4ed8; }
   .schedule-row[data-stage="bake"]::before,   .schedule-event[data-stage="bake"]::before,   .stage-group[data-stage="bake"]::before   { background: #c2410c; }
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #16a34a; }
-  .schedule-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 14px;
-    margin: 6px 0 10px;
-  }
-  .schedule-legend-item {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.78rem;
-    color: var(--muted);
-  }
-  .schedule-legend-swatch {
-    width: 10px;
-    height: 18px;
-    border-radius: 2px;
-    flex-shrink: 0;
-  }
   button.schedule-highlight-btn {
     background: transparent;
     color: inherit;
@@ -5130,16 +5111,6 @@
 
   let _scheduleResult = null;
 
-  const STAGE_META = [
-    { key: 'levain', label: 'Levain',      color: '#d97706' },
-    { key: 'mix',    label: 'Mix & weigh', color: '#0e7490' },
-    { key: 'fold',   label: 'Fold',        color: '#7c3aed' },
-    { key: 'shape',  label: 'Shape',       color: '#be185d' },
-    { key: 'proof',  label: 'Proof',       color: '#1d4ed8' },
-    { key: 'bake',   label: 'Bake',        color: '#c2410c' },
-    { key: 'done',   label: 'Done',        color: '#16a34a' },
-  ];
-
   function getEventStage(ev) {
     const t = ev.title;
     if (/^Levain Build/.test(t)) return 'levain';
@@ -5476,13 +5447,6 @@
       html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Click any time to set one.</p>`;
     } else {
       html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: click any time to anchor a step — the rest of the schedule will shift.</p>`;
-    }
-    {
-      const presentStages = new Set(result.events.map(e => getEventStage(e)).filter(Boolean));
-      const legendItems = STAGE_META.filter(s => presentStages.has(s.key))
-        .map(s => `<span class="schedule-legend-item"><span class="schedule-legend-swatch" style="background:${s.color}"></span>${s.label}</span>`)
-        .join('');
-      if (legendItems) html += `<div class="schedule-legend">${legendItems}</div>`;
     }
     const colsStyle = `grid-template-columns: repeat(${presentCols.length}, 1fr);`;
     if (splitView) {
