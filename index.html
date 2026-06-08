@@ -2291,17 +2291,18 @@
     const w = getPantryWeightGrams();
     const p = Number(document.getElementById('pantry-price').value);
     const el = document.getElementById('pantry-cost-preview');
-    if (el) el.textContent = (w > 0 && p > 0) ? `= $${(p/w).toFixed(4)} per gram` : '';
+    if (el) el.textContent = (w > 0 && p >= 0) ? `= $${(p/w).toFixed(4)} per gram` : '';
   }
 
   function savePantryItem() {
     const name     = document.getElementById('pantry-name').value.trim();
     const weightG  = getPantryWeightGrams();
-    const pricePaid = Number(document.getElementById('pantry-price').value);
+    const priceRaw  = document.getElementById('pantry-price').value.trim();
+    const pricePaid = priceRaw === '' ? NaN : Number(priceRaw);
     const msgEl    = document.getElementById('pantry-add-msg');
     if (!name)              { msgEl.textContent = 'Please enter a name.'; return; }
     if (weightG <= 0)       { msgEl.textContent = 'Please enter a weight greater than 0.'; return; }
-    if (!(pricePaid > 0))   { msgEl.textContent = 'Please enter a price greater than 0.'; return; }
+    if (isNaN(pricePaid) || pricePaid < 0) { msgEl.textContent = 'Please enter a price (0 or more).'; return; }
     const costPerGram = pricePaid / weightG;
     const editId = document.getElementById('pantry-add-form').dataset.editId;
     if (editId) {
