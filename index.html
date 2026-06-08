@@ -562,9 +562,12 @@
     content: attr(data-stage);
     position: absolute;
     left: 0;
-    top: 2px;
-    bottom: 2px;
+    top: 0;
+    bottom: 0;
     width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     writing-mode: vertical-rl;
     font-size: 0.46rem;
     font-weight: 700;
@@ -573,7 +576,6 @@
     color: white;
     border-radius: 2px;
     overflow: hidden;
-    text-align: center;
   }
   .schedule-row[data-stage="levain"]::before, .schedule-event[data-stage="levain"]::before { background: #d97706; }
   .schedule-row[data-stage="mix"]::before,    .schedule-event[data-stage="mix"]::before    { background: #0e7490; }
@@ -652,9 +654,9 @@
   .bs-ings table td { padding: 1px 4px; border: none; }
   .bs-ings .bs-recipe-label { font-size: 0.75rem; font-weight: 600;
     color: var(--accent-dark); margin-bottom: 2px; }
-  .bs-stage { width: 24px; text-align: center; vertical-align: middle; padding: 2px 2px; }
+  .bs-stage { width: 24px; padding: 2px; display: flex; align-items: center; justify-content: center; }
   .bs-stage-label {
-    display: inline-block;
+    display: block;
     writing-mode: vertical-rl;
     font-size: 0.46rem;
     font-weight: 700;
