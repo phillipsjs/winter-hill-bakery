@@ -46,7 +46,13 @@
     color: var(--muted);
     font-size: 0.95rem;
   }
+  .nav-wrapper {
+    position: relative;
+    max-width: 760px;
+    margin: 0 auto;
+  }
   nav.tabs {
+    position: relative;
     display: flex;
     justify-content: center;
     gap: 4px;
@@ -68,6 +74,56 @@
     border-bottom-color: var(--accent);
     font-weight: 600;
   }
+  .hamburger-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 0;
+    border-bottom: 3px solid transparent !important;
+  }
+  .hamburger-btn span {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--muted);
+    border-radius: 2px;
+    transition: background 0.15s;
+  }
+  .hamburger-btn.active span { background: var(--accent-dark); }
+  #hamburger-menu {
+    position: absolute;
+    top: calc(100% - 1px);
+    right: 8px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 200;
+    min-width: 170px;
+  }
+  #hamburger-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 13px 20px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    font-size: 1rem;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  #hamburger-menu button:last-child { border-bottom: none; }
+  #hamburger-menu button:hover { background: var(--bg); }
+  #hamburger-menu button.active { color: var(--accent-dark); font-weight: 600; }
   main {
     max-width: 760px;
     margin: 0 auto;
@@ -542,14 +598,21 @@
   <div id="sync-badge" class="sync-badge" style="display:none"></div>
 </header>
 
-<nav class="tabs">
-  <button id="tab-plan-btn" class="active" onclick="showTab('plan')">Bake Plan</button>
-  <button id="tab-schedule-btn" onclick="showTab('schedule')">Schedule</button>
-  <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
-  <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Ingredients</button>
-  <button id="tab-history-btn" onclick="showTab('history')">Sales</button>
-  <button id="tab-settings-btn" onclick="showTab('settings')">Account</button>
-</nav>
+<div class="nav-wrapper">
+  <nav class="tabs">
+    <button id="tab-plan-btn" class="active" onclick="showTab('plan')">Bake Plan</button>
+    <button id="tab-schedule-btn" onclick="showTab('schedule')">Schedule</button>
+    <button id="hamburger-btn" class="hamburger-btn" onclick="toggleHamburger(event)" aria-label="More">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+  <div id="hamburger-menu" style="display:none">
+    <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
+    <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Ingredients</button>
+    <button id="tab-history-btn" onclick="showTab('history')">Sales</button>
+    <button id="tab-settings-btn" onclick="showTab('settings')">Account</button>
+  </div>
+</div>
 
 <main>
   <section id="tab-plan">
@@ -2691,19 +2754,19 @@
   }
 
   // ---- tabs ----
+  const SECONDARY_TABS = ['recipes', 'ingredients', 'history', 'settings'];
+
   function showTab(name) {
-    document.getElementById('tab-plan').style.display = name === 'plan' ? '' : 'none';
-    document.getElementById('tab-recipes').style.display = name === 'recipes' ? '' : 'none';
-    document.getElementById('tab-ingredients').style.display = name === 'ingredients' ? '' : 'none';
-    document.getElementById('tab-schedule').style.display = name === 'schedule' ? '' : 'none';
-    document.getElementById('tab-history').style.display = name === 'history' ? '' : 'none';
-    document.getElementById('tab-settings').style.display = name === 'settings' ? '' : 'none';
-    document.getElementById('tab-plan-btn').classList.toggle('active', name === 'plan');
-    document.getElementById('tab-recipes-btn').classList.toggle('active', name === 'recipes');
-    document.getElementById('tab-ingredients-btn').classList.toggle('active', name === 'ingredients');
-    document.getElementById('tab-schedule-btn').classList.toggle('active', name === 'schedule');
-    document.getElementById('tab-history-btn').classList.toggle('active', name === 'history');
-    document.getElementById('tab-settings-btn').classList.toggle('active', name === 'settings');
+    ['plan','recipes','ingredients','schedule','history','settings'].forEach(t => {
+      document.getElementById('tab-' + t).style.display = name === t ? '' : 'none';
+    });
+    ['plan','recipes','ingredients','schedule','history','settings'].forEach(t => {
+      const btn = document.getElementById('tab-' + t + '-btn');
+      if (btn) btn.classList.toggle('active', name === t);
+    });
+    const hbtn = document.getElementById('hamburger-btn');
+    if (hbtn) hbtn.classList.toggle('active', SECONDARY_TABS.includes(name));
+    closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
     if (name === 'ingredients') renderPantry();
@@ -2717,6 +2780,25 @@
       renderSettingsSyncStatus();
     }
   }
+
+  function toggleHamburger(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('hamburger-menu');
+    if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+  }
+
+  function closeHamburger() {
+    const menu = document.getElementById('hamburger-menu');
+    if (menu) menu.style.display = 'none';
+  }
+
+  document.addEventListener('click', function(e) {
+    const menu = document.getElementById('hamburger-menu');
+    const btn  = document.getElementById('hamburger-btn');
+    if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {
+      menu.style.display = 'none';
+    }
+  });
 
   // ---- math ----
   // For each recipe: total dough per loaf = loafWeight
