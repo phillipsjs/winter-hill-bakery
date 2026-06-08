@@ -1048,6 +1048,17 @@
     <div class="card">
       <p class="muted" style="font-size: 0.8rem; margin: 0">Sourdough loaves, English muffins, and bagels are scheduled. Focaccia recipes show up in the bake plan but aren't yet woven into the timeline — schedule those separately.</p>
     </div>
+
+    <div id="schedule-bakesheet-cta" style="display:none;margin-top:8px">
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <p style="margin:0 0 2px;font-weight:600">Your bake sheet is ready.</p>
+          <p class="muted" style="margin:0;font-size:0.88rem">Print it out or pull it up on your phone to guide you through the bake step by step.</p>
+        </div>
+        <button onclick="showTab('bakesheet')" style="white-space:nowrap;flex-shrink:0">Go to Bake Sheet →</button>
+      </div>
+    </div>
+
   </section>
 
   <section id="tab-bakesheet" style="display:none">
@@ -2838,6 +2849,8 @@
     const show = hasPlanItems && hasDeadline;
     const btn = document.getElementById('tab-bakesheet-btn');
     if (btn) btn.style.display = show ? '' : 'none';
+    const cta = document.getElementById('schedule-bakesheet-cta');
+    if (cta) cta.style.display = show ? '' : 'none';
     // If the bake sheet tab is visible but conditions no longer met, switch to plan
     if (!show && document.getElementById('tab-bakesheet').style.display !== 'none') {
       showTab('plan');
