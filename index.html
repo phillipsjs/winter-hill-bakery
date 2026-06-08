@@ -672,6 +672,11 @@
       <div id="plan-list" style="margin-top:10px"></div>
     </div>
 
+    <div id="bake-summary-intro" style="display:none;margin:4px 0 2px">
+      <p style="margin:0 0 4px;font-weight:600">Bake summary</p>
+      <p class="muted" style="margin:0;font-size:0.88rem">Here's everything this bake requires. Check that you have all the ingredients on hand and the equipment you'll need before you start.</p>
+    </div>
+
     <div class="card totals" id="totals-card" style="display:none">
       <h2>Ingredient totals</h2>
       <div id="totals-output"></div>
@@ -3105,13 +3110,16 @@
     const out = document.getElementById('totals-output');
     const levainCard = document.getElementById('levain-card');
 
+    const intro = document.getElementById('bake-summary-intro');
     if (activeRecipes.length === 0) {
       card.style.display = 'none';
       levainCard.style.display = 'none';
       const cc = document.getElementById('container-card');
       if (cc) cc.style.display = 'none';
+      if (intro) intro.style.display = 'none';
       return;
     }
+    if (intro) intro.style.display = '';
 
     // Per-recipe breakdown + aggregate
     const aggregate = {}; // lowercased name -> { name, grams }
