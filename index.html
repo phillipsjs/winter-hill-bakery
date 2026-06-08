@@ -1566,11 +1566,12 @@
     let total = 0, anyLinked = false;
     for (const ing of recipe.ingredients) {
       if (!ing.pantryId) continue;
+      anyLinked = true;
+      if (ing.pantryId === '__free__') continue; // $0 cost — contributes nothing to total
       const p = pantryItems.find(x => x.id === ing.pantryId);
       if (!p || !p.costPerGram) continue;
       const grams = flourWeight * (Number(ing.pct) / 100);
       total += grams * p.costPerGram;
-      anyLinked = true;
     }
     return anyLinked ? total : null;
   }
@@ -3412,6 +3413,7 @@
       </select>
       <select class="ing-pantry" title="Link to ingredient cost" onchange="updateRecipeEditorCostDisplay()">
         <option value="">— no cost link —</option>
+        <option value="__free__"${(prefill && prefill.pantryId === '__free__') ? ' selected' : ''}>no cost ($0.00)</option>
         ${pantryItems.map(p => `<option value="${escapeAttr(p.id)}"${(prefill && prefill.pantryId === p.id) ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
       </select>
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
