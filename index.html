@@ -738,7 +738,25 @@
     <div id="pantry-add-form" class="card" style="display:none">
       <h3 style="margin:0 0 12px">Add ingredient</h3>
       <div class="row"><label style="width:140px">Name</label><input type="text" id="pantry-name" placeholder="e.g. Bread flour" /></div>
-      <div class="row"><label style="width:140px">Total weight bought</label><input type="number" id="pantry-weight" min="0" step="100" style="width:100px;flex:none" oninput="updatePantryCostPreview()" /><span class="muted">g</span></div>
+      <div class="row">
+        <label style="width:140px">Total weight bought</label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div id="pantry-weight-g-wrap" style="display:flex;align-items:center;gap:4px">
+            <input type="number" id="pantry-weight" min="0" step="100" style="width:100px" oninput="updatePantryCostPreview()" />
+            <span class="muted">g</span>
+          </div>
+          <div id="pantry-weight-lbs-wrap" style="display:none;align-items:center;gap:4px">
+            <input type="number" id="pantry-weight-lbs" min="0" step="1" style="width:70px" placeholder="0" oninput="updatePantryCostPreview()" />
+            <span class="muted">lbs</span>
+            <input type="number" id="pantry-weight-oz" min="0" max="15.9" step="0.1" style="width:65px" placeholder="0" oninput="updatePantryCostPreview()" />
+            <span class="muted">oz</span>
+          </div>
+          <select id="pantry-weight-unit" style="width:76px" onchange="onPantryWeightUnitChange()">
+            <option value="g">grams</option>
+            <option value="lbs">lbs / oz</option>
+          </select>
+        </div>
+      </div>
       <div class="row"><label style="width:140px">Price paid</label><span class="muted">$</span><input type="number" id="pantry-price" min="0" step="0.01" style="width:90px;flex:none" oninput="updatePantryCostPreview()" /></div>
       <div id="pantry-cost-preview" class="muted" style="font-size:0.85rem;margin:4px 0 8px 140px"></div>
       <div class="row" style="gap:8px;justify-content:flex-end">
@@ -748,6 +766,7 @@
       <p id="pantry-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
     </div>
 
+    <div id="pantry-suggestions"></div>
     <div id="pantry-list"></div>
   </section>
 
@@ -2184,9 +2203,48 @@
   }
 
   // ---- pantry CRUD ----
+  function getPantryWeightGrams() {
+    const unit = document.getElementById('pantry-weight-unit').value;
+    if (unit === 'lbs') {
+      const lbs = Number(document.getElementById('pantry-weight-lbs').value) || 0;
+      const oz  = Number(document.getElementById('pantry-weight-oz').value)  || 0;
+      return lbs * 453.592 + oz * 28.3495;
+    }
+    return Number(document.getElementById('pantry-weight').value) || 0;
+  }
+
+  function onPantryWeightUnitChange() {
+    const unit = document.getElementById('pantry-weight-unit').value;
+    document.getElementById('pantry-weight-g-wrap').style.display   = unit === 'g'   ? 'flex' : 'none';
+    document.getElementById('pantry-weight-lbs-wrap').style.display = unit === 'lbs' ? 'flex' : 'none';
+    updatePantryCostPreview();
+  }
+
   function renderPantry() {
     const list = document.getElementById('pantry-list');
     if (!list) return;
+
+    // Suggestions: ingredient names from recipes not yet in pantry
+    const suggestEl = document.getElementById('pantry-suggestions');
+    if (suggestEl) {
+      const pantryNames = new Set(pantryItems.map(p => p.name.toLowerCase()));
+      const suggested = new Set();
+      recipes.forEach(r => (r.ingredients || []).forEach(i => {
+        if (i.name && !pantryNames.has(i.name.toLowerCase())) suggested.add(i.name);
+      }));
+      if (suggested.size > 0) {
+        suggestEl.innerHTML = `
+          <div class="card" style="padding:12px 16px">
+            <p class="muted" style="margin:0 0 8px;font-size:0.85rem"><strong style="color:inherit">From your recipes</strong> — click to add cost info:</p>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${[...suggested].sort().map(n => `<button class="secondary tiny" onclick="showPantryAddForm({suggestName:'${escapeAttr(n)}'})">${escapeHtml(n)}</button>`).join('')}
+            </div>
+          </div>`;
+      } else {
+        suggestEl.innerHTML = '';
+      }
+    }
+
     if (pantryItems.length === 0) {
       list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No ingredients yet — click <strong>+ Add ingredient</strong> to get started.</p></div>';
       return;
@@ -2207,12 +2265,19 @@
   }
 
   function showPantryAddForm(prefill) {
-    document.getElementById('pantry-name').value = prefill ? prefill.name : '';
-    document.getElementById('pantry-weight').value = prefill ? prefill.weightG : '';
-    document.getElementById('pantry-price').value = prefill ? prefill.pricePaid : '';
-    document.getElementById('pantry-cost-preview').textContent = prefill ? `$${prefill.costPerGram.toFixed(4)} per gram` : '';
+    // prefill can be a pantry item (for edit) or {suggestName} (from suggestions)
+    const suggestName = prefill && prefill.suggestName ? prefill.suggestName : null;
+    const item = prefill && prefill.id ? prefill : null;
+    document.getElementById('pantry-name').value  = item ? item.name : (suggestName || '');
+    document.getElementById('pantry-weight').value = item ? item.weightG : '';
+    document.getElementById('pantry-weight-lbs').value = '';
+    document.getElementById('pantry-weight-oz').value  = '';
+    document.getElementById('pantry-weight-unit').value = 'g';
+    onPantryWeightUnitChange();
+    document.getElementById('pantry-price').value = item ? item.pricePaid : '';
+    document.getElementById('pantry-cost-preview').textContent = item ? `= $${item.costPerGram.toFixed(4)} per gram` : '';
     document.getElementById('pantry-add-msg').textContent = '';
-    document.getElementById('pantry-add-form').dataset.editId = prefill ? prefill.id : '';
+    document.getElementById('pantry-add-form').dataset.editId = item ? item.id : '';
     document.getElementById('pantry-add-form').style.display = '';
     document.getElementById('pantry-name').focus();
   }
@@ -2223,20 +2288,20 @@
   }
 
   function updatePantryCostPreview() {
-    const w = Number(document.getElementById('pantry-weight').value);
+    const w = getPantryWeightGrams();
     const p = Number(document.getElementById('pantry-price').value);
     const el = document.getElementById('pantry-cost-preview');
     if (el) el.textContent = (w > 0 && p > 0) ? `= $${(p/w).toFixed(4)} per gram` : '';
   }
 
   function savePantryItem() {
-    const name = document.getElementById('pantry-name').value.trim();
-    const weightG = Number(document.getElementById('pantry-weight').value);
+    const name     = document.getElementById('pantry-name').value.trim();
+    const weightG  = getPantryWeightGrams();
     const pricePaid = Number(document.getElementById('pantry-price').value);
-    const msgEl = document.getElementById('pantry-add-msg');
-    if (!name) { msgEl.textContent = 'Please enter a name.'; return; }
-    if (!weightG || weightG <= 0) { msgEl.textContent = 'Please enter a weight greater than 0.'; return; }
-    if (!pricePaid || pricePaid <= 0) { msgEl.textContent = 'Please enter a price greater than 0.'; return; }
+    const msgEl    = document.getElementById('pantry-add-msg');
+    if (!name)              { msgEl.textContent = 'Please enter a name.'; return; }
+    if (weightG <= 0)       { msgEl.textContent = 'Please enter a weight greater than 0.'; return; }
+    if (!(pricePaid > 0))   { msgEl.textContent = 'Please enter a price greater than 0.'; return; }
     const costPerGram = pricePaid / weightG;
     const editId = document.getElementById('pantry-add-form').dataset.editId;
     if (editId) {
