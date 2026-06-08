@@ -1259,6 +1259,14 @@
           <label>Address</label>
           <textarea id="inv-company-address" rows="3" placeholder="123 Main St&#10;Cambridge, MA 02139"></textarea>
         </div>
+        <div class="row" style="margin-top:8px">
+          <label>Email</label>
+          <input type="email" id="inv-company-email" placeholder="hello@winterhillbakery.com" />
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label>Phone</label>
+          <input type="tel" id="inv-company-phone" placeholder="(617) 555-0100" />
+        </div>
         <div class="row" style="margin-top:8px;align-items:flex-start">
           <label style="padding-top:4px">Logo</label>
           <div>
@@ -1653,7 +1661,7 @@
   ];
 
   // ---- invoice state ----
-  let invoiceSettings = { company: { name: '', address: '', logo: '' }, customers: [], nextInvoiceNumber: 1 };
+  let invoiceSettings = { company: { name: '', address: '', email: '', phone: '', logo: '' }, customers: [], nextInvoiceNumber: 1 };
   let invoiceSettingsLoaded = false;
   let _invoiceModalBakeId = null; // null = ad-hoc from financials, else bake id
 
@@ -1932,6 +1940,8 @@
   async function saveInvoiceCompanySettings() {
     invoiceSettings.company.name    = (document.getElementById('inv-company-name')?.value || '').trim();
     invoiceSettings.company.address = (document.getElementById('inv-company-address')?.value || '').trim();
+    invoiceSettings.company.email   = (document.getElementById('inv-company-email')?.value || '').trim();
+    invoiceSettings.company.phone   = (document.getElementById('inv-company-phone')?.value || '').trim();
     const msgEl = document.getElementById('invoice-company-msg');
     if (!getInvoiceGistConfig()) {
       if (msgEl) msgEl.textContent = 'Saved locally. Add Invoice Gist ID above to sync across devices.';
@@ -1967,10 +1977,14 @@
     const co = invoiceSettings.company;
     const nameEl   = document.getElementById('inv-company-name');
     const addrEl   = document.getElementById('inv-company-address');
+    const emailEl  = document.getElementById('inv-company-email');
+    const phoneEl  = document.getElementById('inv-company-phone');
     const gistIdEl = document.getElementById('invoice-gist-id');
     const prevEl   = document.getElementById('inv-logo-preview');
     if (nameEl)   nameEl.value   = co.name    || '';
     if (addrEl)   addrEl.value   = co.address || '';
+    if (emailEl)  emailEl.value  = co.email   || '';
+    if (phoneEl)  phoneEl.value  = co.phone   || '';
     if (gistIdEl) gistIdEl.value = localStorage.getItem(INVOICE_GIST_ID_KEY) || '';
     if (prevEl) prevEl.innerHTML = co.logo
       ? `<img src="${escapeAttr(co.logo)}" alt="Logo" style="max-height:60px;max-width:180px;border-radius:4px;border:1px solid var(--border);margin-top:4px">`
@@ -2258,7 +2272,7 @@
   th{font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#9ca3af;padding:8px 12px;text-align:left;border-bottom:2px solid #e5e7eb;background:#f9fafb}
 </style></head><body>
 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:40px">
-  <div>${logo}<div style="font-weight:700;font-size:1.05rem">${esc(company.name)}</div><div style="color:#6b7280;font-size:0.88rem;margin-top:3px">${addr(company.address)}</div></div>
+  <div>${logo}<div style="font-weight:700;font-size:1.05rem">${esc(company.name)}</div><div style="color:#6b7280;font-size:0.88rem;margin-top:3px">${addr(company.address)}</div>${company.email ? `<div style="color:#6b7280;font-size:0.88rem;margin-top:2px">${esc(company.email)}</div>` : ''}${company.phone ? `<div style="color:#6b7280;font-size:0.88rem;margin-top:2px">${esc(company.phone)}</div>` : ''}</div>
   <div style="text-align:right">
     <div style="font-size:2.2rem;font-weight:800;letter-spacing:-0.03em;line-height:1">INVOICE</div>
     <div style="margin-top:8px;color:#6b7280;font-size:0.9rem"># ${esc(invNum)}</div>
