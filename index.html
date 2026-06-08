@@ -2905,38 +2905,44 @@
       return;
     }
 
-    // Only recipes the user has added to the bake plan (from the Recipes tab).
-    const planned = recipes.filter(r => isInPlan(r.id));
-    if (planned.length === 0) {
-      const pickerBtns = recipes.map(r =>
-        `<button class="plan-btn" onclick="setInPlan('${r.id}', true)">${escapeHtml(r.name)}</button>`
-      ).join('');
-      list.innerHTML = `<div class="empty" style="margin-bottom:0">No recipes added yet — click one to add it to this bake:</div>
-        <div class="plan-picker">${pickerBtns}</div>`;
-      renderTotals();
-      return;
-    }
+    // Always show picker so multiple recipes can be toggled before entering counts.
+    const pickerBtns = recipes.map(r => {
+      const inPlan = isInPlan(r.id);
+      return `<button class="plan-btn${inPlan ? ' on' : ''}" onclick="setInPlan('${r.id}', ${!inPlan})">
+        ${inPlan ? '✓ ' : ''}${escapeHtml(r.name)}
+      </button>`;
+    }).join('');
+    const pickerDiv = document.createElement('div');
+    pickerDiv.className = 'plan-picker';
+    pickerDiv.innerHTML = pickerBtns;
+    list.appendChild(pickerDiv);
 
-    planned.forEach(r => {
-      const count = plan[r.id] || 0;
-      const unit = r.unit || 'loaf';
-      const unitPlural = pluralize(unit);
-      const row = document.createElement('div');
-      row.className = 'bake-row';
-      row.innerHTML = `
-        <div>
-          <div><strong>${escapeHtml(r.name)}</strong></div>
-          <div class="meta">${r.loafWeight} g per ${escapeHtml(unit)}</div>
-        </div>
-        <div>
-          <input type="number" min="0" step="1" value="${count > 0 ? count : ''}"
-            onchange="setPlanCount('${r.id}', this.value)" aria-label="Number of ${escapeHtml(unitPlural)}" />
-        </div>
-        <div class="muted">${escapeHtml(unitPlural)}</div>
-        <div><button class="secondary tiny" onclick="removeFromPlan('${r.id}')" aria-label="Remove ${escapeHtml(r.name)} from bake plan">Remove</button></div>
-      `;
-      list.appendChild(row);
-    });
+    // Count inputs for selected recipes.
+    const planned = recipes.filter(r => isInPlan(r.id));
+    if (planned.length > 0) {
+      const countSection = document.createElement('div');
+      countSection.style.marginTop = '16px';
+      planned.forEach(r => {
+        const count = plan[r.id] || 0;
+        const unit = r.unit || 'loaf';
+        const unitPlural = pluralize(unit);
+        const row = document.createElement('div');
+        row.className = 'bake-row';
+        row.innerHTML = `
+          <div>
+            <div><strong>${escapeHtml(r.name)}</strong></div>
+            <div class="meta">${r.loafWeight} g per ${escapeHtml(unit)}</div>
+          </div>
+          <div>
+            <input type="number" min="0" step="1" value="${count > 0 ? count : ''}"
+              onchange="setPlanCount('${r.id}', this.value)" aria-label="Number of ${escapeHtml(unitPlural)}" />
+          </div>
+          <div class="muted">${escapeHtml(unitPlural)}</div>
+        `;
+        countSection.appendChild(row);
+      });
+      list.appendChild(countSection);
+    }
 
     renderTotals();
     renderFinancials();
