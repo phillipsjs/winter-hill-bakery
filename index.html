@@ -1121,6 +1121,18 @@
           <input type="number" id="sale-oven-temp" min="0" step="5" placeholder="e.g. 500" style="width:90px;flex:none" />
           <span class="muted">°F</span>
         </div>
+        <div class="row" style="margin-top:8px;align-items:flex-start">
+          <label style="width:120px;padding-top:6px">Customer</label>
+          <div style="flex:1;min-width:0">
+            <select id="sale-cust-select" onchange="onSaleCustChange()" style="width:100%;margin-bottom:6px"></select>
+            <input type="text" id="sale-cust-name" placeholder="Name — leave blank for market / retail sales" style="width:100%;box-sizing:border-box;margin-bottom:6px" />
+            <textarea id="sale-cust-addr" rows="2" placeholder="Address (optional)" style="width:100%;box-sizing:border-box"></textarea>
+            <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:0.85rem;cursor:pointer">
+              <input type="checkbox" id="sale-save-customer" />
+              Save this customer
+            </label>
+          </div>
+        </div>
         <div class="row" style="margin-top:10px;gap:8px;justify-content:flex-end">
           <button class="secondary" onclick="toggleSaleSavePanel()">Cancel</button>
           <button onclick="saveCurrentSale()">Confirm save</button>
@@ -1149,6 +1161,18 @@
         <div class="row">
           <label style="width:120px">Notes</label>
           <textarea id="manual-notes" rows="2" placeholder="Optional — anything notable about this bake…"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="width:120px">Customer</label>
+          <input type="text" id="manual-cust-name" placeholder="Optional — who was this sold to?" />
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="width:120px">Address</label>
+          <textarea id="manual-cust-addr" rows="2" placeholder="Optional"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="width:120px">Invoice #</label>
+          <input type="text" id="manual-inv-number" placeholder="Optional" style="width:100px;flex:none" />
         </div>
         <div class="row" style="margin-top:12px;gap:8px;justify-content:flex-end">
           <button class="secondary" onclick="toggleManualBakeForm()">Cancel</button>
@@ -1261,7 +1285,11 @@
 
 <div id="invoice-modal" class="modal-overlay" style="display:none" onclick="closeInvModalOnBg(event)">
   <div class="modal-content" style="max-width:560px;max-height:90vh;overflow-y:auto">
-    <h3 style="margin-bottom:16px">Generate invoice</h3>
+    <h3 id="inv-modal-title" style="margin-bottom:12px">Generate invoice</h3>
+    <div id="inv-settings-notice" style="display:none;margin-bottom:12px;padding:8px 12px;background:var(--accent-light,#e8f0e8);border-radius:6px;font-size:0.86rem">
+      Your company info isn't set up yet — invoices will print without a name or address.
+      <a href="#" onclick="showTab('settings');closeInvoiceModal();return false" style="margin-left:4px">Go to Account → Invoice settings →</a>
+    </div>
 
     <div style="margin-bottom:14px">
       <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:600">Customer</label>
@@ -1627,6 +1655,7 @@
   // ---- invoice state ----
   let invoiceSettings = { company: { name: '', address: '', logo: '' }, customers: [], nextInvoiceNumber: 1 };
   let invoiceSettingsLoaded = false;
+  let _invoiceModalBakeId = null; // null = ad-hoc from financials, else bake id
 
   // ---- gist sync ----
   let syncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'error'
@@ -1977,9 +2006,15 @@
   // ---- invoice modal ----
 
   async function openInvoiceModal() {
+    _invoiceModalBakeId = null;
     await ensureInvoiceSettingsLoaded();
     const modal = document.getElementById('invoice-modal');
     if (!modal) return;
+
+    const titleEl = document.getElementById('inv-modal-title');
+    if (titleEl) titleEl.textContent = 'Generate invoice';
+    const noticeEl = document.getElementById('inv-settings-notice');
+    if (noticeEl) noticeEl.style.display = (invoiceSettings.company.name || invoiceSettings.company.address) ? 'none' : '';
 
     const sel = document.getElementById('inv-cust-select');
     if (sel) {
@@ -2010,6 +2045,79 @@
 
   function closeInvModalOnBg(e) {
     if (e.target === document.getElementById('invoice-modal')) closeInvoiceModal();
+  }
+
+  async function openInvoiceModalFromHistory(bakeId) {
+    _invoiceModalBakeId = bakeId;
+    await ensureInvoiceSettingsLoaded();
+    const bake = bakes.find(b => b.id === bakeId);
+    if (!bake) return;
+    const modal = document.getElementById('invoice-modal');
+    if (!modal) return;
+
+    const titleEl = document.getElementById('inv-modal-title');
+    if (titleEl) titleEl.textContent = bake.invoiceNumber != null ? 'Regenerate invoice' : 'Generate invoice';
+    const noticeEl = document.getElementById('inv-settings-notice');
+    if (noticeEl) noticeEl.style.display = (invoiceSettings.company.name || invoiceSettings.company.address) ? 'none' : '';
+
+    // Customer dropdown
+    const sel = document.getElementById('inv-cust-select');
+    if (sel) {
+      sel.innerHTML = '<option value="">— New customer —</option>' +
+        invoiceSettings.customers.map((c, i) => `<option value="${i}">${escapeHtml(c.name)}</option>`).join('');
+      sel.value = '';
+    }
+    const nameEl = document.getElementById('inv-cust-name');
+    const addrEl = document.getElementById('inv-cust-addr');
+    const saveCb = document.getElementById('inv-save-customer');
+    if (bake.customer) {
+      if (nameEl) nameEl.value = bake.customer.name || '';
+      if (addrEl) addrEl.value = bake.customer.address || '';
+      // Try to match a saved customer for the dropdown
+      const matchIdx = invoiceSettings.customers.findIndex(c => c.name === bake.customer.name);
+      if (matchIdx >= 0 && sel) { sel.value = String(matchIdx); if (saveCb) saveCb.checked = false; }
+    } else {
+      if (nameEl) nameEl.value = '';
+      if (addrEl) addrEl.value = '';
+    }
+
+    // Invoice number — reuse existing or offer next
+    const numEl = document.getElementById('inv-number');
+    if (numEl) numEl.value = bake.invoiceNumber != null ? String(bake.invoiceNumber) : invoiceSettings.nextInvoiceNumber;
+
+    // Date from bake timestamp
+    const dateEl = document.getElementById('inv-date');
+    if (dateEl) {
+      const d = new Date(bake.savedAt);
+      dateEl.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    const notesEl = document.getElementById('inv-notes');
+    if (notesEl) notesEl.value = bake.notes || '';
+
+    renderInvoiceLineItemsFromBake(bake);
+    modal.style.display = 'flex';
+  }
+
+  function renderInvoiceLineItemsFromBake(bake) {
+    const tbody = document.getElementById('inv-line-items');
+    const totEl  = document.getElementById('inv-line-total');
+    if (!tbody) return;
+    let tot = 0, anyTot = false;
+    let rows = '';
+    for (const it of (bake.items || [])) {
+      const price = it.wholesalePrice ?? it.msrp ?? null;
+      const lineTotal = price != null ? price * it.count : null;
+      if (lineTotal != null) { tot += lineTotal; anyTot = true; }
+      rows += `<tr>
+        <td style="padding:4px 6px">${escapeHtml(it.recipeName)}</td>
+        <td style="padding:4px 6px;text-align:right">${it.count}</td>
+        <td style="padding:4px 6px;text-align:right">${price != null ? '$'+price.toFixed(2) : '<span class="muted">—</span>'}</td>
+        <td style="padding:4px 6px;text-align:right">${lineTotal != null ? '$'+lineTotal.toFixed(2) : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    }
+    tbody.innerHTML = rows;
+    if (totEl) totEl.textContent = anyTot ? '$' + tot.toFixed(2) : '—';
   }
 
   function onInvCustChange() {
@@ -2054,15 +2162,16 @@
   }
 
   async function printInvoice() {
-    const custName  = (document.getElementById('inv-cust-name')?.value || '').trim();
-    const custAddr  = (document.getElementById('inv-cust-addr')?.value || '').trim();
-    const saveIt    = document.getElementById('inv-save-customer')?.checked;
-    const invNum    = (document.getElementById('inv-number')?.value || '').trim() || String(invoiceSettings.nextInvoiceNumber);
-    const invDate   = document.getElementById('inv-date')?.value || '';
-    const notes     = (document.getElementById('inv-notes')?.value || '').trim();
-    const sel       = document.getElementById('inv-cust-select');
-    const existIdx  = sel && sel.value !== '' ? +sel.value : -1;
+    const custName = (document.getElementById('inv-cust-name')?.value || '').trim();
+    const custAddr = (document.getElementById('inv-cust-addr')?.value || '').trim();
+    const saveIt   = document.getElementById('inv-save-customer')?.checked;
+    const invNum   = (document.getElementById('inv-number')?.value || '').trim() || String(invoiceSettings.nextInvoiceNumber);
+    const invDate  = document.getElementById('inv-date')?.value || '';
+    const notes    = (document.getElementById('inv-notes')?.value || '').trim();
+    const sel      = document.getElementById('inv-cust-select');
+    const existIdx = sel && sel.value !== '' ? +sel.value : -1;
 
+    // Save / update customer in list
     if (saveIt && custName) {
       if (existIdx >= 0 && invoiceSettings.customers[existIdx]) {
         invoiceSettings.customers[existIdx] = { ...invoiceSettings.customers[existIdx], name: custName, address: custAddr };
@@ -2073,16 +2182,41 @@
     }
 
     const usedNum = parseInt(invNum, 10);
-    if (!isNaN(usedNum) && usedNum >= invoiceSettings.nextInvoiceNumber) {
-      invoiceSettings.nextInvoiceNumber = usedNum + 1;
-    }
+    let lines;
 
-    const lines = (_finData || []).map(d => {
-      const rid = escapeAttr(d.id);
-      const input = document.querySelector(`.fin-units-input[data-recipe-id="${rid}"]`);
-      const units = input ? (Number(input.value) || 0) : d.planUnits;
-      return { name: d.name, units, price: d.price, total: d.price != null ? d.price * units : null };
-    }).filter(l => l.units > 0);
+    if (_invoiceModalBakeId) {
+      // History path: write customer + invoice number back to the bake record
+      const bake = bakes.find(b => b.id === _invoiceModalBakeId);
+      if (bake) {
+        if (custName) bake.customer = { name: custName, address: custAddr };
+        const hadInvoice = bake.invoiceNumber != null;
+        if (!isNaN(usedNum)) {
+          bake.invoiceNumber = usedNum;
+          // Only increment counter on first generation, or if number exceeds current counter
+          if (!hadInvoice && usedNum >= invoiceSettings.nextInvoiceNumber) {
+            invoiceSettings.nextInvoiceNumber = usedNum + 1;
+          }
+        }
+        if (notes) bake.notes = notes;
+        saveBakesLocally();
+        if (getGistConfig()) pushBakesToGist().catch(() => {});
+      }
+      lines = ((bake && bake.items) || []).map(it => {
+        const price = it.wholesalePrice ?? it.msrp ?? null;
+        return { name: it.recipeName, units: it.count, price, total: price != null ? price * it.count : null };
+      }).filter(l => l.units > 0);
+    } else {
+      // Ad-hoc path: increment counter, read from current financials
+      if (!isNaN(usedNum) && usedNum >= invoiceSettings.nextInvoiceNumber) {
+        invoiceSettings.nextInvoiceNumber = usedNum + 1;
+      }
+      lines = (_finData || []).map(d => {
+        const rid = escapeAttr(d.id);
+        const input = document.querySelector(`.fin-units-input[data-recipe-id="${rid}"]`);
+        const units = input ? (Number(input.value) || 0) : d.planUnits;
+        return { name: d.name, units, price: d.price, total: d.price != null ? d.price * units : null };
+      }).filter(l => l.units > 0);
+    }
 
     if (getInvoiceGistConfig()) {
       try { await pushInvoiceSettings(); } catch(e) { /* silent */ }
@@ -2253,7 +2387,43 @@ ${notesHtml}
     const panel = document.getElementById('sale-panel');
     const isOpen = panel.style.display !== 'none';
     panel.style.display = isOpen ? 'none' : '';
-    if (isOpen) document.getElementById('sale-bake-msg').textContent = '';
+    if (isOpen) {
+      document.getElementById('sale-bake-msg').textContent = '';
+    } else {
+      ensureInvoiceSettingsLoaded().then(populateSaleCustDropdown);
+    }
+  }
+
+  function populateSaleCustDropdown() {
+    const sel = document.getElementById('sale-cust-select');
+    if (!sel) return;
+    const hasCustomers = invoiceSettings.customers.length > 0;
+    sel.innerHTML = '<option value="">— No specific customer —</option>' +
+      invoiceSettings.customers.map((c, i) => `<option value="${i}">${escapeHtml(c.name)}</option>`).join('');
+    sel.value = '';
+    // Show a prompt if no invoice settings configured
+    const noSetup = !invoiceSettings.company.name && !getInvoiceGistConfig();
+    const hint = document.getElementById('sale-inv-hint');
+    if (hint) hint.style.display = noSetup ? '' : 'none';
+    onSaleCustChange();
+  }
+
+  function onSaleCustChange() {
+    const sel     = document.getElementById('sale-cust-select');
+    const nameEl  = document.getElementById('sale-cust-name');
+    const addrEl  = document.getElementById('sale-cust-addr');
+    const saveCb  = document.getElementById('sale-save-customer');
+    const idx = sel ? sel.value : '';
+    if (idx !== '' && invoiceSettings.customers[+idx]) {
+      const c = invoiceSettings.customers[+idx];
+      if (nameEl) nameEl.value = c.name;
+      if (addrEl) addrEl.value = c.address || '';
+      if (saveCb) saveCb.checked = false;
+    } else {
+      if (nameEl) nameEl.value = '';
+      if (addrEl) addrEl.value = '';
+      if (saveCb) saveCb.checked = true;
+    }
   }
 
   function saveCurrentSale() {
@@ -2298,9 +2468,23 @@ ${notesHtml}
     const notes = (document.getElementById('sale-notes').value || '').trim();
     const ovenTempRaw = document.getElementById('sale-oven-temp').value;
     const ovenTempF = ovenTempRaw ? Number(ovenTempRaw) : null;
+    const custName = (document.getElementById('sale-cust-name')?.value || '').trim();
+    const custAddr = (document.getElementById('sale-cust-addr')?.value || '').trim();
     const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt: Date.now(), items };
     if (notes) entry.notes = notes;
     if (ovenTempF) entry.ovenTempF = ovenTempF;
+    if (custName) entry.customer = { name: custName, address: custAddr };
+    // Optionally persist customer to invoice settings
+    if (custName && document.getElementById('sale-save-customer')?.checked) {
+      const sel = document.getElementById('sale-cust-select');
+      const existIdx = sel && sel.value !== '' ? +sel.value : -1;
+      if (existIdx >= 0 && invoiceSettings.customers[existIdx]) {
+        invoiceSettings.customers[existIdx] = { ...invoiceSettings.customers[existIdx], name: custName, address: custAddr };
+      } else {
+        invoiceSettings.customers.push({ id: 'c' + Date.now(), name: custName, address: custAddr });
+      }
+      if (getInvoiceGistConfig()) pushInvoiceSettings().catch(() => {});
+    }
     bakes = [entry, ...bakes];
     saveBakesLocally();
     if (msg) {
@@ -2310,6 +2494,9 @@ ${notesHtml}
         toggleSaleSavePanel();
         document.getElementById('sale-notes').value = '';
         document.getElementById('sale-oven-temp').value = '';
+        document.getElementById('sale-cust-name').value = '';
+        document.getElementById('sale-cust-addr').value = '';
+        document.getElementById('sale-cust-select').value = '';
       }, 1200);
     }
     if (getGistConfig()) pushBakesToGist().catch(() => {});
@@ -2503,13 +2690,27 @@ ${notesHtml}
       items.push(item);
     });
     if (items.length === 0) { msg.textContent = 'Add at least one recipe with a count.'; msg.style.color = 'var(--danger)'; return; }
-    const notes = (document.getElementById('manual-notes').value || '').trim();
+    const notes       = (document.getElementById('manual-notes').value || '').trim();
+    const mCustName   = (document.getElementById('manual-cust-name')?.value || '').trim();
+    const mCustAddr   = (document.getElementById('manual-cust-addr')?.value || '').trim();
+    const mInvNumRaw  = (document.getElementById('manual-inv-number')?.value || '').trim();
+    const mInvNum     = mInvNumRaw ? (isNaN(+mInvNumRaw) ? mInvNumRaw : +mInvNumRaw) : undefined;
     if (editingBakeId) {
-      bakes = bakes.map(b => b.id === editingBakeId ? { ...b, savedAt, items, notes: notes || undefined } : b);
+      bakes = bakes.map(b => {
+        if (b.id !== editingBakeId) return b;
+        const updated = { ...b, savedAt, items, notes: notes || undefined };
+        if (mCustName) updated.customer = { name: mCustName, address: mCustAddr };
+        else if (!mCustName) delete updated.customer;
+        if (mInvNum != null) updated.invoiceNumber = mInvNum;
+        else delete updated.invoiceNumber;
+        return updated;
+      });
       editingBakeId = null;
     } else {
       const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt, items };
       if (notes) entry.notes = notes;
+      if (mCustName) entry.customer = { name: mCustName, address: mCustAddr };
+      if (mInvNum != null) entry.invoiceNumber = mInvNum;
       bakes = [entry, ...bakes].sort((a, b) => b.savedAt - a.savedAt);
     }
     saveBakesLocally();
@@ -2540,6 +2741,12 @@ ${notesHtml}
     document.getElementById('manual-items').innerHTML = '';
     document.getElementById('manual-notes').value = bake.notes || '';
     document.getElementById('manual-bake-msg').textContent = '';
+    const mCustNameEl = document.getElementById('manual-cust-name');
+    const mCustAddrEl = document.getElementById('manual-cust-addr');
+    const mInvNumEl   = document.getElementById('manual-inv-number');
+    if (mCustNameEl) mCustNameEl.value = bake.customer?.name || '';
+    if (mCustAddrEl) mCustAddrEl.value = bake.customer?.address || '';
+    if (mInvNumEl)   mInvNumEl.value   = bake.invoiceNumber != null ? String(bake.invoiceNumber) : '';
 
     // Set date
     const d = new Date(bake.savedAt);
@@ -3104,10 +3311,25 @@ ${notesHtml}
         hasProfit ? `$${totalProfit.toFixed(2)} profit` : '',
         `${totalItems} items`,
       ].filter(Boolean).join(' · ');
+      const custHtml = b.customer
+        ? `<div style="font-size:0.82rem;color:var(--muted);margin-top:1px">Customer: <strong style="color:inherit">${escapeHtml(b.customer.name)}</strong></div>`
+        : '';
+      const invNumHtml = b.invoiceNumber != null
+        ? `<span style="font-size:0.78rem;color:var(--muted);margin-left:8px">Invoice #${escapeHtml(String(b.invoiceNumber))}</span>`
+        : '';
+      const hasPrice = b.items.some(it => it.msrp != null || it.wholesalePrice != null);
+      const invBtnLabel = b.invoiceNumber != null ? 'Regenerate invoice' : 'Generate invoice';
+      const invBtnHtml = (b.customer || hasPrice)
+        ? `<button class="secondary tiny" onclick="openInvoiceModalFromHistory('${b.id}')">${invBtnLabel}</button>`
+        : '';
       return `<div class="card">
-        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-weight:600">${fmt.format(new Date(b.savedAt))}</span>
-          <div class="row" style="gap:6px">
+        <div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <span style="font-weight:600">${fmt.format(new Date(b.savedAt))}${invNumHtml}</span>
+            ${custHtml}
+          </div>
+          <div class="row" style="gap:6px;flex-shrink:0;margin-left:8px">
+            ${invBtnHtml}
             <button class="secondary tiny" onclick="editBake('${b.id}')">Edit</button>
             <button class="secondary tiny" onclick="deleteBake('${b.id}')" style="color:var(--danger);border-color:var(--danger)">Delete</button>
           </div>
