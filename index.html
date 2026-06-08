@@ -5459,7 +5459,7 @@
     if (!getGistConfig()) return;
     setSyncStatus('syncing');
     try {
-      const [remoteRecipes, remoteBakes] = await Promise.all([fetchFromGist(), fetchBakesFromGist()]);
+      const [remoteRecipes, remoteBakes, remotePantry] = await Promise.all([fetchFromGist(), fetchBakesFromGist(), fetchPantryFromGist()]);
       if (Array.isArray(remoteRecipes) && remoteRecipes.length > 0) {
         recipes = remoteRecipes.map(r => ({ ...r, processType: getProcessType(r) }));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
@@ -5469,6 +5469,11 @@
       if (Array.isArray(remoteBakes)) {
         bakes = remoteBakes;
         saveBakesLocally();
+      }
+      if (Array.isArray(remotePantry)) {
+        pantryItems = remotePantry;
+        savePantryLocally();
+        renderPantry();
       }
       setSyncStatus('synced');
     } catch (e) {
