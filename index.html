@@ -1022,7 +1022,26 @@
 
   <section id="tab-history" style="display:none">
     <div class="card" id="financials-card" style="display:none">
-      <h2 style="margin:0 0 12px">Projected financials</h2>
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <h2 style="margin:0">Projected financials</h2>
+        <button class="secondary" onclick="toggleSaleSavePanel()" style="white-space:nowrap;flex-shrink:0">Save this sale</button>
+      </div>
+      <div id="sale-panel" style="display:none;margin-bottom:12px;border-top:1px solid var(--border);padding-top:12px">
+        <div class="row">
+          <label style="width:120px">Notes</label>
+          <textarea id="sale-notes" rows="2" placeholder="Optional — describe the bake, any adjustments…"></textarea>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="width:120px">Oven temp</label>
+          <input type="number" id="sale-oven-temp" min="0" step="5" placeholder="e.g. 500" style="width:90px;flex:none" />
+          <span class="muted">°F</span>
+        </div>
+        <div class="row" style="margin-top:10px;gap:8px;justify-content:flex-end">
+          <button class="secondary" onclick="toggleSaleSavePanel()">Cancel</button>
+          <button onclick="saveCurrentSale()">Confirm save</button>
+        </div>
+        <div id="sale-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
+      </div>
       <div id="financials-output"></div>
     </div>
     <div class="card">
@@ -1688,6 +1707,61 @@
     const isOpen = panel.style.display !== 'none';
     panel.style.display = isOpen ? 'none' : '';
     if (isOpen) document.getElementById('save-bake-msg').textContent = '';
+  }
+
+  function toggleSaleSavePanel() {
+    const panel = document.getElementById('sale-panel');
+    const isOpen = panel.style.display !== 'none';
+    panel.style.display = isOpen ? 'none' : '';
+    if (isOpen) document.getElementById('sale-bake-msg').textContent = '';
+  }
+
+  function saveCurrentSale() {
+    const items = Object.entries(plan)
+      .filter(([, count]) => Number(count) > 0)
+      .map(([id, count]) => {
+        const recipe = recipes.find(r => r.id === id);
+        const n = Number(count);
+        const item = { recipeId: id, recipeName: recipe ? recipe.name : id, count: n };
+        if (recipe && recipe.msrp != null) item.msrp = recipe.msrp;
+        if (recipe && recipe.wholesalePrice != null) item.wholesalePrice = recipe.wholesalePrice;
+        const cost = computeRecipeCostPerItem(recipe);
+        if (cost != null) item.costPerItem = cost;
+        const price = recipe ? (recipe.wholesalePrice ?? recipe.msrp) : null;
+        if (price != null && cost != null) item.netProfit = price - cost;
+        else if (recipe && recipe.netProfit != null) item.netProfit = recipe.netProfit;
+        if (recipe) {
+          const spec = getRecipeSpec(recipe);
+          if (spec.bakeMin) item.bakeMin = spec.bakeMin;
+          if (recipe.coldProofHr != null) item.coldProofHr = recipe.coldProofHr;
+          const fw = calcFlourWeights(recipe, n);
+          if (fw.length) item.flourWeights = fw;
+        }
+        return item;
+      });
+    const msg = document.getElementById('sale-bake-msg');
+    if (items.length === 0) {
+      if (msg) { msg.textContent = 'Nothing in the current bake plan to save.'; msg.style.color = 'var(--muted)'; }
+      return;
+    }
+    const notes = (document.getElementById('sale-notes').value || '').trim();
+    const ovenTempRaw = document.getElementById('sale-oven-temp').value;
+    const ovenTempF = ovenTempRaw ? Number(ovenTempRaw) : null;
+    const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt: Date.now(), items };
+    if (notes) entry.notes = notes;
+    if (ovenTempF) entry.ovenTempF = ovenTempF;
+    bakes = [entry, ...bakes];
+    saveBakesLocally();
+    if (msg) {
+      msg.textContent = 'Saved.';
+      msg.style.color = 'var(--ok)';
+      setTimeout(() => {
+        toggleSaleSavePanel();
+        document.getElementById('sale-notes').value = '';
+        document.getElementById('sale-oven-temp').value = '';
+      }, 1200);
+    }
+    if (getGistConfig()) pushBakesToGist().catch(() => {});
   }
 
   function saveCurrentBake() {
