@@ -609,6 +609,7 @@
   <div id="hamburger-menu" style="display:none">
     <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
     <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Ingredients</button>
+    <button id="tab-prices-btn" onclick="showTab('prices')">Prices</button>
     <button id="tab-history-btn" onclick="showTab('history')">Sales</button>
     <button id="tab-settings-btn" onclick="showTab('settings')">Account</button>
   </div>
@@ -703,28 +704,6 @@
       <p class="muted" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally.</p>
       <div id="r-ingredients"></div>
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
-
-      <hr class="sep" />
-      <div class="row">
-        <label style="width:140px">MSRP per <span class="r-unit-label2">unit</span></label>
-        <span class="muted">$</span>
-        <input type="number" id="r-msrp" min="0" step="0.25" style="width:90px;flex:none" oninput="updateRecipeEditorCostDisplay()" />
-      </div>
-      <div class="row">
-        <label style="width:140px">Wholesale per <span class="r-unit-label2b">unit</span></label>
-        <span class="muted">$</span>
-        <input type="number" id="r-wholesale" min="0" step="0.25" style="width:90px;flex:none" placeholder="optional" oninput="updateRecipeEditorCostDisplay()" />
-      </div>
-      <div class="row" style="align-items:center">
-        <label style="width:140px;color:var(--muted);font-size:0.9rem">Cost per <span class="r-unit-label2c">unit</span></label>
-        <span id="r-cost-display" class="muted" style="font-size:0.9rem">—</span>
-        <span class="muted" style="font-size:0.75rem;margin-left:6px">(from linked ingredients)</span>
-      </div>
-      <div class="row" style="align-items:center">
-        <label style="width:140px;color:var(--muted);font-size:0.9rem">Net profit per <span class="r-unit-label2d">unit</span></label>
-        <span id="r-profit-display" class="muted" style="font-size:0.9rem">—</span>
-        <span class="muted" style="font-size:0.75rem;margin-left:6px">(wholesale or MSRP − cost)</span>
-      </div>
 
       <hr class="sep" />
       <details id="r-recipe-settings" open>
@@ -831,6 +810,14 @@
 
     <div id="pantry-suggestions"></div>
     <div id="pantry-list"></div>
+  </section>
+
+  <section id="tab-prices" style="display:none">
+    <div class="card">
+      <h2 style="margin:0">Prices</h2>
+      <p class="muted" style="margin:6px 0 0">Link ingredients to their pantry costs and set retail and wholesale prices for each recipe.</p>
+    </div>
+    <div id="prices-list"></div>
   </section>
 
   <section id="tab-schedule" style="display:none">
@@ -2828,13 +2815,13 @@
   }
 
   // ---- tabs ----
-  const SECONDARY_TABS = ['recipes', 'ingredients', 'history', 'settings'];
+  const SECONDARY_TABS = ['recipes', 'ingredients', 'prices', 'history', 'settings'];
 
   function showTab(name) {
-    ['plan','recipes','ingredients','schedule','history','settings'].forEach(t => {
+    ['plan','recipes','ingredients','prices','schedule','history','settings'].forEach(t => {
       document.getElementById('tab-' + t).style.display = name === t ? '' : 'none';
     });
-    ['plan','recipes','ingredients','schedule','history','settings'].forEach(t => {
+    ['plan','recipes','ingredients','prices','schedule','history','settings'].forEach(t => {
       const btn = document.getElementById('tab-' + t + '-btn');
       if (btn) btn.classList.toggle('active', name === t);
     });
@@ -2844,6 +2831,7 @@
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
     if (name === 'ingredients') renderPantry();
+    if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'history') { renderHistory(); renderFinancials(); }
     if (name === 'settings') {
@@ -3533,6 +3521,155 @@
     });
   }
 
+  // ---- prices tab ----
+  function renderPrices() {
+    const list = document.getElementById('prices-list');
+    list.innerHTML = '';
+    if (recipes.length === 0) {
+      list.innerHTML = '<div class="card empty">No recipes yet. Add recipes first.</div>';
+      return;
+    }
+    recipes.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const rid = escapeAttr(r.id);
+      const unit = escapeHtml(r.unit || 'unit');
+
+      const ingRows = r.ingredients.map((ing, idx) => {
+        const pantryOptions = pantryItems.map(p =>
+          `<option value="${escapeAttr(p.id)}"${ing.pantryId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
+        ).join('');
+        return `
+          <tr>
+            <td>${escapeHtml(ing.name)}</td>
+            <td class="num">${ing.pct}%</td>
+            <td>
+              <select class="prices-pantry" data-recipe-id="${rid}" data-ing-idx="${idx}"
+                onchange="updatePricesCostDisplay('${rid}')">
+                <option value="">— no cost link —</option>
+                <option value="__free__"${ing.pantryId === '__free__' ? ' selected' : ''}>no cost ($0.00)</option>
+                ${pantryOptions}
+              </select>
+            </td>
+          </tr>`;
+      }).join('');
+
+      const cost = computeRecipeCostPerItem(r);
+      const price = r.wholesalePrice != null ? r.wholesalePrice : (r.msrp != null ? r.msrp : null);
+      const profit = (cost != null && price != null) ? price - cost : null;
+
+      card.innerHTML = `
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong style="font-size:1rem">${escapeHtml(r.name)}</strong>
+          <button onclick="savePrices('${rid}')">Save prices</button>
+        </div>
+        <table class="ingredients" style="margin-bottom:12px">
+          <thead><tr><th>Ingredient</th><th class="num">%</th><th>Cost link</th></tr></thead>
+          <tbody>${ingRows}</tbody>
+        </table>
+        <div class="row">
+          <label style="width:160px">MSRP per ${unit}</label>
+          <span class="muted">$</span>
+          <input type="number" id="prices-msrp-${rid}" min="0" step="0.25" style="width:90px;flex:none"
+            value="${r.msrp != null ? r.msrp : ''}" oninput="updatePricesCostDisplay('${rid}')" />
+        </div>
+        <div class="row">
+          <label style="width:160px">Wholesale per ${unit}</label>
+          <span class="muted">$</span>
+          <input type="number" id="prices-wholesale-${rid}" min="0" step="0.25" style="width:90px;flex:none"
+            value="${r.wholesalePrice != null ? r.wholesalePrice : ''}" placeholder="optional"
+            oninput="updatePricesCostDisplay('${rid}')" />
+        </div>
+        <div class="row" style="align-items:center">
+          <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per ${unit}</label>
+          <span id="prices-cost-${rid}" class="muted" style="font-size:0.9rem">${cost != null ? '$' + cost.toFixed(2) : '—'}</span>
+          <span class="muted" style="font-size:0.75rem;margin-left:6px">(from linked ingredients)</span>
+        </div>
+        <div class="row" style="align-items:center">
+          <label style="width:160px;color:var(--muted);font-size:0.9rem">Net profit per ${unit}</label>
+          <span id="prices-profit-${rid}" class="muted" style="font-size:0.9rem;${profit != null && profit < 0 ? 'color:var(--danger)' : ''}">${profit != null ? '$' + profit.toFixed(2) : '—'}</span>
+          <span class="muted" style="font-size:0.75rem;margin-left:6px">(wholesale or MSRP − cost)</span>
+        </div>
+        <div id="prices-msg-${rid}" style="font-size:0.85rem;color:var(--accent);margin-top:6px"></div>
+      `;
+      list.appendChild(card);
+    });
+  }
+
+  function updatePricesCostDisplay(recipeId) {
+    const recipe = recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const rid = escapeAttr(recipeId);
+    const costEl = document.getElementById('prices-cost-' + rid);
+    const profitEl = document.getElementById('prices-profit-' + rid);
+    if (!costEl || !profitEl) return;
+
+    // Build temp recipe from current pantry selects
+    const selects = document.querySelectorAll(`.prices-pantry[data-recipe-id="${rid}"]`);
+    const ingredients = recipe.ingredients.map((ing, idx) => {
+      const sel = selects[idx];
+      const pantryId = sel ? sel.value : (ing.pantryId || '');
+      const result = { name: ing.name, pct: ing.pct };
+      if (pantryId) result.pantryId = pantryId;
+      return result;
+    });
+    const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight };
+    const cost = computeRecipeCostPerItem(tmpRecipe);
+
+    costEl.textContent = cost != null ? '$' + cost.toFixed(2) : '—';
+    const msrpEl = document.getElementById('prices-msrp-' + rid);
+    const wholesaleEl = document.getElementById('prices-wholesale-' + rid);
+    const msrp = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
+    const wholesale = wholesaleEl && wholesaleEl.value !== '' ? Number(wholesaleEl.value) : null;
+    const price = wholesale != null ? wholesale : msrp;
+    if (cost != null && price != null) {
+      const profit = price - cost;
+      profitEl.textContent = '$' + profit.toFixed(2);
+      profitEl.style.color = profit < 0 ? 'var(--danger)' : '';
+    } else {
+      profitEl.textContent = '—';
+      profitEl.style.color = '';
+    }
+  }
+
+  function savePrices(recipeId) {
+    const idx = recipes.findIndex(r => r.id === recipeId);
+    if (idx < 0) return;
+    const rid = escapeAttr(recipeId);
+    const recipe = recipes[idx];
+
+    // Read updated pantry links
+    const selects = document.querySelectorAll(`.prices-pantry[data-recipe-id="${rid}"]`);
+    const ingredients = recipe.ingredients.map((ing, i) => {
+      const sel = selects[i];
+      const updated = { ...ing };
+      if (sel) {
+        if (sel.value) updated.pantryId = sel.value;
+        else delete updated.pantryId;
+      }
+      return updated;
+    });
+
+    const msrpEl = document.getElementById('prices-msrp-' + rid);
+    const wholesaleEl = document.getElementById('prices-wholesale-' + rid);
+    const msrp = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
+    const wholesale = wholesaleEl && wholesaleEl.value !== '' ? Number(wholesaleEl.value) : null;
+
+    const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight };
+    const costPerItem = computeRecipeCostPerItem(tmpRecipe);
+
+    recipes[idx] = { ...recipe, ingredients, msrp, wholesalePrice: wholesale, costPerItem: costPerItem !== null ? costPerItem : undefined };
+    saveRecipes();
+
+    const msgEl = document.getElementById('prices-msg-' + rid);
+    if (msgEl) {
+      msgEl.textContent = 'Prices saved.';
+      setTimeout(() => { if (msgEl) msgEl.textContent = ''; }, 2000);
+    }
+    // Refresh recipe list summaries
+    if (document.getElementById('tab-recipes').style.display !== 'none') renderRecipes();
+  }
+
   // ---- editor ----
   const OVERRIDE_FIELD_TO_INPUT = {
     bakeMin: 'r-bake-min',
@@ -3601,8 +3738,6 @@
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
     }
     document.getElementById('r-bake-temp').value = '';
-    document.getElementById('r-msrp').value = '';
-    document.getElementById('r-wholesale').value = '';
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -3633,11 +3768,6 @@
     }
     document.getElementById('r-bake-temp').value =
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
-    document.getElementById('r-msrp').value =
-      (r.msrp !== undefined && r.msrp !== null) ? r.msrp : '';
-    document.getElementById('r-wholesale').value =
-      (r.wholesalePrice !== undefined && r.wholesalePrice !== null) ? r.wholesalePrice : '';
-    updateRecipeEditorCostDisplay();
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3651,17 +3781,12 @@
     const pct = prefill && prefill.pct !== undefined ? prefill.pct : '';
     const flourType = prefill ? (prefill.flourType || detectFlourType(name)) : '';
     row.innerHTML = `
-      <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" oninput="updateRecipeEditorCostDisplay()" />
-      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${pct}" oninput="onIngredientPctInput(this);updateRecipeEditorCostDisplay()" />
-      <select class="ing-flour-type" onchange="onFlourTypeChange(this);updateRecipeEditorCostDisplay()" title="Flour role">
+      <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
+      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${pct}" oninput="onIngredientPctInput(this)" />
+      <select class="ing-flour-type" onchange="onFlourTypeChange(this)" title="Flour role">
         <option value=""${flourType === '' ? ' selected' : ''}>— not flour —</option>
         <option value="anchor"${flourType === 'anchor' ? ' selected' : ''}>Anchor flour</option>
         <option value="specialty"${flourType === 'specialty' ? ' selected' : ''}>Specialty flour</option>
-      </select>
-      <select class="ing-pantry" title="Link to ingredient cost" onchange="updateRecipeEditorCostDisplay()">
-        <option value="">— no cost link —</option>
-        <option value="__free__"${(prefill && prefill.pantryId === '__free__') ? ' selected' : ''}>no cost ($0.00)</option>
-        ${pantryItems.map(p => `<option value="${escapeAttr(p.id)}"${(prefill && prefill.pantryId === p.id) ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
       </select>
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
@@ -3715,18 +3840,32 @@
     }
     const bakeTempRaw = document.getElementById('r-bake-temp').value.trim();
     const bakeTempF = bakeTempRaw ? Number(bakeTempRaw) : null;
-    const msrpRaw = document.getElementById('r-msrp').value.trim();
-    const msrp = msrpRaw ? Number(msrpRaw) : null;
-    const wholesaleRaw = document.getElementById('r-wholesale').value.trim();
-    const wholesalePrice = wholesaleRaw ? Number(wholesaleRaw) : null;
+
+    // Preserve pantryId links from the existing recipe (matched by ingredient name).
+    // Cost links are managed in the Prices tab, not the recipe editor.
+    if (editingId) {
+      const existingRecipe = recipes.find(x => x.id === editingId);
+      if (existingRecipe) {
+        ingredients.forEach(ing => {
+          const match = existingRecipe.ingredients.find(
+            e => e.name.toLowerCase() === ing.name.toLowerCase()
+          );
+          if (match && match.pantryId) ing.pantryId = match.pantryId;
+        });
+      }
+    }
+
     const tmpRecipe = { ingredients, loafWeight };
     const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, msrp, wholesalePrice, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides };
 
     if (editingId) {
+      const existing = recipes.find(x => x.id === editingId);
       const idx = recipes.findIndex(x => x.id === editingId);
-      if (idx >= 0) recipes[idx] = { ...recipes[idx], ...base };
+      // Preserve msrp/wholesalePrice — those are set only from the Prices tab
+      const pricingFields = existing ? { msrp: existing.msrp, wholesalePrice: existing.wholesalePrice } : {};
+      if (idx >= 0) recipes[idx] = { ...recipes[idx], ...base, ...pricingFields };
     } else {
       recipes.push({ id: uid(), ...base });
     }
