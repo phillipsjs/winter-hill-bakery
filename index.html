@@ -585,6 +585,11 @@
       <div id="totals-output"></div>
     </div>
 
+    <div class="card" id="financials-card" style="display:none">
+      <h2 style="margin:0 0 12px">Projected financials</h2>
+      <div id="financials-output"></div>
+    </div>
+
     <div class="card totals" id="levain-card" style="display:none">
       <h2>Levain build plan</h2>
       <p class="muted" style="margin-top:0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
@@ -2774,6 +2779,7 @@
     });
 
     renderTotals();
+    renderFinancials();
   }
 
   function setPlanCount(id, val) {
@@ -2784,6 +2790,92 @@
     plan[id] = n;
     savePlan();
     renderTotals();
+    renderFinancials();
+  }
+
+  function renderFinancials() {
+    const card = document.getElementById('financials-card');
+    const out  = document.getElementById('financials-output');
+    if (!card || !out) return;
+
+    const planned = recipes.filter(r => isInPlan(r.id) && (plan[r.id] || 0) > 0);
+    if (planned.length === 0) { card.style.display = 'none'; return; }
+
+    const $ = v => v == null ? null : `$${v.toFixed(2)}`;
+    const fmtCell = (v, dim) => v == null
+      ? `<td class="num muted" style="color:var(--muted)">—</td>`
+      : `<td class="num"${dim ? ' class="muted"' : ''}>${v}</td>`;
+
+    let totSales = 0, totCost = 0, totProfit = 0;
+    let anySales = false, anyCost = false, anyProfit = false;
+    const missing = [];
+
+    const rows = planned.map(r => {
+      const units  = plan[r.id];
+      const price  = r.wholesalePrice != null ? r.wholesalePrice : (r.msrp != null ? r.msrp : null);
+      const priceLabel = r.wholesalePrice != null ? 'wholesale' : (r.msrp != null ? 'MSRP' : null);
+      const cost   = computeRecipeCostPerItem(r);
+      const profit = (price != null && cost != null) ? price - cost : null;
+
+      const sales  = price  != null ? price  * units : null;
+      const tCost  = cost   != null ? cost   * units : null;
+      const tProfit = profit != null ? profit * units : null;
+
+      if (sales   != null) { totSales  += sales;   anySales  = true; }
+      if (tCost   != null) { totCost   += tCost;   anyCost   = true; }
+      if (tProfit != null) { totProfit += tProfit; anyProfit = true; }
+
+      if (price == null || cost == null) missing.push(r.name);
+
+      const profitColor = profit != null && profit < 0 ? ' style="color:var(--danger)"' : '';
+
+      return `<tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td class="num">${units}</td>
+        ${fmtCell(price  != null ? `${$(price)} <span class="muted" style="font-size:0.75rem">(${priceLabel})</span>` : null)}
+        ${fmtCell($(sales))}
+        ${fmtCell($(cost))}
+        ${fmtCell($(tCost))}
+        <td class="num"${profit != null ? profitColor : ''}>${profit != null ? $(profit) : '<span class="muted">—</span>'}</td>
+        <td class="num"${tProfit != null ? profitColor : ''}>${tProfit != null ? $(tProfit) : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    });
+
+    const totRow = `<tr style="font-weight:600;border-top:2px solid var(--border)">
+      <td>Total</td>
+      <td></td>
+      <td></td>
+      <td class="num">${anySales  ? $(totSales)  : '<span class="muted">—</span>'}</td>
+      <td></td>
+      <td class="num">${anyCost   ? $(totCost)   : '<span class="muted">—</span>'}</td>
+      <td></td>
+      <td class="num" style="${totProfit < 0 ? 'color:var(--danger)' : ''}">${anyProfit ? $(totProfit) : '<span class="muted">—</span>'}</td>
+    </tr>`;
+
+    const missingNote = missing.length
+      ? `<p class="muted" style="font-size:0.8rem;margin:8px 0 0">— = pricing or ingredient costs not set for: ${missing.map(escapeHtml).join(', ')}.</p>`
+      : '';
+
+    out.innerHTML = `
+      <div style="overflow-x:auto">
+        <table class="ingredients" style="width:100%">
+          <thead><tr>
+            <th>Recipe</th>
+            <th class="num">Units</th>
+            <th class="num">Price/unit</th>
+            <th class="num">Proj. sales</th>
+            <th class="num">Cost/unit</th>
+            <th class="num">Proj. cost</th>
+            <th class="num">Profit/unit</th>
+            <th class="num">Proj. profit</th>
+          </tr></thead>
+          <tbody>${rows.join('')}</tbody>
+          <tfoot>${totRow}</tfoot>
+        </table>
+      </div>
+      ${missingNote}`;
+
+    card.style.display = '';
   }
 
   // Add/remove a recipe from the bake plan (the "selected" state).
