@@ -1116,11 +1116,6 @@
           <label style="width:120px">Notes</label>
           <textarea id="sale-notes" rows="2" placeholder="Optional — describe the bake, any adjustments…"></textarea>
         </div>
-        <div class="row" style="margin-top:8px">
-          <label style="width:120px">Oven temp</label>
-          <input type="number" id="sale-oven-temp" min="0" step="5" placeholder="e.g. 500" style="width:90px;flex:none" />
-          <span class="muted">°F</span>
-        </div>
         <div class="row" style="margin-top:8px;align-items:flex-start">
           <label style="width:120px;padding-top:6px">Customer</label>
           <div style="flex:1;min-width:0">
@@ -2499,13 +2494,10 @@ ${notesHtml}
       return;
     }
     const notes = (document.getElementById('sale-notes').value || '').trim();
-    const ovenTempRaw = document.getElementById('sale-oven-temp').value;
-    const ovenTempF = ovenTempRaw ? Number(ovenTempRaw) : null;
     const custName = (document.getElementById('sale-cust-name')?.value || '').trim();
     const custAddr = (document.getElementById('sale-cust-addr')?.value || '').trim();
     const entry = { id: 'b-' + Math.random().toString(36).slice(2, 10), savedAt: Date.now(), items };
     if (notes) entry.notes = notes;
-    if (ovenTempF) entry.ovenTempF = ovenTempF;
     if (custName) entry.customer = { name: custName, address: custAddr };
     // Optionally persist customer to invoice settings
     if (custName && document.getElementById('sale-save-customer')?.checked) {
@@ -2526,7 +2518,6 @@ ${notesHtml}
       setTimeout(() => {
         toggleSaleSavePanel();
         document.getElementById('sale-notes').value = '';
-        document.getElementById('sale-oven-temp').value = '';
         document.getElementById('sale-cust-name').value = '';
         document.getElementById('sale-cust-addr').value = '';
         document.getElementById('sale-cust-select').value = '';
