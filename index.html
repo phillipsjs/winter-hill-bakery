@@ -582,6 +582,37 @@
   .schedule-info .schedule-fixes { border-top-color: #94b496; }
   .schedule-info .schedule-fixes-label { color: #1f4d2e; }
   .schedule-info button.schedule-fix-btn { color: #1f4d2e; border-color: #6ba06b; }
+  /* Stage color coding — left-border stripe per bake phase */
+  .schedule-row[data-stage], .schedule-event[data-stage] {
+    padding-left: 9px;
+    border-left: 3px solid transparent;
+  }
+  .schedule-row[data-stage="levain"], .schedule-event[data-stage="levain"] { border-left-color: #d97706; }
+  .schedule-row[data-stage="mix"],    .schedule-event[data-stage="mix"]    { border-left-color: #0e7490; }
+  .schedule-row[data-stage="fold"],   .schedule-event[data-stage="fold"]   { border-left-color: #7c3aed; }
+  .schedule-row[data-stage="shape"],  .schedule-event[data-stage="shape"]  { border-left-color: #be185d; }
+  .schedule-row[data-stage="proof"],  .schedule-event[data-stage="proof"]  { border-left-color: #1d4ed8; }
+  .schedule-row[data-stage="bake"],   .schedule-event[data-stage="bake"]   { border-left-color: #c2410c; }
+  .schedule-row[data-stage="done"],   .schedule-event[data-stage="done"]   { border-left-color: #16a34a; }
+  .schedule-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: 6px 0 10px;
+  }
+  .schedule-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .schedule-legend-swatch {
+    width: 10px;
+    height: 18px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
   button.schedule-highlight-btn {
     background: transparent;
     color: inherit;
@@ -5129,6 +5160,28 @@
 
   let _scheduleResult = null;
 
+  const STAGE_META = [
+    { key: 'levain', label: 'Levain',      color: '#d97706' },
+    { key: 'mix',    label: 'Mix & weigh', color: '#0e7490' },
+    { key: 'fold',   label: 'Fold',        color: '#7c3aed' },
+    { key: 'shape',  label: 'Shape',       color: '#be185d' },
+    { key: 'proof',  label: 'Proof',       color: '#1d4ed8' },
+    { key: 'bake',   label: 'Bake',        color: '#c2410c' },
+    { key: 'done',   label: 'Done',        color: '#16a34a' },
+  ];
+
+  function getEventStage(ev) {
+    const t = ev.title;
+    if (/^Levain Build/.test(t)) return 'levain';
+    if (/^(Mill |Weigh out|Start autolyse|Mix in salt|Mix muffin|Mix bagel)/.test(t)) return 'mix';
+    if (/^Stretch & fold/.test(t)) return 'fold';
+    if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels)/.test(t)) return 'shape';
+    if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge)/.test(t)) return 'proof';
+    if (/^(Turn on oven|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
+    if (/^(Last .* out|Package)/.test(t)) return 'done';
+    return '';
+  }
+
   // Returns the event titles responsible for a given warning, for step highlighting.
   function getHighlightTitlesForWarning(w, events) {
     if (!events || !events.length) return [];
@@ -5359,16 +5412,19 @@
       const timeCell = ev.timeEnd
         ? `${renderClickableTime(ev)}<span class="schedule-time-end">to ${timeFmt.format(roundToFiveMin(ev.timeEnd))}</span>`
         : renderClickableTime(ev);
-      return `<div class="schedule-row">
+      const stage = getEventStage(ev);
+      return `<div class="schedule-row"${stage ? ` data-stage="${stage}"` : ''}>
         <div class="schedule-time">${timeCell}</div>
         <div>${renderEventContent(ev)}</div>
       </div>`;
     };
-    const renderEventBlock = (ev, sharedClass) => `
-      <div class="schedule-event${sharedClass ? ' ' + sharedClass : ''}">
+    const renderEventBlock = (ev, sharedClass) => {
+      const stage = getEventStage(ev);
+      return `<div class="schedule-event${sharedClass ? ' ' + sharedClass : ''}"${stage ? ` data-stage="${stage}"` : ''}>
         <div class="schedule-event-time">${formatEventTime(ev)}</div>
         ${renderEventContent(ev)}
       </div>`;
+    };
 
     const hourFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', hour12: true });
 
@@ -5635,6 +5691,13 @@
       html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Click any time to set one.</p>`;
     } else {
       html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: click any time to anchor a step — the rest of the schedule will shift.</p>`;
+    }
+    {
+      const presentStages = new Set(result.events.map(e => getEventStage(e)).filter(Boolean));
+      const legendItems = STAGE_META.filter(s => presentStages.has(s.key))
+        .map(s => `<span class="schedule-legend-item"><span class="schedule-legend-swatch" style="background:${s.color}"></span>${s.label}</span>`)
+        .join('');
+      if (legendItems) html += `<div class="schedule-legend">${legendItems}</div>`;
     }
     const colsStyle = `grid-template-columns: repeat(${presentCols.length}, 1fr);`;
     if (splitView) {
