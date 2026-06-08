@@ -582,6 +582,24 @@
   .schedule-info .schedule-fixes { border-top-color: #94b496; }
   .schedule-info .schedule-fixes-label { color: #1f4d2e; }
   .schedule-info button.schedule-fix-btn { color: #1f4d2e; border-color: #6ba06b; }
+  button.schedule-highlight-btn {
+    background: transparent;
+    color: inherit;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 0.78rem;
+    opacity: 0.75;
+    cursor: pointer;
+    margin-top: 6px;
+    display: inline-block;
+  }
+  button.schedule-highlight-btn:hover { opacity: 1; }
+  .schedule-row-highlighted, .schedule-event-highlighted {
+    background: #fff3cd !important;
+    box-shadow: inset 3px 0 0 #f59e0b;
+    border-radius: 4px;
+  }
   .schedule-info button.schedule-fix-btn:hover { background: #d4e8d4; }
   .settings-select {
     border: 1px solid var(--border);
@@ -5111,6 +5129,50 @@
 
   let _scheduleResult = null;
 
+  // Returns the event titles responsible for a given warning, for step highlighting.
+  function getHighlightTitlesForWarning(w, events) {
+    if (!events || !events.length) return [];
+    switch (w.issue) {
+      case 'late-night':
+        return lateNightActiveSteps(events, w.kind).map(e => e.title);
+      case 'bake-late':
+      case 'oven-overlap-late':
+      case 'oven-shifted': {
+        const bakePattern = w.kind === 'bagel'
+          ? /^(Bake batch|Boil & top batch)/
+          : /^Bake \d+ of \d+/;
+        return events.filter(e => e.process === w.kind && bakePattern.test(e.title)).map(e => e.title);
+      }
+      case 'slack': {
+        const bakes = events.filter(e => e.process === w.kind && /^Bake/.test(e.title)).map(e => e.title);
+        const pkg = events.filter(e => e.title === 'Package & ready for sale').map(e => e.title);
+        return [...bakes, ...pkg];
+      }
+      case 'coldproof-exceeded':
+        return events.filter(e => e.process === w.kind && /^Into fridge/.test(e.title)).map(e => e.title);
+      default:
+        return [];
+    }
+  }
+
+  function highlightScheduleStep(btn) {
+    const titles = JSON.parse(btn.dataset.titles);
+    document.querySelectorAll('.schedule-row-highlighted, .schedule-event-highlighted').forEach(el => {
+      el.classList.remove('schedule-row-highlighted', 'schedule-event-highlighted');
+    });
+    let first = null;
+    document.querySelectorAll('[data-event-title]').forEach(span => {
+      if (titles.includes(span.dataset.eventTitle)) {
+        const row = span.closest('.schedule-row') || span.closest('.schedule-event');
+        if (row) {
+          row.classList.add(row.classList.contains('schedule-row') ? 'schedule-row-highlighted' : 'schedule-event-highlighted');
+          if (!first) first = row;
+        }
+      }
+    });
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   function renderSchedule() {
     if (suppressScheduleRender) return;
     _scheduleResult = null;
@@ -5527,6 +5589,10 @@
         const fixes = computeFixesFor(w);
         const blockClass = w.type === 'info' ? 'schedule-info' : 'schedule-warn';
         let block = `<div class="${blockClass}">${escapeHtml(w.msg)}`;
+        const hlTitles = getHighlightTitlesForWarning(w, result.events);
+        if (hlTitles.length) {
+          block += `<br><button class="schedule-highlight-btn" data-titles="${escapeAttr(JSON.stringify(hlTitles))}" onclick="highlightScheduleStep(this)">↓ Show in schedule</button>`;
+        }
         if (fixes.length) {
           const label = w.type === 'info'
             ? 'Alternatives:'
