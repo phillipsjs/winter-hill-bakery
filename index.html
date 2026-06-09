@@ -903,7 +903,7 @@
 
     <div id="pantry-add-form" class="card" style="display:none">
       <h3 style="margin:0 0 12px">Add ingredient</h3>
-      <div class="row"><label style="width:140px">Name</label><input type="text" id="pantry-name" placeholder="e.g. Bread flour" /></div>
+      <div class="row"><label style="width:140px">Name</label><input type="text" id="pantry-name" placeholder="e.g. Bread flour" oninput="onPantryCategoryChange()" /></div>
       <div class="row">
         <label style="width:140px">Total weight bought</label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -926,7 +926,7 @@
       <div class="row"><label style="width:140px">Price paid</label><span class="muted">$</span><input type="number" id="pantry-price" min="0" step="0.01" style="width:90px;flex:none" oninput="updatePantryCostPreview()" /></div>
       <div id="pantry-cost-preview" class="muted" style="font-size:0.85rem;margin:4px 0 8px 140px"></div>
       <div class="row"><label style="width:140px">Category</label>
-        <select id="pantry-category" class="settings-select" style="width:auto">
+        <select id="pantry-category" class="settings-select" style="width:auto" onchange="onPantryCategoryChange()">
           <option value="">Auto-detect</option>
           <option value="Flours">Flours</option>
           <option value="Water">Water</option>
@@ -937,6 +937,13 @@
           <option value="Yeast">Yeast</option>
           <option value="Other">Other</option>
         </select>
+      </div>
+      <div class="row" id="pantry-milling-row" style="display:none">
+        <label style="width:140px"></label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="pantry-requires-milling" />
+          Requires milling
+        </label>
       </div>
       <div class="row" style="gap:8px;justify-content:flex-end">
         <button class="secondary" onclick="hidePantryAddForm()">Cancel</button>
@@ -3523,6 +3530,14 @@ ${notesHtml}
     return Number(document.getElementById('pantry-weight').value) || 0;
   }
 
+  function onPantryCategoryChange() {
+    const cat = document.getElementById('pantry-category').value;
+    const nameVal = document.getElementById('pantry-name').value;
+    const isFlour = cat === 'Flours' || (!cat && categIngredient(nameVal) === 'Flours');
+    document.getElementById('pantry-milling-row').style.display = isFlour ? '' : 'none';
+    if (!isFlour) document.getElementById('pantry-requires-milling').checked = false;
+  }
+
   function onPantryWeightUnitChange() {
     const unit = document.getElementById('pantry-weight-unit').value;
     document.getElementById('pantry-weight-g-wrap').style.display   = unit === 'g'   ? 'flex' : 'none';
@@ -3599,6 +3614,8 @@ ${notesHtml}
     document.getElementById('pantry-price').value = item ? item.pricePaid : '';
     document.getElementById('pantry-cost-preview').textContent = item ? `= $${item.costPerGram.toFixed(4)} per gram` : '';
     document.getElementById('pantry-category').value = item ? (item.category || '') : '';
+    document.getElementById('pantry-requires-milling').checked = item ? !!item.requiresMilling : false;
+    onPantryCategoryChange();
     document.getElementById('pantry-add-msg').textContent = '';
     document.getElementById('pantry-add-form').dataset.editId = item ? item.id : '';
     const det = document.getElementById('ingredient-costs-details');
@@ -3630,12 +3647,13 @@ ${notesHtml}
     if (isNaN(pricePaid) || pricePaid < 0) { msgEl.textContent = 'Please enter a price (0 or more).'; return; }
     const costPerGram = pricePaid / weightG;
     const category = document.getElementById('pantry-category').value || '';
+    const requiresMilling = document.getElementById('pantry-requires-milling').checked;
     const editId = document.getElementById('pantry-add-form').dataset.editId;
     if (editId) {
       const idx = pantryItems.findIndex(p => p.id === editId);
-      if (idx >= 0) pantryItems[idx] = { ...pantryItems[idx], name, weightG, pricePaid, costPerGram, category };
+      if (idx >= 0) pantryItems[idx] = { ...pantryItems[idx], name, weightG, pricePaid, costPerGram, category, requiresMilling };
     } else {
-      pantryItems.push({ id: uid(), name, weightG, pricePaid, costPerGram, category });
+      pantryItems.push({ id: uid(), name, weightG, pricePaid, costPerGram, category, requiresMilling });
     }
     savePantryLocally();
     hidePantryAddForm();
@@ -5855,14 +5873,21 @@ ${notesHtml}
     if (totalLoaves === 0 && totalMuffins === 0 && totalBagels === 0 && totalFocaccia === 0)
       return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia: 0, batches: 0, events: [], warnings };
 
-    const specialtyFlourNames = new Set();
-    for (const r of loafRecipes) {
-      for (const i of r.ingredients) {
-        if (i.flourType === 'specialty' && (Number(i.pct) || 0) > 0) {
-          specialtyFlourNames.add(i.name);
+    const millingFloursForRecipes = (recipeList) => {
+      const names = new Set();
+      for (const r of recipeList) {
+        for (const i of r.ingredients) {
+          if ((Number(i.pct) || 0) > 0 && i.pantryId) {
+            const pi = pantryItems.find(p => p.id === i.pantryId);
+            if (pi && pi.requiresMilling) names.add(i.name);
+          }
         }
       }
-    }
+      return names;
+    };
+    const specialtyFlourNames = millingFloursForRecipes(loafRecipes);
+    const millingFloursMuffin  = millingFloursForRecipes(muffinRecipes);
+    const millingFloursBagel   = millingFloursForRecipes(bagelRecipes);
 
     const loafSpecs = loafRecipes.map(getRecipeSpec);
     const muffinSpecs = muffinRecipes.map(getRecipeSpec);
@@ -6428,7 +6453,7 @@ ${notesHtml}
     if (specialtyFlourNames.size > 0) {
       events.push({
         time: addMinutes(autolyseStart, -SCHED.MILL_ACTIVE_MIN),
-        title: 'Mill specialty flour',
+        title: 'Mill flour',
         detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...specialtyFlourNames].join(' + ')}`,
         process: 'loaf',
       });
@@ -6684,6 +6709,14 @@ ${notesHtml}
     }
 
     // --- Muffin mix / shape / fridge events (using precomputed muffinTimes) ---
+    if (totalMuffins > 0 && muffinTimes && millingFloursMuffin.size > 0) {
+      events.push({
+        time: addMinutes(muffinMixStart, -SCHED.MILL_ACTIVE_MIN),
+        title: 'Mill flour',
+        detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...millingFloursMuffin].join(' + ')}`,
+        process: 'muffin',
+      });
+    }
     if (totalMuffins > 0 && muffinTimes) {
       const muffinBulkHrLabel = (muffinAgg.bulkMin / 60).toFixed(muffinAgg.bulkMin % 60 === 0 ? 0 : 1);
       const muffinMixDetail = muffinMixBatches > 1
@@ -6723,6 +6756,14 @@ ${notesHtml}
     }
 
     // --- Bagel mix / shape / fridge events (using precomputed bagelTimes) ---
+    if (totalBagels > 0 && bagelTimes && millingFloursBagel.size > 0) {
+      events.push({
+        time: addMinutes(bagelMixStart, -SCHED.MILL_ACTIVE_MIN),
+        title: 'Mill flour',
+        detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...millingFloursBagel].join(' + ')}`,
+        process: 'bagel',
+      });
+    }
     if (totalBagels > 0 && bagelTimes) {
       const bagelBulkHrLabel = (bagelAgg.bulkMin / 60).toFixed(bagelAgg.bulkMin % 60 === 0 ? 0 : 1);
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
