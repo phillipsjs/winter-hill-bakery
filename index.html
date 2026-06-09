@@ -193,6 +193,7 @@
   .recipe-card-header:hover .recipe-toggle-icon { color: var(--accent); }
   .recipe-toggle-icon { font-size: 0.7rem; color: var(--muted); margin-right: 4px; display: inline-block; transition: transform 0.15s; }
   .recipe-toggle-icon.open { transform: rotate(90deg); }
+  .card.levain-card { background: #eef4ee; border-left: 3px solid var(--accent); }
   table.ingredients {
     width: 100%;
     border-collapse: collapse;
@@ -3530,6 +3531,18 @@ ${notesHtml}
   let plan = loadPlan();      // { recipeId: count }
   let editingId = null;       // null = not editing
 
+  function ensureLevainFirst(list) {
+    const seed = SEED_RECIPES.find(r => r.id === 'seed-levain');
+    if (!seed) return;
+    const idx = list.findIndex(r => r.id === 'seed-levain' || r.processType === 'levain');
+    if (idx < 0) {
+      list.unshift({ ...seed, ingredients: seed.ingredients.map(i => ({...i})), processType: 'levain' });
+    } else if (idx > 0) {
+      const [entry] = list.splice(idx, 1);
+      list.unshift(entry);
+    }
+  }
+
   function loadRecipes() {
     let list;
     let hadSavedList = false;
@@ -3549,18 +3562,7 @@ ${notesHtml}
       }
       localStorage.setItem(BAGEL_INTRODUCED_KEY, '1');
     }
-    // Always ensure the levain recipe exists and is first.
-    const levainSeed = SEED_RECIPES.find(r => r.id === 'seed-levain');
-    if (levainSeed) {
-      const levainIdx = list.findIndex(r => r.id === 'seed-levain' || r.processType === 'levain');
-      if (levainIdx < 0) {
-        list.unshift({ ...levainSeed, ingredients: levainSeed.ingredients.map(i => ({...i})) });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-      } else if (levainIdx > 0) {
-        const [entry] = list.splice(levainIdx, 1);
-        list.unshift(entry);
-      }
-    }
+    ensureLevainFirst(list);
     return list.map(r => ({ ...r, processType: getProcessType(r) }));
   }
   function saveRecipes() {
@@ -4456,10 +4458,10 @@ ${notesHtml}
     }
     recipes.forEach(r => {
       const card = document.createElement('div');
-      card.className = 'card';
+      const isLevainType = r.processType === 'levain';
+      card.className = isLevainType ? 'card levain-card' : 'card';
       const sumPct = r.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
       const spec = getRecipeSpec(r);
-      const isLevainType = r.processType === 'levain';
       const unschedNote = (!isLevainType && !spec.schedulable)
         ? ' <span class="muted" style="font-size:0.75rem">(not yet scheduled)</span>'
         : '';
@@ -4537,7 +4539,7 @@ ${notesHtml}
     }
     recipes.forEach(r => {
       const card = document.createElement('div');
-      card.className = 'card';
+      card.className = r.processType === 'levain' ? 'card levain-card' : 'card';
       const rid = escapeAttr(r.id);
       const unit = escapeHtml(r.unit || 'unit');
 
@@ -7023,6 +7025,7 @@ ${notesHtml}
       const [remoteRecipes, remoteBakes, remotePantry] = await Promise.all([fetchFromGist(), fetchBakesFromGist(), fetchPantryFromGist()]);
       if (Array.isArray(remoteRecipes) && remoteRecipes.length > 0) {
         recipes = remoteRecipes.map(r => ({ ...r, processType: getProcessType(r) }));
+        ensureLevainFirst(recipes);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
         renderPlan();
         renderRecipes();
