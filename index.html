@@ -3782,7 +3782,7 @@ ${notesHtml}
     if (name === 'ingredients') renderPantry();
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
-    if (name === 'bakesheet') renderBakeSheet();
+    if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     if (name === 'history') { renderHistory(); renderFinancials(); }
     if (name === 'settings') {
       const cfg = getGistConfig();
