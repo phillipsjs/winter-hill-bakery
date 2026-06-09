@@ -6451,6 +6451,18 @@ ${notesHtml}
     const buildInput1El = document.getElementById('build1-ratio-input');
     const buildInput2El = document.getElementById('build2-ratio-input');
 
+    const now = new Date();
+    const pastEvents = result.events.filter(ev => ev.time < now);
+    if (pastEvents.length) {
+      const earliest = pastEvents[0];
+      const timeFmtWarn = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      result.warnings = result.warnings || [];
+      result.warnings.unshift({
+        msg: `⚠ Deadline cannot be met — ${pastEvents.length} step${pastEvents.length > 1 ? 's' : ''} (starting with "${earliest.title}" at ${timeFmtWarn.format(earliest.time)}) ${pastEvents.length > 1 ? 'are' : 'is'} already in the past. Move the deadline later to generate a workable schedule.`,
+        issue: 'past-deadline',
+      });
+    }
+
     let html = '';
     if (result.warnings && result.warnings.length) {
       html += result.warnings.map(w => {
