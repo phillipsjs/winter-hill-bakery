@@ -701,7 +701,7 @@
   </nav>
   <div id="hamburger-menu" style="display:none">
     <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
-    <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Ingredients</button>
+    <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Pantry</button>
     <button id="tab-prices-btn" onclick="showTab('prices')">Prices</button>
     <button id="tab-history-btn" onclick="showTab('history')">Sales</button>
     <button id="tab-settings-btn" onclick="showTab('settings')">Account</button>
@@ -929,6 +929,58 @@
 
     <div id="pantry-suggestions"></div>
     <div id="pantry-list"></div>
+
+    <div class="card" style="margin-top:20px">
+      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <h2 style="margin:0">Proofing containers</h2>
+          <p class="muted" style="margin:4px 0 0;font-size:0.9rem">Enter the containers you use for bulk fermentation. The app picks the smallest appropriate container for each dough batch.</p>
+        </div>
+        <button onclick="showContainerAddForm()">+ Add container</button>
+      </div>
+    </div>
+
+    <div id="container-add-form" class="card" style="display:none">
+      <h3 style="margin:0 0 12px">Add container</h3>
+      <div class="row"><label style="width:160px">Name</label><input type="text" id="cont-name" placeholder="e.g. Large Cambro" /></div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">Volume</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" id="cont-volume" min="0.1" step="0.5" style="width:90px" oninput="onContainerVolumeChange()" />
+          <select id="cont-volume-unit" style="width:70px" onchange="onContainerVolumeChange()">
+            <option value="L">L</option>
+            <option value="qt">qt</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">Quantity</label>
+        <input type="number" id="cont-quantity" min="1" step="1" style="width:80px;flex:none" placeholder="1" />
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">For process</label>
+        <select id="cont-process-tag" class="settings-select" style="width:auto">
+          <option value="any">Any process</option>
+          <option value="loaf">Sourdough loaves</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">Max dough capacity</label>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <input type="number" id="cont-max-grams" min="100" step="50" style="width:100px;flex:none" oninput="document.getElementById('cont-max-grams-hint').textContent=''" />
+          <span class="muted">g</span>
+          <span id="cont-max-grams-hint" class="muted" style="font-size:0.8rem"></span>
+        </div>
+      </div>
+      <p class="settings-hint" style="margin-left:160px">Auto-computed from volume using dough density ≈ 0.85 g/mL and 55% fill factor (headroom for bulk rise). Edit to override.</p>
+      <div class="row" style="gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="secondary" onclick="hideContainerAddForm()">Cancel</button>
+        <button onclick="saveContainerItem()">Save</button>
+      </div>
+      <p id="container-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
+    </div>
+
+    <div id="container-list"></div>
   </section>
 
   <section id="tab-prices" style="display:none">
@@ -1512,6 +1564,9 @@
   const INVOICE_FILENAME = 'invoice-settings.json';
   const SETTINGS_FILENAME = 'settings.json';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
+  const CONTAINERS_KEY = 'cottage-bakery-containers-v1';
+  const DOUGH_DENSITY_G_PER_ML = 0.85;   // typical bread dough ~75% hydration
+  const CONTAINER_FILL_FACTOR = 0.55;    // headroom for bulk-ferment rise (~1.8×)
 
   const BAKE_TIME_PRESETS = {
     morning:   { label: 'Morning',   mid: 8.5,  coldProof: 12 },  // 6 AM – 11 AM
@@ -2508,6 +2563,7 @@ ${notesHtml}
   // ---- bake history ----
   let bakes = loadBakesLocally();
   let pantryItems = loadPantryLocally();
+  let userContainers = loadContainersLocally();
 
   function loadPantryLocally() {
     try {
@@ -2547,13 +2603,17 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end };
+    return { quietStart: start, quietEnd: end, containers: userContainers };
   }
 
   function applyRemoteSettings(settings) {
     if (!settings || typeof settings !== 'object') return;
     if (Number.isFinite(settings.quietStart)) localStorage.setItem(QUIET_START_KEY, String(settings.quietStart));
     if (Number.isFinite(settings.quietEnd)) localStorage.setItem(QUIET_END_KEY, String(settings.quietEnd));
+    if (Array.isArray(settings.containers)) {
+      userContainers = settings.containers;
+      saveContainersLocally();
+    }
   }
 
   async function pushSettingsToGist() {
@@ -2578,6 +2638,21 @@ ${notesHtml}
     const file = data.files[SETTINGS_FILENAME];
     if (!file) return null;
     return JSON.parse(file.content);
+  }
+
+  function computeContainerMaxGrams(volumeValue, volumeUnit) {
+    const liters = volumeUnit === 'qt' ? volumeValue * 0.946353 : volumeValue;
+    return Math.round(liters * 1000 * DOUGH_DENSITY_G_PER_ML * CONTAINER_FILL_FACTOR);
+  }
+  function loadContainersLocally() {
+    try {
+      const raw = localStorage.getItem(CONTAINERS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    return [];
+  }
+  function saveContainersLocally() {
+    localStorage.setItem(CONTAINERS_KEY, JSON.stringify(userContainers));
   }
 
   function computeLevainCostPerGram() {
@@ -3553,6 +3628,119 @@ ${notesHtml}
     if (getGistConfig()) pushPantryToGist().catch(() => {});
   }
 
+  // ---- proofing container management ----
+  function renderContainers() {
+    const list = document.getElementById('container-list');
+    if (!list) return;
+    if (userContainers.length === 0) {
+      list.innerHTML = '<div class="card"><p class="muted" style="margin:0;text-align:center">No containers yet — click <strong>+ Add container</strong> to get started.</p></div>';
+      return;
+    }
+    const tagLabel = t => t === 'loaf' ? 'Sourdough loaves' : 'Any process';
+    list.innerHTML = userContainers.map(c => `
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <strong>${escapeHtml(c.name)}</strong>
+          <span class="muted" style="margin-left:8px;font-size:0.85rem">${c.volumeValue} ${escapeHtml(c.volumeUnit)} &middot; qty ${c.quantity} &middot; ${tagLabel(c.processTag)}</span>
+          <span class="pill" style="margin-left:6px">${formatGrams(c.maxDoughGrams)} max dough</span>
+        </div>
+        <div class="row" style="gap:6px">
+          <button class="secondary tiny" onclick="editContainerItem('${c.id}')">Edit</button>
+          <button class="danger tiny" onclick="deleteContainerItem('${c.id}')">Delete</button>
+        </div>
+      </div>`).join('');
+  }
+
+  function showContainerAddForm(prefill) {
+    const item = prefill && prefill.id ? prefill : null;
+    document.getElementById('cont-name').value = item ? item.name : '';
+    document.getElementById('cont-volume').value = item ? item.volumeValue : '';
+    document.getElementById('cont-volume-unit').value = item ? (item.volumeUnit || 'L') : 'L';
+    document.getElementById('cont-quantity').value = item ? item.quantity : '1';
+    document.getElementById('cont-process-tag').value = item ? item.processTag : 'any';
+    document.getElementById('cont-max-grams').value = item ? item.maxDoughGrams : '';
+    document.getElementById('cont-max-grams-hint').textContent = '';
+    document.getElementById('container-add-msg').textContent = '';
+    document.getElementById('container-add-form').dataset.editId = item ? item.id : '';
+    document.getElementById('container-add-form').style.display = '';
+    document.getElementById('cont-name').focus();
+  }
+
+  function hideContainerAddForm() {
+    document.getElementById('container-add-form').style.display = 'none';
+    document.getElementById('container-add-form').dataset.editId = '';
+  }
+
+  function onContainerVolumeChange() {
+    const vol = parseFloat(document.getElementById('cont-volume').value);
+    const unit = document.getElementById('cont-volume-unit').value;
+    if (!Number.isFinite(vol) || vol <= 0) return;
+    const computed = computeContainerMaxGrams(vol, unit);
+    document.getElementById('cont-max-grams').value = computed;
+    document.getElementById('cont-max-grams-hint').textContent = '(auto-computed — edit to override)';
+  }
+
+  function editContainerItem(id) {
+    const item = userContainers.find(c => c.id === id);
+    if (!item) return;
+    showContainerAddForm(item);
+    document.getElementById('container-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function deleteContainerItem(id) {
+    const c = userContainers.find(x => x.id === id);
+    if (!c || !confirm(`Delete "${c.name}"?`)) return;
+    userContainers = userContainers.filter(x => x.id !== id);
+    saveContainersLocally();
+    renderContainers();
+    renderDoughContainerPlan();
+    pushSettingsToGist().catch(() => {});
+  }
+
+  function saveContainerItem() {
+    const nameEl     = document.getElementById('cont-name');
+    const volEl      = document.getElementById('cont-volume');
+    const unitEl     = document.getElementById('cont-volume-unit');
+    const qtyEl      = document.getElementById('cont-quantity');
+    const tagEl      = document.getElementById('cont-process-tag');
+    const maxGramsEl = document.getElementById('cont-max-grams');
+    const msgEl      = document.getElementById('container-add-msg');
+
+    const name         = nameEl.value.trim();
+    const volumeValue  = parseFloat(volEl.value);
+    const volumeUnit   = unitEl.value;
+    const quantity     = parseInt(qtyEl.value, 10);
+    const processTag   = tagEl.value;
+    const maxDoughGrams = parseInt(maxGramsEl.value, 10);
+
+    if (!name) { msgEl.textContent = 'Name is required.'; return; }
+    if (!Number.isFinite(volumeValue) || volumeValue <= 0) { msgEl.textContent = 'Enter a valid volume.'; return; }
+    if (!Number.isFinite(quantity) || quantity < 1) { msgEl.textContent = 'Quantity must be at least 1.'; return; }
+    if (!Number.isFinite(maxDoughGrams) || maxDoughGrams < 100) {
+      msgEl.textContent = 'Enter a valid max dough capacity (min 100 g). Enter the volume to auto-compute it.';
+      return;
+    }
+
+    const editId = document.getElementById('container-add-form').dataset.editId;
+    const newItem = {
+      id: editId || ('cont-' + Math.random().toString(36).slice(2, 10)),
+      name, volumeValue, volumeUnit, processTag, quantity, maxDoughGrams,
+    };
+
+    if (editId) {
+      const idx = userContainers.findIndex(c => c.id === editId);
+      if (idx >= 0) userContainers[idx] = newItem; else userContainers.push(newItem);
+    } else {
+      userContainers.push(newItem);
+    }
+
+    saveContainersLocally();
+    hideContainerAddForm();
+    renderContainers();
+    renderDoughContainerPlan();
+    pushSettingsToGist().catch(() => {});
+  }
+
   // ---- recipe editor cost display ----
   function updateRecipeEditorCostDisplay() {
     const costEl = document.getElementById('r-cost-display');
@@ -3935,7 +4123,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') renderPantry();
+    if (name === 'ingredients') { renderPantry(); renderContainers(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -4349,7 +4537,7 @@ ${notesHtml}
     return result;
   }
 
-  function planDoughContainers(loafRecipes, planMap, capacity) {
+  function planDoughContainers(loafRecipes, planMap, capacity, userCont) {
     const active = loafRecipes
       .filter(r => (planMap[r.id] || 0) > 0)
       .map(r => ({ recipe: r, count: planMap[r.id], dough: r.loafWeight * planMap[r.id] }));
@@ -4360,23 +4548,61 @@ ${notesHtml}
       if (!groups.has(sig)) groups.set(sig, []);
       groups.get(sig).push(a);
     }
+    // Eligible user containers for loaf proofing, smallest first
+    const eligible = (userCont || [])
+      .filter(c => c.processTag === 'any' || c.processTag === 'loaf')
+      .slice()
+      .sort((a, b) => a.maxDoughGrams - b.maxDoughGrams);
+
     return Array.from(groups.values()).map(items => {
       const totalDough = items.reduce((s, i) => s + i.dough, 0);
-      const combinedCount = Math.ceil(totalDough / capacity);
-      const separatedCount = items.reduce((s, i) => s + Math.ceil(i.dough / capacity), 0);
+
+      // Pick the best container type: smallest that fits all dough across N units
+      let effectiveCapacity = capacity;
+      let containerName = null;
+      let quantityWarning = null;
+
+      if (eligible.length > 0) {
+        let found = false;
+        for (let n = 1; n <= 20; n++) {
+          const perContainer = totalDough / n;
+          const fit = eligible.find(c => c.maxDoughGrams >= perContainer);
+          if (!fit) continue;
+          if (n <= fit.quantity) {
+            effectiveCapacity = fit.maxDoughGrams;
+            containerName = fit.name;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          // Fallback: use largest available, warn if quantity insufficient
+          const largest = eligible[eligible.length - 1];
+          effectiveCapacity = largest.maxDoughGrams;
+          containerName = largest.name;
+          const needed = Math.ceil(totalDough / largest.maxDoughGrams);
+          if (needed > largest.quantity) {
+            quantityWarning = `Need ${needed}× ${largest.name} but only ${largest.quantity} available`;
+          }
+        }
+      }
+
+      const combinedCount = Math.ceil(totalDough / effectiveCapacity);
+      const separatedCount = items.reduce((s, i) => s + Math.ceil(i.dough / effectiveCapacity), 0);
 
       let containers;
       if (combinedCount === separatedCount || items.length === 1) {
         // SEPARATED: each recipe gets its own container(s), split evenly by loaves
         containers = [];
         for (const item of items) {
-          const recipeContainers = Math.ceil(item.dough / capacity);
+          const recipeContainers = Math.ceil(item.dough / effectiveCapacity);
           const loavesPerContainer = splitEvenly(item.count, recipeContainers);
           for (const loaves of loavesPerContainer) {
             containers.push({
               loaves: [{ recipe: item.recipe.name, count: loaves, dough: loaves * item.recipe.loafWeight }],
               totalLoaves: loaves,
               totalDough: loaves * item.recipe.loafWeight,
+              containerName,
             });
           }
         }
@@ -4394,7 +4620,7 @@ ${notesHtml}
           let bestIdx = -1;
           let bestDough = Infinity;
           for (let i = 0; i < slots.length; i++) {
-            if (slots[i].totalDough + loaf.weight <= capacity && slots[i].totalDough < bestDough) {
+            if (slots[i].totalDough + loaf.weight <= effectiveCapacity && slots[i].totalDough < bestDough) {
               bestIdx = i;
               bestDough = slots[i].totalDough;
             }
@@ -4427,45 +4653,62 @@ ${notesHtml}
             loaves,
             totalLoaves: s.loaves.length,
             totalDough: s.totalDough,
+            containerName,
           };
         });
       }
 
-      return { items, totalDough, containers };
+      return { items, totalDough, containers, containerName, quantityWarning };
     });
   }
 
   function renderDoughContainerPlan() {
     const card = document.getElementById('container-card');
     const out = document.getElementById('container-output');
-    const groups = planDoughContainers(recipes, plan, DOUGH_CONTAINER_CAPACITY_G);
+    const groups = planDoughContainers(recipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
 
     if (groups.length === 0) {
       card.style.display = 'none';
       return;
     }
 
+    const hasUserContainers = userContainers.some(c => c.processTag === 'any' || c.processTag === 'loaf');
     const totalContainers = groups.reduce((s, g) => s + g.containers.length, 0);
     const totalDough = groups.reduce((s, g) => s + g.totalDough, 0);
 
-    let html = `<p style="margin-top:0">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
+    let html = '';
+
+    if (!hasUserContainers) {
+      html += `<div style="margin-bottom:12px;padding:8px 12px;background:var(--accent-light,#e8f4e8);border-radius:6px;font-size:0.875rem">
+        No proofing containers configured — using a generic default.
+        <a href="#" onclick="showTab('ingredients');setTimeout(function(){showContainerAddForm();document.getElementById('container-add-form').scrollIntoView({behavior:'smooth',block:'start'});},120);return false" style="margin-left:4px">Add your containers →</a>
+      </div>`;
+    }
+
+    html += `<p style="margin-top:0">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
 
     for (let gi = 0; gi < groups.length; gi++) {
       const g = groups[gi];
+      const numInGroup = g.containers.length;
       const recipeNames = g.items.map(i => i.recipe.name).join(' + ');
       const recipeDetails = g.items.map(i => `${i.count} × ${i.recipe.name} (${formatGrams(i.dough)})`).join(' · ');
-      const containerLines = g.containers
-        .map((c, i) => {
-          const loafList = c.loaves.map(l => `${l.count} × ${escapeHtml(l.recipe)}`).join(' + ');
-          return `Container ${i + 1}: <strong>${formatGrams(c.totalDough)}</strong> — ${loafList}`;
-        })
-        .join('<br>');
+      const containerLines = g.containers.map((c, i) => {
+        const label = c.containerName
+          ? (numInGroup > 1 ? `${escapeHtml(c.containerName)} ${i + 1} of ${numInGroup}` : escapeHtml(c.containerName))
+          : `Container ${i + 1}`;
+        const loafList = c.loaves.map(l => `${l.count} × ${escapeHtml(l.recipe)}`).join(' + ');
+        return `${label}: <strong>${formatGrams(c.totalDough)}</strong> — ${loafList}`;
+      }).join('<br>');
       const sharedNote = g.items.length > 1 ? ' <span class="muted" style="font-size:0.8rem">(identical ratios)</span>' : '';
-      const topStyle = gi > 0 ? 'border-top: 1px solid var(--border); padding-top: 12px;' : '';
-      html += `<div style="margin-top: 12px; ${topStyle}">
+      const topStyle = gi > 0 ? 'border-top:1px solid var(--border);padding-top:12px;' : '';
+      const warnHtml = g.quantityWarning
+        ? `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px">&#9888; ${escapeHtml(g.quantityWarning)}</div>`
+        : '';
+      html += `<div style="margin-top:12px;${topStyle}">
         <div><strong>${escapeHtml(recipeNames)}</strong>${sharedNote}</div>
-        <div class="muted" style="font-size:0.85rem; margin-top:2px;">${escapeHtml(recipeDetails)}</div>
-        <div style="margin-top:6px;">${containerLines}</div>
+        <div class="muted" style="font-size:0.85rem;margin-top:2px">${escapeHtml(recipeDetails)}</div>
+        <div style="margin-top:6px">${containerLines}</div>
+        ${warnHtml}
       </div>`;
     }
     out.innerHTML = html;
@@ -5835,10 +6078,10 @@ ${notesHtml}
       }
 
       fridgeIn = addHours(firstBakeStart, -loafColdProofHours);
-      const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G);
+      const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
       for (const group of containerGroups) {
         for (const c of group.containers) {
-          containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves });
+          containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves, containerName: c.containerName });
         }
       }
       containerShape = containerInfo.map(c => {
@@ -6216,7 +6459,10 @@ ${notesHtml}
       containerFridgeInTimes.push(containerEndT);
 
       const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
-      const suffix = numContainers > 1 ? ` (container ${i + 1} of ${numContainers}: ${contentsLabel})` : '';
+      const containerLabel = c.containerName
+        ? (numContainers > 1 ? `${c.containerName} ${i + 1} of ${numContainers}` : c.containerName)
+        : `container ${i + 1} of ${numContainers}`;
+      const suffix = (numContainers > 1 || c.containerName) ? ` (${containerLabel}: ${contentsLabel})` : '';
       const preshapeBaseDetail = `${shapeBreakdown(c, 'preshape')} = ${shape.preshapeMin} min total`;
       events.push({
         time: preshapeStartT,
@@ -6265,7 +6511,10 @@ ${notesHtml}
         const cpMs = bakeStart - fridgeTime;
         containerColdProofMs.push(cpMs);
         const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
-        const suffix = numContainers > 1 ? ` (container ${i + 1} of ${numContainers}: ${contentsLabel})` : '';
+        const containerLabel = c.containerName
+          ? (numContainers > 1 ? `${c.containerName} ${i + 1} of ${numContainers}` : c.containerName)
+          : `container ${i + 1} of ${numContainers}`;
+        const suffix = (numContainers > 1 || c.containerName) ? ` (${containerLabel}: ${contentsLabel})` : '';
         events.push({
           time: fridgeTime,
           title: `Into fridge${suffix}`,
@@ -7602,6 +7851,7 @@ ${notesHtml}
   renderSyncBadge();
   renderPlan();
   renderPantry();
+  renderContainers();
   const _savedTab = localStorage.getItem('whb-active-tab');
   if (_savedTab && _savedTab !== 'plan') {
     const _savedBtn = document.getElementById('tab-' + _savedTab + '-btn');
@@ -7632,6 +7882,8 @@ ${notesHtml}
       }
       if (remoteSettings) {
         applyRemoteSettings(remoteSettings);
+        renderContainers();
+        renderDoughContainerPlan();
       }
       setSyncStatus('synced');
     } catch (e) {
