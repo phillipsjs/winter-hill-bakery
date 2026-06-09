@@ -4603,22 +4603,33 @@ ${notesHtml}
       const rid = escapeAttr(r.id);
       const unit = escapeHtml(r.unit || 'unit');
 
+      const levainCpg = computeLevainCostPerGram();
       const ingRows = r.ingredients.map((ing, idx) => {
-        const pantryOptions = pantryItems.map(p =>
-          `<option value="${escapeAttr(p.id)}"${ing.pantryId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
-        ).join('');
-        return `
-          <tr>
-            <td>${escapeHtml(ing.name)}</td>
-            <td class="num">${ing.pct}%</td>
-            <td>
+        const isLevainIng = r.processType !== 'levain' && ing.name.toLowerCase().includes('levain');
+        let costCell;
+        if (isLevainIng) {
+          const note = levainCpg != null
+            ? `Auto — Levain recipe ($${levainCpg.toFixed(4)}/g)`
+            : 'Auto — set cost links in the Levain recipe';
+          costCell = `<td class="muted" style="font-size:0.85rem;font-style:italic">${note}</td>`;
+        } else {
+          const pantryOptions = pantryItems.map(p =>
+            `<option value="${escapeAttr(p.id)}"${ing.pantryId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
+          ).join('');
+          costCell = `<td>
               <select class="prices-pantry" data-recipe-id="${rid}" data-ing-idx="${idx}"
                 onchange="updatePricesCostDisplay('${rid}')">
                 <option value="">— no cost link —</option>
                 <option value="__free__"${ing.pantryId === '__free__' ? ' selected' : ''}>no cost ($0.00)</option>
                 ${pantryOptions}
               </select>
-            </td>
+            </td>`;
+        }
+        return `
+          <tr>
+            <td>${escapeHtml(ing.name)}</td>
+            <td class="num">${ing.pct}%</td>
+            ${costCell}
           </tr>`;
       }).join('');
 
