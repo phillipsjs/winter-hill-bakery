@@ -987,7 +987,7 @@
           <span id="cont-max-grams-hint" class="muted" style="font-size:0.8rem"></span>
         </div>
       </div>
-      <p class="settings-hint" style="margin-left:160px">Auto-computed from volume using dough density ≈ 0.85 g/mL and 40% fill factor (headroom for bulk rise). Edit to override.</p>
+      <p class="settings-hint" style="margin-left:160px">Auto-computed from volume using dough density ≈ 0.85 g/mL and 45% fill factor (headroom for bulk rise). Edit to override.</p>
       <div class="row" style="gap:8px;justify-content:flex-end;margin-top:8px">
         <button class="secondary" onclick="hideContainerAddForm()">Cancel</button>
         <button onclick="saveContainerItem()">Save</button>
@@ -1581,7 +1581,7 @@
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
   const CONTAINERS_KEY = 'cottage-bakery-containers-v1';
   const DOUGH_DENSITY_G_PER_ML = 0.85;   // typical bread dough ~75% hydration
-  const CONTAINER_FILL_FACTOR = 0.40;    // headroom for bulk-ferment rise (~1.8×)
+  const CONTAINER_FILL_FACTOR = 0.45;    // headroom for bulk-ferment rise (~1.8×)
 
   const BAKE_TIME_PRESETS = {
     morning:   { label: 'Morning',   mid: 8.5,  coldProof: 12 },  // 6 AM – 11 AM
