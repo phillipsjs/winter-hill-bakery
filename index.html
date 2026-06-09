@@ -925,6 +925,19 @@
       </div>
       <div class="row"><label style="width:140px">Price paid</label><span class="muted">$</span><input type="number" id="pantry-price" min="0" step="0.01" style="width:90px;flex:none" oninput="updatePantryCostPreview()" /></div>
       <div id="pantry-cost-preview" class="muted" style="font-size:0.85rem;margin:4px 0 8px 140px"></div>
+      <div class="row"><label style="width:140px">Category</label>
+        <select id="pantry-category" class="settings-select" style="width:auto">
+          <option value="">Auto-detect</option>
+          <option value="Flours">Flours</option>
+          <option value="Water">Water</option>
+          <option value="Levain &amp; starter">Levain &amp; starter</option>
+          <option value="Salt">Salt</option>
+          <option value="Sweeteners">Sweeteners</option>
+          <option value="Oils &amp; fats">Oils &amp; fats</option>
+          <option value="Yeast">Yeast</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
       <div class="row" style="gap:8px;justify-content:flex-end">
         <button class="secondary" onclick="hidePantryAddForm()">Cancel</button>
         <button onclick="savePantryItem()">Save</button>
@@ -3549,7 +3562,7 @@ ${notesHtml}
     const CATEGORY_ORDER = ['Flours', 'Water', 'Levain & starter', 'Salt', 'Sweeteners', 'Oils & fats', 'Yeast', 'Other'];
     const byCategory = {};
     for (const p of pantryItems) {
-      const cat = categIngredient(p.name);
+      const cat = p.category || categIngredient(p.name);
       if (!byCategory[cat]) byCategory[cat] = [];
       byCategory[cat].push(p);
     }
@@ -3585,6 +3598,7 @@ ${notesHtml}
     onPantryWeightUnitChange();
     document.getElementById('pantry-price').value = item ? item.pricePaid : '';
     document.getElementById('pantry-cost-preview').textContent = item ? `= $${item.costPerGram.toFixed(4)} per gram` : '';
+    document.getElementById('pantry-category').value = item ? (item.category || '') : '';
     document.getElementById('pantry-add-msg').textContent = '';
     document.getElementById('pantry-add-form').dataset.editId = item ? item.id : '';
     const det = document.getElementById('ingredient-costs-details');
@@ -3615,12 +3629,13 @@ ${notesHtml}
     if (weightG <= 0)       { msgEl.textContent = 'Please enter a weight greater than 0.'; return; }
     if (isNaN(pricePaid) || pricePaid < 0) { msgEl.textContent = 'Please enter a price (0 or more).'; return; }
     const costPerGram = pricePaid / weightG;
+    const category = document.getElementById('pantry-category').value || '';
     const editId = document.getElementById('pantry-add-form').dataset.editId;
     if (editId) {
       const idx = pantryItems.findIndex(p => p.id === editId);
-      if (idx >= 0) pantryItems[idx] = { ...pantryItems[idx], name, weightG, pricePaid, costPerGram };
+      if (idx >= 0) pantryItems[idx] = { ...pantryItems[idx], name, weightG, pricePaid, costPerGram, category };
     } else {
-      pantryItems.push({ id: uid(), name, weightG, pricePaid, costPerGram });
+      pantryItems.push({ id: uid(), name, weightG, pricePaid, costPerGram, category });
     }
     savePantryLocally();
     hidePantryAddForm();
