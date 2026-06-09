@@ -1493,15 +1493,15 @@
     'focaccia': {
       label: 'Focaccia / pan bread',
       unit: 'pan',
-      bakeMin: 25,
+      bakeMin: 23,          // 15-18 min first bake + 5-7 min rack finish
       ovenCapacity: 4,
-      coldProofHr: 0,
-      warmupMin: 30,
-      autolyseMin: 30,
-      bulkMin: 240,
-      shapeMinPerUnit: 5,
-      foldsCount: 4,
-      bakeTempF: 450,
+      coldProofHr: 0,       // room-temp pan rise only
+      warmupMin: 45,        // 475°F oven needs a good preheat
+      autolyseMin: 15,      // 15 min rest after initial mix, before folds
+      bulkMin: 75,          // ~60 min bulk + pan-rise starts here; pan rise 60-90 min is separate
+      shapeMinPerUnit: 10,  // oil pan, stretch dough to fit, dimple
+      foldsCount: 4,        // 4 bowl folds, 15 min apart
+      bakeTempF: 475,
       schedulable: false,
     },
     'bagel': {
@@ -1715,6 +1715,23 @@
       coldProofHr: 14,
       bakeMin: 22,
       shapeMinPerUnit: 2,
+    },
+    {
+      id: 'seed-focaccia',
+      name: 'Big and Bubbly Focaccia',
+      processType: 'focaccia',
+      leavening: 'commercial-yeast',
+      unit: 'pan',
+      loafWeight: 705,  // full batch: one 9" square pan (~360g flour base)
+      ingredients: [
+        { name: 'All-purpose flour', pct: 100, flourType: 'anchor' },
+        { name: 'Water', pct: 79 },
+        { name: 'Olive oil (dough)', pct: 5 },
+        { name: 'Olive oil (pan)', pct: 7.2 },
+        { name: 'Salt', pct: 2.5 },
+        { name: 'Sugar', pct: 1.4 },
+        { name: 'Instant yeast', pct: 0.8 },
+      ],
     },
   ];
 
