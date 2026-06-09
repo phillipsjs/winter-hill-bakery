@@ -795,6 +795,13 @@
         </select>
         <span class="muted" id="r-process-note" style="font-size:0.8rem"></span>
       </div>
+      <div class="row" id="r-leavening-row">
+        <label style="width:120px">Leavening</label>
+        <select id="r-leavening" class="settings-select">
+          <option value="sourdough">Sourdough (levain)</option>
+          <option value="commercial-yeast">Commercial yeast</option>
+        </select>
+      </div>
       <div class="row">
         <label style="width:120px">Unit name</label>
         <input type="text" id="r-unit" placeholder="e.g. loaf, muffin, pan" />
@@ -2450,8 +2457,8 @@ ${notesHtml}
     const flourWeight = recipe.loafWeight / (sumPct / 100);
     let total = 0, anyLinked = false;
     for (const ing of recipe.ingredients) {
-      // Levain ingredient in a non-levain recipe: cost from the levain recipe
-      if (ing.name.toLowerCase().includes('levain') && recipe.processType !== 'levain') {
+      // Levain ingredient in a non-levain sourdough recipe: cost from the levain recipe
+      if (ing.name.toLowerCase().includes('levain') && recipe.processType !== 'levain' && recipe.leavening !== 'commercial-yeast') {
         const cpg = computeLevainCostPerGram();
         if (cpg != null) {
           total += flourWeight * (Number(ing.pct) / 100) * cpg;
@@ -4571,6 +4578,7 @@ ${notesHtml}
           <div>
             <span class="recipe-toggle-icon">▶</span><strong>${escapeHtml(r.name)}</strong>
             <span class="pill">${escapeHtml(spec.processLabel)}</span>
+            ${r.leavening === 'commercial-yeast' ? '<span class="pill">Yeast</span>' : ''}
             ${weightPill}${unschedNote}
             <div class="recipe-summary">${r.ingredients.length} ingredients${summaryExtra}</div>
           </div>
@@ -4888,6 +4896,7 @@ ${notesHtml}
     const isLevain = processType === 'levain';
     document.getElementById('r-recipe-settings').style.display = isLevain ? 'none' : '';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
+    document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
     const weightLabel = document.getElementById('r-weight-label');
     if (weightLabel) weightLabel.innerHTML = isLevain
       ? 'Typical yield'
@@ -4921,6 +4930,8 @@ ${notesHtml}
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
     }
     document.getElementById('r-bake-temp').value = '';
+    document.getElementById('r-leavening').value = 'sourdough';
+    document.getElementById('r-leavening-row').style.display = '';
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -4959,6 +4970,8 @@ ${notesHtml}
     }
     document.getElementById('r-bake-temp').value =
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
+    document.getElementById('r-leavening').value = r.leavening || 'sourdough';
+    document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5059,7 +5072,9 @@ ${notesHtml}
     const tmpRecipe = { ingredients, loafWeight };
     const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides };
+    const leavening = processType === 'levain' ? undefined
+      : (document.getElementById('r-leavening').value || 'sourdough');
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, ...overrides };
 
     if (editingId) {
       const existing = recipes.find(x => x.id === editingId);
