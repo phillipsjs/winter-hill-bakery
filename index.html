@@ -5767,7 +5767,7 @@ ${notesHtml}
   // the late-night window. Bake events and oven preheat are deliberately
   // excluded — those are anchored to the user's chosen bake time.
   const ACTIVE_LOAF_TITLE_PATTERNS = [
-    /^Weigh out flours/,
+    /^Weigh ingredients/,
     /^Mill /,
     /^Start autolyse/,
     /^Mix in salt/,
@@ -6530,7 +6530,7 @@ ${notesHtml}
       : autolyseStart;
     events.push({
       time: addMinutes(weighEndTime, -weighDuration),
-      title: 'Weigh out flours and salt',
+      title: 'Weigh ingredients',
       detail: loafRecipes.length > 1
         ? `${SCHED.WEIGH_MIN_PER_RECIPE} min × ${loafRecipes.length} recipes = ${weighDuration} min active`
         : `${SCHED.WEIGH_MIN_PER_RECIPE} min active`,
@@ -7644,25 +7644,18 @@ ${notesHtml}
         return rows.length ? { type: 'simple', rows } : null;
       }
 
-      // Weigh out — all flours (anchor + specialty) + salt + water
-      if (t.includes('Weigh out')) {
-        const filtered = byProc.map(r => ({
-          ...r,
-          ingredients: r.ingredients.filter(i => {
-            const n = i.name.toLowerCase();
-            return i.flourType === 'anchor' || i.flourType === 'specialty' ||
-                   n.includes('water') || n.includes('salt');
-          }),
-        })).filter(r => r.ingredients.length > 0);
-        return filtered.length ? { type: 'byRecipe', recipes: filtered } : null;
+      // Weigh ingredients — all ingredients
+      if (t.includes('Weigh ingredients')) {
+        return byProc.length ? { type: 'byRecipe', recipes: byProc } : null;
       }
 
-      // Autolyse — anchor flours + water only
+      // Autolyse — all flours (anchor + specialty) + water
       if (/autolyse|Autolyse/.test(t)) {
         const filtered = byProc.map(r => ({
           ...r,
           ingredients: r.ingredients.filter(i =>
-            i.flourType === 'anchor' || i.name.toLowerCase().includes('water')
+            i.flourType === 'anchor' || i.flourType === 'specialty' ||
+            i.name.toLowerCase().includes('water')
           ),
         })).filter(r => r.ingredients.length > 0);
         return filtered.length ? { type: 'byRecipe', recipes: filtered } : null;
@@ -7673,12 +7666,12 @@ ${notesHtml}
         return byProc.length ? { type: 'byRecipe', recipes: byProc } : null;
       }
 
-      // Mix in salt + ripe levain — specialty flours + salt + levain (not anchor flour, not water)
+      // Mix in salt + ripe levain — salt + levain only (no flour, no water)
       if (t.includes('Mix in salt')) {
         const relevant = byProc.map(r => ({
           ...r,
           ingredients: r.ingredients.filter(i =>
-            i.flourType !== 'anchor' && !i.name.toLowerCase().includes('water')
+            !i.flourType && !i.name.toLowerCase().includes('water')
           ),
         })).filter(r => r.ingredients.length > 0);
         return relevant.length ? { type: 'byRecipe', recipes: relevant } : null;
