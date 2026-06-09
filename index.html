@@ -652,6 +652,7 @@
   .bs-ings table td { padding: 1px 4px; border: none; }
   .bs-ings .bs-recipe-label { font-size: 0.75rem; font-weight: 600;
     color: var(--accent-dark); margin-bottom: 2px; }
+  .bs-container { width: 130px; font-size: 0.78rem; color: var(--muted); white-space: pre-line; vertical-align: top; }
   .bs-stage { width: 24px; padding: 2px; display: flex; align-items: center; justify-content: center; border-left: 1px solid #ccc; }
   .bs-stage-label {
     display: block;
@@ -6514,6 +6515,19 @@ ${notesHtml}
       });
     }
     if (totalLoaves > 0) {
+    // Compact container label appended to bulk-ferment step details
+    const containerBulkStr = numContainers === 0 ? '' :
+      numContainers === 1 && containerInfo[0].containerName
+        ? ` · use ${containerInfo[0].containerName}`
+        : numContainers > 1
+          ? ' · ' + containerInfo.map((c, i) => {
+              const name = c.containerName
+                ? `${c.containerName} ${i + 1} of ${numContainers}`
+                : `container ${i + 1} of ${numContainers}`;
+              const contents = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+              return `${name}: ${contents}`;
+            }).join(' | ')
+          : '';
     if (specialtyFlourNames.size > 0) {
       events.push({
         time: addMinutes(autolyseStart, -SCHED.MILL_ACTIVE_MIN),
@@ -6540,17 +6554,17 @@ ${notesHtml}
     events.push({
       time: autolyseStart,
       title: 'Start autolyse — flour + water only',
-      detail: numContainers > 1
+      detail: (numContainers > 1
         ? `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix × ${numContainers} containers = ${SCHED.AUTOLYSE_ACTIVE_MIN * numContainers} min active · then ${autolyseRestMin} min rest`
-        : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`,
+        : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`) + containerBulkStr,
       process: 'loaf',
     });
     events.push({
       time: mixTime,
       title: 'Mix in salt + ripe levain',
-      detail: numContainers > 1
+      detail: (numContainers > 1
         ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`
-        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`,
+        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`) + containerBulkStr,
       process: 'loaf',
     });
     for (let k = 0; k < loafAgg.foldsCount; k++) {
@@ -6562,9 +6576,9 @@ ${notesHtml}
       events.push({
         time: foldTime,
         title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}`,
-        detail: isLast
+        detail: (isLast
           ? `${activeStr} · then ${(loafAgg.bulkMin / 60).toFixed(loafAgg.bulkMin % 60 === 0 ? 0 : 1)} hr bulk ferment`
-          : `${activeStr} · next fold in ${SCHED.FOLD_INTERVAL_MIN} min`,
+          : `${activeStr} · next fold in ${SCHED.FOLD_INTERVAL_MIN} min`) + containerBulkStr,
         process: 'loaf',
       });
     }
@@ -6972,6 +6986,7 @@ ${notesHtml}
       bagelBatches,
       loafColdProofRange,
       mixBatches: totalMixBatches,
+      loafContainerInfo: containerInfo.slice(),
     };
   }
 
@@ -7690,6 +7705,23 @@ ${notesHtml}
       ).join('');
     };
 
+    const loafContainers = (_scheduleResult.loafContainerInfo || []);
+    const getEventContainer = ev => {
+      if (ev.process !== 'loaf' || loafContainers.length === 0) return '';
+      const t = ev.title;
+      if (!/autolyse|Autolyse|Mix in salt|Stretch & fold/.test(t)) return '';
+      if (loafContainers.length === 1) {
+        return loafContainers[0].containerName || '';
+      }
+      return loafContainers.map((c, i) => {
+        const name = c.containerName
+          ? `${c.containerName} ${i + 1}/${loafContainers.length}`
+          : `Container ${i + 1}`;
+        const contents = (c.contents || []).map(l => `${l.count}×${l.recipe}`).join(' + ');
+        return `${name}: ${contents}`;
+      }).join('\n');
+    };
+
     // Group events by day
     const sorted = [..._scheduleResult.events].sort((a, b) => a.time - b.time);
     const groups = [];
@@ -7723,6 +7755,7 @@ ${notesHtml}
         const stageCell = emit
           ? `<td class="bs-stage"${span > 1 ? ` rowspan="${span}"` : ''}>${stage ? `<span class="bs-stage-label">${stage}</span>` : ''}</td>`
           : '';
+        const containerText = getEventContainer(ev);
         return `
         <tr>
           <td class="bs-time">${fmtRange(ev)}</td>
@@ -7730,6 +7763,7 @@ ${notesHtml}
             <strong>${escapeHtml(ev.title)}</strong>
             ${ev.detail ? `<div class="bs-detail">${escapeHtml(ev.detail)}</div>` : ''}
           </td>
+          <td class="bs-container">${escapeHtml(containerText)}</td>
           <td class="bs-ings">${renderIngCol(ev)}</td>
           ${stageCell}
         </tr>`;
@@ -7741,7 +7775,8 @@ ${notesHtml}
             <thead><tr>
               <th style="width:110px">Time</th>
               <th>Step</th>
-              <th style="width:240px">Ingredients</th>
+              <th style="width:130px">Container</th>
+              <th style="width:220px">Ingredients</th>
               <th style="width:24px"></th>
             </tr></thead>
             <tbody>${rowsHtml}</tbody>
