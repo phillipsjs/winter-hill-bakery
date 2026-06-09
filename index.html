@@ -762,6 +762,7 @@
           <option value="sourdough-muffin">Sourdough muffin</option>
           <option value="focaccia">Focaccia / pan bread</option>
           <option value="bagel">Bagel</option>
+          <option value="levain">Levain</option>
         </select>
         <span class="muted" id="r-process-note" style="font-size:0.8rem"></span>
       </div>
@@ -770,7 +771,7 @@
         <input type="text" id="r-unit" placeholder="e.g. loaf, muffin, pan" />
       </div>
       <div class="row">
-        <label style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
+        <label id="r-weight-label" style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
         <input type="number" id="r-weight" min="0" step="10" oninput="updateRecipeEditorCostDisplay()" />
         <span class="muted">grams</span>
       </div>
@@ -1477,6 +1478,11 @@
       foldsCount: 0,
       bakeTempF: 450,
       schedulable: true,
+    },
+    'levain': {
+      label: 'Levain',
+      unit: 'batch',
+      schedulable: false,
     },
   };
 
@@ -2373,6 +2379,25 @@ ${notesHtml}
     return JSON.parse(file.content);
   }
 
+  function computeLevainCostPerGram() {
+    const levainRecipe = recipes.find(r => r.processType === 'levain');
+    if (!levainRecipe || !levainRecipe.ingredients || !levainRecipe.loafWeight) return null;
+    const sumPct = levainRecipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
+    if (sumPct <= 0) return null;
+    const flourWeight = levainRecipe.loafWeight / (sumPct / 100);
+    let total = 0, anyLinked = false;
+    for (const ing of levainRecipe.ingredients) {
+      if (!ing.pantryId) continue;
+      anyLinked = true;
+      if (ing.pantryId === '__free__') continue;
+      const p = pantryItems.find(x => x.id === ing.pantryId);
+      if (!p || !p.costPerGram) continue;
+      const grams = flourWeight * (Number(ing.pct) / 100);
+      total += grams * p.costPerGram;
+    }
+    return anyLinked ? total / levainRecipe.loafWeight : null;
+  }
+
   function computeRecipeCostPerItem(recipe) {
     if (!recipe || !recipe.ingredients || !recipe.loafWeight) return null;
     const sumPct = recipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
@@ -2380,6 +2405,15 @@ ${notesHtml}
     const flourWeight = recipe.loafWeight / (sumPct / 100);
     let total = 0, anyLinked = false;
     for (const ing of recipe.ingredients) {
+      // Levain ingredient in a non-levain recipe: cost from the levain recipe
+      if (ing.name.toLowerCase().includes('levain') && recipe.processType !== 'levain') {
+        const cpg = computeLevainCostPerGram();
+        if (cpg != null) {
+          total += flourWeight * (Number(ing.pct) / 100) * cpg;
+          anyLinked = true;
+        }
+        continue;
+      }
       if (!ing.pantryId) continue;
       anyLinked = true;
       if (ing.pantryId === '__free__') continue; // $0 cost — contributes nothing to total
@@ -3755,7 +3789,7 @@ ${notesHtml}
     }
 
     // Always show picker so multiple recipes can be toggled before entering counts.
-    const pickerBtns = recipes.map(r => {
+    const pickerBtns = recipes.filter(r => r.processType !== 'levain').map(r => {
       const inPlan = isInPlan(r.id);
       return `<button class="plan-btn${inPlan ? ' on' : ''}" onclick="setInPlan('${r.id}', ${!inPlan})">
         ${inPlan ? '✓ ' : ''}${escapeHtml(r.name)}
@@ -3767,7 +3801,7 @@ ${notesHtml}
     list.appendChild(pickerDiv);
 
     // Count inputs for selected recipes.
-    const planned = recipes.filter(r => isInPlan(r.id));
+    const planned = recipes.filter(r => isInPlan(r.id) && r.processType !== 'levain');
     if (planned.length > 0) {
       const countSection = document.createElement('div');
       countSection.style.marginTop = '16px';
@@ -4396,31 +4430,45 @@ ${notesHtml}
       card.className = 'card';
       const sumPct = r.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
       const spec = getRecipeSpec(r);
-      const unschedNote = spec.schedulable
-        ? ''
-        : ' <span class="muted" style="font-size:0.75rem">(not yet scheduled)</span>';
+      const isLevainType = r.processType === 'levain';
+      const unschedNote = (!isLevainType && !spec.schedulable)
+        ? ' <span class="muted" style="font-size:0.75rem">(not yet scheduled)</span>'
+        : '';
       const inPlan = isInPlan(r.id);
       const cost = computeRecipeCostPerItem(r);
-      const price = r.wholesalePrice ?? r.msrp;
-      const profit = (cost != null && price != null) ? price - cost : null;
-      const pricingParts = [];
-      if (r.msrp != null) pricingParts.push(`MSRP $${r.msrp}`);
-      if (r.wholesalePrice != null) pricingParts.push(`Wholesale $${r.wholesalePrice}`);
-      if (cost != null) pricingParts.push(`Cost $${cost.toFixed(2)}`);
-      if (profit != null) pricingParts.push(`Profit $${profit.toFixed(2)}`);
-      const pricingHtml = pricingParts.length ? `<div class="recipe-summary" style="margin-top:4px">${pricingParts.join(' · ')}</div>` : '';
+      let pricingHtml = '';
+      if (isLevainType) {
+        const cpg = cost != null ? cost / r.loafWeight : null;
+        if (cpg != null) {
+          pricingHtml = `<div class="recipe-summary" style="margin-top:4px">Cost $${cost.toFixed(2)} per batch · $${cpg.toFixed(4)}/g</div>`;
+        }
+      } else {
+        const price = r.wholesalePrice ?? r.msrp;
+        const profit = (cost != null && price != null) ? price - cost : null;
+        const pricingParts = [];
+        if (r.msrp != null) pricingParts.push(`MSRP $${r.msrp}`);
+        if (r.wholesalePrice != null) pricingParts.push(`Wholesale $${r.wholesalePrice}`);
+        if (cost != null) pricingParts.push(`Cost $${cost.toFixed(2)}`);
+        if (profit != null) pricingParts.push(`Profit $${profit.toFixed(2)}`);
+        pricingHtml = pricingParts.length ? `<div class="recipe-summary" style="margin-top:4px">${pricingParts.join(' · ')}</div>` : '';
+      }
+      const weightPill = isLevainType
+        ? `<span class="pill">${r.loafWeight} g yield</span>`
+        : `<span class="pill">${r.loafWeight} g/${escapeHtml(r.unit || 'loaf')}</span>`;
+      const planBtn = isLevainType ? '' : `
+            <button class="plan-btn${inPlan ? ' on' : ''}" onclick="setInPlan('${r.id}', ${!inPlan})">
+              ${inPlan ? '✓ In bake plan' : '+ Add to bake plan'}
+            </button>`;
       card.innerHTML = `
         <div class="row" style="justify-content: space-between">
           <div>
             <strong>${escapeHtml(r.name)}</strong>
             <span class="pill">${escapeHtml(spec.processLabel)}</span>
-            <span class="pill">${r.loafWeight} g/${escapeHtml(r.unit || 'loaf')}</span>${unschedNote}
+            ${weightPill}${unschedNote}
             <div class="recipe-summary">${r.ingredients.length} ingredients · sum ${sumPct.toFixed(1)}%</div>
           </div>
           <div class="row" style="gap:6px; align-items:center">
-            <button class="plan-btn${inPlan ? ' on' : ''}" onclick="setInPlan('${r.id}', ${!inPlan})">
-              ${inPlan ? '✓ In bake plan' : '+ Add to bake plan'}
-            </button>
+            ${planBtn}
             <button class="secondary tiny" onclick="editRecipe('${r.id}')">Edit</button>
             <button class="danger tiny" onclick="deleteRecipe('${r.id}')">Delete</button>
           </div>
@@ -4471,18 +4519,22 @@ ${notesHtml}
       }).join('');
 
       const cost = computeRecipeCostPerItem(r);
+      const isLevainType = r.processType === 'levain';
       const price = r.wholesalePrice != null ? r.wholesalePrice : (r.msrp != null ? r.msrp : null);
       const profit = (cost != null && price != null) ? price - cost : null;
+      const cpg = (isLevainType && cost != null && r.loafWeight) ? cost / r.loafWeight : null;
 
-      card.innerHTML = `
-        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
-          <strong style="font-size:1rem">${escapeHtml(r.name)}</strong>
-          <button onclick="savePrices('${rid}')">Save prices</button>
+      const pricingRows = isLevainType ? `
+        <div class="row" style="align-items:center">
+          <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per batch</label>
+          <span id="prices-cost-${rid}" class="muted" style="font-size:0.9rem">${cost != null ? '$' + cost.toFixed(2) : '—'}</span>
+          <span class="muted" style="font-size:0.75rem;margin-left:6px">(from linked ingredients)</span>
         </div>
-        <table class="ingredients" style="margin-bottom:12px">
-          <thead><tr><th>Ingredient</th><th class="num">%</th><th>Cost link</th></tr></thead>
-          <tbody>${ingRows}</tbody>
-        </table>
+        <div class="row" style="align-items:center">
+          <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per gram</label>
+          <span id="prices-profit-${rid}" class="muted" style="font-size:0.9rem">${cpg != null ? '$' + cpg.toFixed(4) : '—'}</span>
+          <span class="muted" style="font-size:0.75rem;margin-left:6px">(used automatically in bread recipe costs)</span>
+        </div>` : `
         <div class="row">
           <label style="width:160px">MSRP per ${unit}</label>
           <span class="muted">$</span>
@@ -4505,7 +4557,18 @@ ${notesHtml}
           <label style="width:160px;color:var(--muted);font-size:0.9rem">Net profit per ${unit}</label>
           <span id="prices-profit-${rid}" class="muted" style="font-size:0.9rem;${profit != null && profit < 0 ? 'color:var(--danger)' : ''}">${profit != null ? '$' + profit.toFixed(2) : '—'}</span>
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(wholesale or MSRP − cost)</span>
+        </div>`;
+
+      card.innerHTML = `
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong style="font-size:1rem">${escapeHtml(r.name)}</strong>
+          <button onclick="savePrices('${rid}')">Save prices</button>
         </div>
+        <table class="ingredients" style="margin-bottom:12px">
+          <thead><tr><th>Ingredient</th><th class="num">%</th><th>Cost link</th></tr></thead>
+          <tbody>${ingRows}</tbody>
+        </table>
+        ${pricingRows}
         <div id="prices-msg-${rid}" style="font-size:0.85rem;color:var(--accent);margin-top:6px"></div>
       `;
       list.appendChild(card);
@@ -4529,10 +4592,18 @@ ${notesHtml}
       if (pantryId) result.pantryId = pantryId;
       return result;
     });
-    const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight };
+    const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight, processType: recipe.processType };
     const cost = computeRecipeCostPerItem(tmpRecipe);
 
     costEl.textContent = cost != null ? '$' + cost.toFixed(2) : '—';
+
+    if (recipe.processType === 'levain') {
+      const cpg = (cost != null && recipe.loafWeight) ? cost / recipe.loafWeight : null;
+      profitEl.textContent = cpg != null ? '$' + cpg.toFixed(4) : '—';
+      profitEl.style.color = '';
+      return;
+    }
+
     const msrpEl = document.getElementById('prices-msrp-' + rid);
     const wholesaleEl = document.getElementById('prices-wholesale-' + rid);
     const msrp = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
@@ -4571,7 +4642,7 @@ ${notesHtml}
     const msrp = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
     const wholesale = wholesaleEl && wholesaleEl.value !== '' ? Number(wholesaleEl.value) : null;
 
-    const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight };
+    const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight, processType: recipe.processType };
     const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
     recipes[idx] = { ...recipe, ingredients, msrp, wholesalePrice: wholesale, costPerItem: costPerItem !== null ? costPerItem : undefined };
@@ -4631,14 +4702,23 @@ ${notesHtml}
   function onProcessTypeChange() {
     const sel = document.getElementById('r-process-type');
     const processType = sel.value;
+    const isLevain = processType === 'levain';
+    document.getElementById('r-recipe-settings').style.display = isLevain ? 'none' : '';
+    document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
+    const weightLabel = document.getElementById('r-weight-label');
+    if (weightLabel) weightLabel.innerHTML = isLevain
+      ? 'Typical yield'
+      : 'Weight per <span id="r-unit-label">unit</span>';
     const tmpl = PROCESS_TEMPLATES[processType];
     if (!tmpl) return;
     const unitInput = document.getElementById('r-unit');
     if (!unitInput.value.trim()) {
       unitInput.value = tmpl.unit;
-      setUnitLabels(tmpl.unit);
     }
-    applyOverridePlaceholders(processType);
+    if (!isLevain) {
+      setUnitLabels(unitInput.value.trim() || tmpl.unit);
+      applyOverridePlaceholders(processType);
+    }
   }
 
   function startNewRecipe() {
@@ -4649,6 +4729,10 @@ ${notesHtml}
     document.getElementById('r-unit').value = 'loaf';
     setUnitLabels('loaf');
     document.getElementById('r-weight').value = 500;
+    document.getElementById('r-recipe-settings').style.display = '';
+    document.getElementById('r-oven-settings').style.display = '';
+    const wl = document.getElementById('r-weight-label');
+    if (wl) wl.innerHTML = 'Weight per <span id="r-unit-label">loaf</span>';
     document.getElementById('r-ingredients').innerHTML = '';
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
@@ -4671,9 +4755,17 @@ ${notesHtml}
     document.getElementById('r-name').value = r.name;
     const processType = getProcessType(r);
     document.getElementById('r-process-type').value = processType;
-    const unit = r.unit || PROCESS_TEMPLATES[processType].unit;
+    const isLevain = processType === 'levain';
+    document.getElementById('r-recipe-settings').style.display = isLevain ? 'none' : '';
+    document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
+    const wl = document.getElementById('r-weight-label');
+    const tmplUnit = PROCESS_TEMPLATES[processType] ? PROCESS_TEMPLATES[processType].unit : 'unit';
+    const unit = r.unit || tmplUnit;
     document.getElementById('r-unit').value = unit;
-    setUnitLabels(unit);
+    if (wl) wl.innerHTML = isLevain
+      ? 'Typical yield'
+      : 'Weight per <span id="r-unit-label">' + escapeHtml(unit) + '</span>';
+    if (!isLevain) setUnitLabels(unit);
     document.getElementById('r-weight').value = r.loafWeight;
     document.getElementById('r-ingredients').innerHTML = '';
     r.ingredients.forEach(i => addIngredientRow(i));
