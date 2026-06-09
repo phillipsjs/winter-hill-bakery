@@ -955,13 +955,15 @@
     </div>
 
     <div class="card" style="margin-top:20px">
-      <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div>
-          <h2 style="margin:0">Proofing containers</h2>
-          <p class="muted" style="margin:4px 0 0;font-size:0.9rem">Enter the containers you use for bulk fermentation. The app picks the smallest appropriate container for each dough batch.</p>
-        </div>
-        <button onclick="showContainerAddForm()">+ Add container</button>
-      </div>
+      <details class="plan-details" id="containers-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Proofing containers</h2>
+          <button onclick="showContainerAddForm();event.stopPropagation()" class="secondary tiny" style="margin-left:auto;flex-shrink:0">+ Add container</button>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Enter the containers you use for bulk fermentation. The app picks the smallest appropriate container for each dough batch.</p>
+        <div id="container-list" style="margin-top:4px"></div>
+      </details>
     </div>
 
     <div id="container-add-form" class="card" style="display:none">
@@ -1004,7 +1006,6 @@
       <p id="container-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
     </div>
 
-    <div id="container-list"></div>
   </section>
 
   <section id="tab-prices" style="display:none">
@@ -3770,6 +3771,8 @@ ${notesHtml}
     document.getElementById('cont-max-grams-hint').textContent = '';
     document.getElementById('container-add-msg').textContent = '';
     document.getElementById('container-add-form').dataset.editId = item ? item.id : '';
+    const det = document.getElementById('containers-details');
+    if (det) det.open = true;
     document.getElementById('container-add-form').style.display = '';
     document.getElementById('cont-name').focus();
   }
