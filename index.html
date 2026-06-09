@@ -2571,6 +2571,7 @@ ${notesHtml}
     }
     bakes = [entry, ...bakes];
     saveBakesLocally();
+    renderHistory();
     if (msg) {
       msg.textContent = 'Saved.';
       msg.style.color = 'var(--ok)';
