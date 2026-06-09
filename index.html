@@ -1298,6 +1298,24 @@
     </div>
 
     <div class="card">
+      <h2>Schedule preferences</h2>
+      <p class="muted" style="margin-top:0;font-size:0.9rem">Active steps (mixing, folding, shaping) outside your oven windows will be flagged if they fall in your quiet hours. Stored locally on this device.</p>
+      <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+        <label>Quiet hours</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="quiet-start-select" class="settings-select" style="width:auto"></select>
+          <span style="color:var(--muted)">to</span>
+          <select id="quiet-end-select" class="settings-select" style="width:auto"></select>
+        </div>
+      </div>
+      <p class="settings-hint">Default: 11 PM to 5 AM. The scheduler avoids placing active steps in this window and warns you if one lands there.</p>
+      <div style="margin-top:12px">
+        <button onclick="saveQuietHours()">Save preferences</button>
+      </div>
+      <div id="quiet-hours-msg" style="margin-top:6px;font-size:0.9rem"></div>
+    </div>
+
+    <div class="card">
       <h2>Invoice settings</h2>
       <p class="muted" style="margin-top:0;font-size:0.9rem">Configure your company details for generating invoices from the projected financials. Uses the same GitHub token as recipes.</p>
 
@@ -1465,6 +1483,8 @@
   const BAGEL_BATCHSIZE_KEY = 'cottage-bakery-batchsize-bagel-v1';
   const FOCACCIA_DEADLINE_KEY = 'cottage-bakery-deadline-focaccia-v1';
   const FOCACCIA_BAKETIME_KEY = 'cottage-bakery-baketime-focaccia-v1';
+  const QUIET_START_KEY = 'cottage-bakery-quiet-start-v1';
+  const QUIET_END_KEY = 'cottage-bakery-quiet-end-v1';
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
   const LEVAIN_INTRODUCED_KEY = 'cottage-bakery-levain-introduced-v1';
   const ANCHORS_KEY = 'cottage-bakery-anchors-v1';
@@ -1877,6 +1897,42 @@
     };
     const colors = { idle: 'var(--muted)', syncing: 'var(--muted)', synced: 'var(--ok)', error: 'var(--danger)' };
     el.innerHTML = `<p style="margin:0;font-size:0.9rem;color:${colors[syncStatus]}">${msgs[syncStatus] || ''}</p>`;
+  }
+
+  function buildHourOptions() {
+    const labels = [
+      '12 AM','1 AM','2 AM','3 AM','4 AM','5 AM','6 AM','7 AM','8 AM','9 AM','10 AM','11 AM',
+      '12 PM','1 PM','2 PM','3 PM','4 PM','5 PM','6 PM','7 PM','8 PM','9 PM','10 PM','11 PM',
+    ];
+    return labels.map((lbl, i) => `<option value="${i}">${lbl}</option>`).join('');
+  }
+  function populateQuietHoursSelects() {
+    const startEl = document.getElementById('quiet-start-select');
+    const endEl = document.getElementById('quiet-end-select');
+    if (!startEl || !endEl) return;
+    const html = buildHourOptions();
+    startEl.innerHTML = html;
+    endEl.innerHTML = html;
+    const { start, end } = getQuietHours();
+    startEl.value = String(start);
+    endEl.value = String(end);
+  }
+  function saveQuietHours() {
+    const startEl = document.getElementById('quiet-start-select');
+    const endEl = document.getElementById('quiet-end-select');
+    const msg = document.getElementById('quiet-hours-msg');
+    const start = parseInt(startEl.value, 10);
+    const end = parseInt(endEl.value, 10);
+    if (start === end) {
+      msg.textContent = 'Start and end cannot be the same hour.';
+      msg.style.color = 'var(--danger)';
+      return;
+    }
+    localStorage.setItem(QUIET_START_KEY, String(start));
+    localStorage.setItem(QUIET_END_KEY, String(end));
+    msg.textContent = 'Saved.';
+    msg.style.color = 'var(--success, green)';
+    setTimeout(() => { msg.textContent = ''; }, 2500);
   }
 
   function saveGistSettings() {
@@ -3840,6 +3896,7 @@ ${notesHtml}
       document.getElementById('settings-gist-id').value = cfg ? cfg.gistId : '';
       document.getElementById('settings-msg').textContent = '';
       renderSettingsSyncStatus();
+      populateQuietHoursSelects();
       populateInvoiceSettingsForm();
       if (!invoiceSettingsLoaded && getInvoiceGistConfig()) {
         fetchInvoiceSettings().then(() => { invoiceSettingsLoaded = true; populateInvoiceSettingsForm(); }).catch(() => {});
@@ -5232,9 +5289,31 @@ ${notesHtml}
     const ms = 5 * 60 * 1000;
     return new Date(Math.round(date.getTime() / ms) * ms);
   }
+  function getQuietHours() {
+    const qs = parseInt(localStorage.getItem(QUIET_START_KEY), 10);
+    const qe = parseInt(localStorage.getItem(QUIET_END_KEY), 10);
+    return {
+      start: Number.isFinite(qs) ? qs : 23,
+      end: Number.isFinite(qe) ? qe : 5,
+    };
+  }
+  function fmtHour12(h) {
+    if (h === 0) return '12 AM';
+    if (h < 12) return h + ' AM';
+    if (h === 12) return '12 PM';
+    return (h - 12) + ' PM';
+  }
+  function quietHoursLabel() {
+    const { start, end } = getQuietHours();
+    return fmtHour12(start) + ' – ' + fmtHour12(end);
+  }
+  function isLateNightHour(h) {
+    const { start, end } = getQuietHours();
+    if (start <= end) return h >= start && h < end;
+    return h >= start || h < end;
+  }
   function isLateNight(date) {
-    const h = date.getHours();
-    return h >= 23 || h < 5;
+    return isLateNightHour(date.getHours());
   }
   // Cold-proof input is a 4-hour window string like "10-14". Legacy storage
   // may hold a single number "10"; treat that as the window's lower bound.
@@ -5575,8 +5654,8 @@ ${notesHtml}
         packageReady = D;
       }
       const bakeHour = firstBakeStart.getHours();
-      if (bakeHour >= 23 || bakeHour < 5) {
-        warnings.push({ msg: `${kindLabel} bake starts in the 11 PM – 5 AM window. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind });
+      if (isLateNightHour(bakeHour)) {
+        warnings.push({ msg: `${kindLabel} bake starts in the ${quietHoursLabel()} window. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind });
       }
       return { firstBakeStart, lastBakeEnd, packageReady };
     };
@@ -5625,8 +5704,8 @@ ${notesHtml}
         focPackageReady = D;
       }
       const focBakeHour = focFirstBakeStart.getHours();
-      if (focBakeHour >= 23 || focBakeHour < 5) {
-        warnings.push({ msg: `Focaccia bake starts in the 11 PM – 5 AM window. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind: 'focaccia' });
+      if (isLateNightHour(focBakeHour)) {
+        warnings.push({ msg: `Focaccia bake starts in the ${quietHoursLabel()} window. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind: 'focaccia' });
       }
       focacciaSlot = { firstBakeStart: focFirstBakeStart, lastBakeEnd: focLastBakeEnd, packageReady: focPackageReady };
     }
@@ -5859,7 +5938,7 @@ ${notesHtml}
       const lateFocaccia = lateNightActiveSteps(events, 'focaccia');
       if (lateFocaccia.length > 0) {
         const fmtLate = (steps) => [...new Set(steps.map(e => e.title.replace(/\s+\d+ of \d+.*$/, '')))].slice(0, 4).join(', ');
-        warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLate(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
+        warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLate(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
       }
       events.sort((a, b) => a.time - b.time);
       return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia, batches: focacciaBatches, mixBatches: 1, events, warnings };
@@ -6416,18 +6495,18 @@ ${notesHtml}
       return unique.slice(0, 4).join(', ') + (unique.length > 4 ? '…' : '');
     };
     if (lateLoaf.length > 0) {
-      warnings.push({ msg: `${lateLoaf.length} active loaf step${lateLoaf.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateLoaf)}). Try a different loaf cold proof or bake time.`, issue: 'late-night', kind: 'loaf' });
+      warnings.push({ msg: `${lateLoaf.length} active loaf step${lateLoaf.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateLoaf)}). Try a different loaf cold proof or bake time.`, issue: 'late-night', kind: 'loaf' });
     }
     if (lateMuffin.length > 0) {
-      warnings.push({ msg: `${lateMuffin.length} active muffin step${lateMuffin.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateMuffin)}). Try a different muffin cold proof or bake time.`, issue: 'late-night', kind: 'muffin' });
+      warnings.push({ msg: `${lateMuffin.length} active muffin step${lateMuffin.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateMuffin)}). Try a different muffin cold proof or bake time.`, issue: 'late-night', kind: 'muffin' });
     }
     const lateBagel = totalBagels > 0 ? lateNightActiveSteps(events, 'bagel') : [];
     if (lateBagel.length > 0) {
-      warnings.push({ msg: `${lateBagel.length} active bagel step${lateBagel.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateBagel)}). Try a different bagel cold proof or bake time.`, issue: 'late-night', kind: 'bagel' });
+      warnings.push({ msg: `${lateBagel.length} active bagel step${lateBagel.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateBagel)}). Try a different bagel cold proof or bake time.`, issue: 'late-night', kind: 'bagel' });
     }
     const lateFocaccia = totalFocaccia > 0 ? lateNightActiveSteps(events, 'focaccia') : [];
     if (lateFocaccia.length > 0) {
-      warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLateNames(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
+      warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
     }
 
     events.sort((a, b) => a.time - b.time);
