@@ -1593,6 +1593,18 @@
 
   const SEED_RECIPES = [
     {
+      id: 'seed-levain',
+      name: 'Levain',
+      processType: 'levain',
+      unit: 'batch',
+      loafWeight: 300,
+      ingredients: [
+        { name: 'Starter', pct: 100 },
+        { name: 'Bread flour', pct: 100, flourType: 'anchor' },
+        { name: 'Water', pct: 100 },
+      ],
+    },
+    {
       id: 'seed-sourdough-batard',
       name: 'Sourdough Batard',
       processType: 'sourdough-loaf',
