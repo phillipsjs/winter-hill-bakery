@@ -1664,6 +1664,7 @@
   let invoiceSettings = { company: { name: '', address: '', email: '', phone: '', logo: '' }, customers: [], nextInvoiceNumber: 1 };
   let invoiceSettingsLoaded = false;
   let _invoiceModalBakeId = null; // null = ad-hoc from financials, else bake id
+  let _sharedSaleCtx = { custName: '', custAddr: '', invNum: null }; // shared between save panel and invoice modal
 
   // ---- gist sync ----
   let syncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'error'
@@ -2053,6 +2054,19 @@
     }
 
     document.getElementById('inv-notes').value = '';
+    // Apply shared context from save panel if present
+    if (_sharedSaleCtx.custName) {
+      const nameEl = document.getElementById('inv-cust-name');
+      const addrEl = document.getElementById('inv-cust-addr');
+      if (nameEl) nameEl.value = _sharedSaleCtx.custName;
+      if (addrEl) addrEl.value = _sharedSaleCtx.custAddr || '';
+      const ctxIdx = invoiceSettings.customers.findIndex(c => c.name === _sharedSaleCtx.custName);
+      if (ctxIdx >= 0 && sel) sel.value = String(ctxIdx);
+    }
+    if (_sharedSaleCtx.invNum != null) {
+      const numEl = document.getElementById('inv-number');
+      if (numEl) numEl.value = _sharedSaleCtx.invNum;
+    }
     renderInvoiceLineItems();
     modal.style.display = 'flex';
   }
@@ -2235,6 +2249,7 @@
       if (!isNaN(usedNum) && usedNum >= invoiceSettings.nextInvoiceNumber) {
         invoiceSettings.nextInvoiceNumber = usedNum + 1;
       }
+      _sharedSaleCtx = { custName, custAddr, invNum: invNum || null };
       lines = (_finData || []).map(d => {
         const rid = escapeAttr(d.id);
         const input = document.querySelector(`.fin-units-input[data-recipe-id="${rid}"]`);
@@ -2440,6 +2455,19 @@ ${notesHtml}
     if (hint) hint.style.display = noSetup ? '' : 'none';
     const invNumEl = document.getElementById('sale-inv-number');
     if (invNumEl) invNumEl.placeholder = `Leave blank to skip (next: ${fmtInvNum(invoiceSettings.nextInvoiceNumber)})`;
+    // Apply shared context from invoice modal if present
+    if (_sharedSaleCtx.custName) {
+      const nameEl = document.getElementById('sale-cust-name');
+      const addrEl = document.getElementById('sale-cust-addr');
+      if (nameEl) nameEl.value = _sharedSaleCtx.custName;
+      if (addrEl) addrEl.value = _sharedSaleCtx.custAddr || '';
+      const ctxIdx = invoiceSettings.customers.findIndex(c => c.name === _sharedSaleCtx.custName);
+      if (ctxIdx >= 0 && sel) sel.value = String(ctxIdx);
+    }
+    if (_sharedSaleCtx.invNum != null) {
+      if (invNumEl) invNumEl.value = _sharedSaleCtx.invNum;
+      onSaleInvNumInput();
+    }
     onSaleCustChange();
   }
 
@@ -2569,6 +2597,7 @@ ${notesHtml}
       }
       if (getInvoiceGistConfig()) pushInvoiceSettings().catch(() => {});
     }
+    _sharedSaleCtx = { custName, custAddr, invNum: invNum != null ? fmtInvNum(invNum) : null };
     bakes = [entry, ...bakes];
     saveBakesLocally();
     renderHistory();
