@@ -723,14 +723,26 @@
       <p class="muted" style="margin:0;font-size:0.88rem">Here's everything this bake requires. Check that you have all the ingredients on hand and the equipment you'll need before you start.</p>
     </div>
 
-    <div class="card totals" id="ingredients-card" style="display:none">
+    <div class="card totals" id="totals-card" style="display:none">
       <details class="plan-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
-          <h2>Ingredients</h2>
-          <span id="ingredients-summary" class="muted" style="font-size:0.85rem"></span>
+          <h2>Ingredient totals</h2>
+          <span id="totals-summary" class="muted" style="font-size:0.85rem"></span>
         </summary>
-        <div id="ingredients-output" style="margin-top:8px"></div>
+        <div id="totals-output" style="margin-top:8px"></div>
+      </details>
+    </div>
+
+    <div class="card totals" id="levain-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Levain build plan</h2>
+          <span id="levain-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
+        <div id="levain-output"></div>
       </details>
     </div>
 
@@ -4191,7 +4203,7 @@ ${notesHtml}
     list.innerHTML = '';
     if (recipes.length === 0) {
       list.innerHTML = '<div class="empty">No recipes yet. Add some in the Recipes tab.</div>';
-      document.getElementById('ingredients-card').style.display = 'none';
+      document.getElementById('totals-card').style.display = 'none';
       return;
     }
 
@@ -4423,13 +4435,15 @@ ${notesHtml}
 
   function renderTotals() {
     const activeRecipes = recipes.filter(r => (plan[r.id] || 0) > 0);
-    const card = document.getElementById('ingredients-card');
-    const out = document.getElementById('ingredients-output');
+    const card = document.getElementById('totals-card');
+    const out = document.getElementById('totals-output');
+    const levainCard = document.getElementById('levain-card');
 
     const intro = document.getElementById('bake-summary-intro');
     const cta = document.getElementById('plan-schedule-cta');
     if (activeRecipes.length === 0) {
       card.style.display = 'none';
+      levainCard.style.display = 'none';
       const cc = document.getElementById('container-card');
       if (cc) cc.style.display = 'none';
       if (intro) intro.style.display = 'none';
@@ -4497,38 +4511,26 @@ ${notesHtml}
       </details>`;
     }).join('');
 
-    // Group aggregate by ingredient category
-    const CATEGORY_ORDER = ['Flours', 'Water', 'Levain & starter', 'Salt', 'Sweeteners', 'Oils & fats', 'Yeast', 'Other'];
-    const byCategory = {};
-    for (const item of Object.values(aggregate)) {
-      const cat = categIngredient(item.name);
-      if (!byCategory[cat]) byCategory[cat] = [];
-      byCategory[cat].push(item);
-    }
-    const catHtml = CATEGORY_ORDER
-      .filter(cat => byCategory[cat])
-      .map(cat => {
-        const rows = byCategory[cat]
-          .sort((a, b) => b.grams - a.grams)
-          .map(a => `<tr><td>${escapeHtml(a.name)}</td><td class="num">${formatGrams(a.grams)}</td></tr>`)
-          .join('');
-        return `<h3 style="font-size:0.88rem;font-weight:600;margin:12px 0 4px;color:var(--accent-dark);text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(cat)}</h3>
-          <table class="ingredients"><tbody>${rows}</tbody></table>`;
-      }).join('');
-
-    const levainHtml = renderLevainPlan(levainByProcess);
+    const aggRows = Object.values(aggregate)
+      .sort((a, b) => b.grams - a.grams)
+      .map(a => `<tr><td>${escapeHtml(a.name)}</td><td class="num">${formatGrams(a.grams)}</td></tr>`)
+      .join('');
 
     out.innerHTML = `
       <p class="muted" style="margin-top:0">Total dough: <strong>${formatGrams(totalDough)}</strong> across ${activeRecipes.length} recipe${activeRecipes.length>1?'s':''}.</p>
-      ${catHtml}
-      ${levainHtml ? `<hr class="sep" /><h2 style="font-size:0.95rem;margin:8px 0 4px">Levain build plan</h2><p class="muted" style="margin:0 0 8px;font-size:0.85rem">Built in two refreshes — ratios reflect the current schedule's choices.</p>${levainHtml}` : ''}
+      <table class="ingredients">
+        <thead><tr><th>Ingredient</th><th class="num">Total grams</th></tr></thead>
+        <tbody>${aggRows}</tbody>
+      </table>
       <hr class="sep" />
-      <details><summary style="cursor:pointer;font-size:0.9rem;padding:2px 0">Per-recipe breakdown</summary><div style="margin-top:8px">${perRecipeHtml}</div></details>
+      <h2 style="font-size:0.95rem; margin: 4px 0 6px">Per recipe</h2>
+      ${perRecipeHtml}
     `;
-    const summaryEl = document.getElementById('ingredients-summary');
-    if (summaryEl) summaryEl.textContent = `${formatGrams(totalDough)} total · ${activeRecipes.length} recipe${activeRecipes.length > 1 ? 's' : ''}`;
+    const totalsSummaryEl = document.getElementById('totals-summary');
+    if (totalsSummaryEl) totalsSummaryEl.textContent = `${formatGrams(totalDough)} total · ${activeRecipes.length} recipe${activeRecipes.length > 1 ? 's' : ''}`;
     card.style.display = '';
 
+    renderLevainPlan(aggregate, levainByProcess);
     renderDoughContainerPlan();
   }
 
@@ -4839,13 +4841,19 @@ ${notesHtml}
     };
   }
 
-  function renderLevainPlan(levainByProcess) {
+  function renderLevainPlan(aggregate, levainByProcess) {
+    const levainCard = document.getElementById('levain-card');
+    const levainOut = document.getElementById('levain-output');
+
     const loafLevain = levainByProcess?.loaf || 0;
     const muffinLevain = levainByProcess?.muffin || 0;
     const bagelLevain = levainByProcess?.bagel || 0;
     const levainTotal = loafLevain + muffinLevain + bagelLevain;
 
-    if (levainTotal <= 0) return '';
+    if (levainTotal <= 0) {
+      levainCard.style.display = 'none';
+      return;
+    }
 
     const BUFFER = 1.10;
     const ratios = getSelectedLevainRatios();
@@ -4888,27 +4896,30 @@ ${notesHtml}
     const sectionHead = (label) => `<h2 style="font-size:1rem; margin: 14px 0 6px; color: var(--accent-dark);">${label}</h2>`;
 
     if (!muffinSep && !bagelSep) {
-      return buildHtml(levainTotal, ratios.build1, ratios.build2);
+      levainOut.innerHTML = buildHtml(levainTotal, ratios.build1, ratios.build2);
+    } else {
+      const sharedGrams = loafLevain + (muffinSep ? 0 : muffinLevain) + (bagelSep ? 0 : bagelLevain);
+      const sharedNames = [];
+      if (loafLevain > 0) sharedNames.push('loaves');
+      if (!muffinSep && muffinLevain > 0) sharedNames.push('muffins');
+      if (!bagelSep && bagelLevain > 0) sharedNames.push('bagels');
+      let html = `<p class="muted" style="margin-top:0">Some bake times are far enough apart that one Build 2 can't ripen for all of them — build separate levains.</p>`;
+      html += sectionHead(`Shared levain (${sharedNames.join(' + ')})`) + buildHtml(sharedGrams, ratios.build1, ratios.build2);
+      if (muffinSep) {
+        const muffinB1 = ratios.muffinBuild1 || ratios.build1;
+        const muffinB2 = ratios.muffinBuild2 || ratios.build2;
+        html += `<hr class="sep" />` + sectionHead('Muffin levain') + buildHtml(muffinLevain, muffinB1, muffinB2);
+      }
+      if (bagelSep) {
+        const bagelB1 = ratios.bagelBuild1 || ratios.build1;
+        const bagelB2 = ratios.bagelBuild2 || ratios.build2;
+        html += `<hr class="sep" />` + sectionHead('Bagel levain') + buildHtml(bagelLevain, bagelB1, bagelB2);
+      }
+      levainOut.innerHTML = html;
     }
-
-    const sharedGrams = loafLevain + (muffinSep ? 0 : muffinLevain) + (bagelSep ? 0 : bagelLevain);
-    const sharedNames = [];
-    if (loafLevain > 0) sharedNames.push('loaves');
-    if (!muffinSep && muffinLevain > 0) sharedNames.push('muffins');
-    if (!bagelSep && bagelLevain > 0) sharedNames.push('bagels');
-    let html = `<p class="muted" style="margin-top:0">Some bake times are far enough apart that one Build 2 can't ripen for all of them — build separate levains.</p>`;
-    html += sectionHead(`Shared levain (${sharedNames.join(' + ')})`) + buildHtml(sharedGrams, ratios.build1, ratios.build2);
-    if (muffinSep) {
-      const muffinB1 = ratios.muffinBuild1 || ratios.build1;
-      const muffinB2 = ratios.muffinBuild2 || ratios.build2;
-      html += `<hr class="sep" />` + sectionHead('Muffin levain') + buildHtml(muffinLevain, muffinB1, muffinB2);
-    }
-    if (bagelSep) {
-      const bagelB1 = ratios.bagelBuild1 || ratios.build1;
-      const bagelB2 = ratios.bagelBuild2 || ratios.build2;
-      html += `<hr class="sep" />` + sectionHead('Bagel levain') + buildHtml(bagelLevain, bagelB1, bagelB2);
-    }
-    return html;
+    const levainSummaryEl = document.getElementById('levain-summary');
+    if (levainSummaryEl) levainSummaryEl.textContent = `${formatGrams(levainTotal)} needed`;
+    levainCard.style.display = '';
   }
 
   function formatGrams(g) {
