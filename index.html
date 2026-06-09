@@ -772,10 +772,14 @@
     <div class="card">
       <div class="row" style="justify-content: space-between">
         <h2 style="margin:0">Your recipes</h2>
-        <button onclick="startNewRecipe()">+ Add recipe</button>
+        <div style="display:flex;gap:8px">
+          <button class="secondary" onclick="toggleTemplatePanel()">Templates</button>
+          <button onclick="startNewRecipe()">+ Add recipe</button>
+        </div>
       </div>
       <p class="muted" style="margin: 6px 0 0">Recipes use <strong>baker's percentages</strong>: flour = 100%, everything else as a % of the flour weight.</p>
     </div>
+    <div id="template-panel" style="display:none"></div>
     <div id="recipes-list"></div>
 
     <div class="card" id="recipe-editor" style="display:none">
@@ -4928,6 +4932,54 @@ ${notesHtml}
       setUnitLabels(unitInput.value.trim() || tmpl.unit);
       applyOverridePlaceholders(processType);
     }
+  }
+
+  function toggleTemplatePanel() {
+    const panel = document.getElementById('template-panel');
+    if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+    renderTemplatePanel();
+    panel.style.display = '';
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderTemplatePanel() {
+    const panel = document.getElementById('template-panel');
+    const available = SEED_RECIPES.filter(s => {
+      if (s.id === 'seed-levain') return false; // always auto-present
+      return !recipes.some(r => r.id === s.id || r.name.toLowerCase() === s.name.toLowerCase());
+    });
+    if (available.length === 0) {
+      panel.innerHTML = `<div class="card"><p class="muted" style="margin:0">All template recipes are already in your collection.</p></div>`;
+      return;
+    }
+    const rows = available.map(s => {
+      const tmpl = PROCESS_TEMPLATES[s.processType] || {};
+      const processLabel = tmpl.label || s.processType;
+      const yeastPill = s.leavening === 'commercial-yeast' ? '<span class="pill">Yeast</span>' : '';
+      return `<div class="row" style="justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <strong>${escapeHtml(s.name)}</strong>
+          <span class="pill">${escapeHtml(processLabel)}</span>${yeastPill}
+          <span class="muted" style="font-size:0.85rem;margin-left:4px">${s.ingredients.length} ingredients · ${s.loafWeight}g/${escapeHtml(s.unit || 'unit')}</span>
+        </div>
+        <button class="secondary tiny" onclick="addTemplateRecipe('${escapeAttr(s.id)}')">Add</button>
+      </div>`;
+    });
+    panel.innerHTML = `<div class="card">
+      <h2 style="margin:0 0 8px">Template recipes</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:0.9rem">Add any of these to your collection — your existing recipes are unaffected.</p>
+      ${rows.join('')}
+    </div>`;
+  }
+
+  function addTemplateRecipe(seedId) {
+    const seed = SEED_RECIPES.find(s => s.id === seedId);
+    if (!seed) return;
+    const copy = { ...seed, id: uid(), ingredients: seed.ingredients.map(i => ({ ...i })) };
+    recipes.push(copy);
+    saveRecipes();
+    renderRecipes();
+    renderTemplatePanel(); // refresh to remove the just-added entry
   }
 
   function startNewRecipe() {
