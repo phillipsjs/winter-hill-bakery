@@ -1510,6 +1510,7 @@
   const PANTRY_FILENAME = 'pantry.json';
   const INVOICE_GIST_ID_KEY = 'whb-invoice-gist-id';
   const INVOICE_FILENAME = 'invoice-settings.json';
+  const SETTINGS_FILENAME = 'settings.json';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
 
   const BAKE_TIME_PRESETS = {
@@ -1946,6 +1947,7 @@
     msg.textContent = 'Saved.';
     msg.style.color = 'var(--success, green)';
     setTimeout(() => { msg.textContent = ''; }, 2500);
+    pushSettingsToGist().catch(() => {});
   }
 
   function saveGistSettings() {
@@ -2540,6 +2542,41 @@ ${notesHtml}
     const data = await resp.json();
     const file = data.files[PANTRY_FILENAME];
     if (!file) return [];
+    return JSON.parse(file.content);
+  }
+
+  function getLocalSettings() {
+    const { start, end } = getQuietHours();
+    return { quietStart: start, quietEnd: end };
+  }
+
+  function applyRemoteSettings(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    if (Number.isFinite(settings.quietStart)) localStorage.setItem(QUIET_START_KEY, String(settings.quietStart));
+    if (Number.isFinite(settings.quietEnd)) localStorage.setItem(QUIET_END_KEY, String(settings.quietEnd));
+  }
+
+  async function pushSettingsToGist() {
+    const cfg = getGistConfig();
+    if (!cfg) return;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files: { [SETTINGS_FILENAME]: { content: JSON.stringify(getLocalSettings(), null, 2) } } })
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+  }
+
+  async function fetchSettingsFromGist() {
+    const cfg = getGistConfig();
+    if (!cfg) return null;
+    const resp = await fetch(`https://api.github.com/gists/${cfg.gistId}`, {
+      headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json' }
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    const data = await resp.json();
+    const file = data.files[SETTINGS_FILENAME];
+    if (!file) return null;
     return JSON.parse(file.content);
   }
 
@@ -7559,7 +7596,7 @@ ${notesHtml}
     if (!getGistConfig()) return;
     setSyncStatus('syncing');
     try {
-      const [remoteRecipes, remoteBakes, remotePantry] = await Promise.all([fetchFromGist(), fetchBakesFromGist(), fetchPantryFromGist()]);
+      const [remoteRecipes, remoteBakes, remotePantry, remoteSettings] = await Promise.all([fetchFromGist(), fetchBakesFromGist(), fetchPantryFromGist(), fetchSettingsFromGist()]);
       if (Array.isArray(remoteRecipes) && remoteRecipes.length > 0) {
         recipes = remoteRecipes.map(r => ({ ...r, processType: getProcessType(r) }));
         ensureLevainFirst(recipes);
@@ -7575,6 +7612,9 @@ ${notesHtml}
         pantryItems = remotePantry;
         savePantryLocally();
         renderPantry();
+      }
+      if (remoteSettings) {
+        applyRemoteSettings(remoteSettings);
       }
       setSyncStatus('synced');
     } catch (e) {
