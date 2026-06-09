@@ -1270,103 +1270,116 @@
 
   <section id="tab-settings" class="settings-section" style="display:none">
     <div class="card">
-      <h2>Cloud sync</h2>
-      <p class="muted" style="margin-top:0">Recipes are stored in a private GitHub Gist so they stay in sync across all your devices. The bake plan and schedule settings remain local to each device.</p>
-      <div id="settings-sync-status" style="margin-bottom:14px"></div>
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Cloud sync</h2>
+        </summary>
+        <p class="muted" style="margin-top:8px">Recipes are stored in a private GitHub Gist so they stay in sync across all your devices. The bake plan and schedule settings remain local to each device.</p>
+        <div id="settings-sync-status" style="margin-bottom:14px"></div>
 
-      <div class="row">
-        <label>GitHub token</label>
-        <input type="password" id="settings-token" placeholder="ghp_…" />
-      </div>
-      <p class="settings-hint">Create at <strong>github.com/settings/tokens</strong> with <strong>gist</strong> scope only. Stored in this browser only — never sent anywhere except GitHub.</p>
-
-      <div class="row">
-        <label>Gist ID</label>
-        <input type="text" id="settings-gist-id" placeholder="e.g. a1b2c3d4e5f6…" />
-      </div>
-      <p class="settings-hint">The ID at the end of your gist URL: gist.github.com/username/<strong>&lt;id&gt;</strong></p>
-
-      <div class="row" style="gap:8px;margin-top:4px">
-        <button onclick="saveGistSettings()">Save settings</button>
-        <button class="secondary" onclick="createGistFromSettings()">Create new Gist</button>
-        <button class="secondary" onclick="syncNow()">Sync now</button>
-      </div>
-      <div id="settings-msg" style="margin-top:10px;font-size:0.9rem"></div>
-    </div>
-    <div class="card" style="text-align:center">
-      <p class="muted" style="font-size:0.85rem;margin:0">Recipes sync automatically a few seconds after each change. Settings and the bake plan stay local to this device.</p>
-    </div>
-
-    <div class="card">
-      <h2>Schedule preferences</h2>
-      <p class="muted" style="margin-top:0;font-size:0.9rem">Active steps (mixing, folding, shaping) outside your oven windows will be flagged if they fall in your quiet hours. Stored locally on this device.</p>
-      <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
-        <label>Quiet hours</label>
-        <div style="display:flex;align-items:center;gap:8px">
-          <select id="quiet-start-select" class="settings-select" style="width:auto"></select>
-          <span style="color:var(--muted)">to</span>
-          <select id="quiet-end-select" class="settings-select" style="width:auto"></select>
-        </div>
-      </div>
-      <p class="settings-hint">Default: 11 PM to 5 AM. The scheduler avoids placing active steps in this window and warns you if one lands there.</p>
-      <div style="margin-top:12px">
-        <button onclick="saveQuietHours()">Save preferences</button>
-      </div>
-      <div id="quiet-hours-msg" style="margin-top:6px;font-size:0.9rem"></div>
-    </div>
-
-    <div class="card">
-      <h2>Invoice settings</h2>
-      <p class="muted" style="margin-top:0;font-size:0.9rem">Configure your company details for generating invoices from the projected financials. Uses the same GitHub token as recipes.</p>
-
-      <div class="row">
-        <label>Invoice Gist ID</label>
-        <input type="text" id="invoice-gist-id" placeholder="Paste an existing ID, or create a new one →" />
-      </div>
-      <p class="settings-hint">A separate private Gist from your recipes. Stores company info, customers, and invoice counter.</p>
-      <div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">
-        <button onclick="saveInvoiceGistId()">Save ID</button>
-        <button class="secondary" onclick="createInvoiceGistNow()">Create new Gist</button>
-        <button class="secondary" onclick="syncInvoiceSettingsNow()">Sync now</button>
-      </div>
-      <div id="invoice-gist-msg" style="margin-top:6px;font-size:0.9rem"></div>
-
-      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <h3 style="margin:0 0 12px;font-size:0.95rem">Your company</h3>
         <div class="row">
-          <label>Name</label>
-          <input type="text" id="inv-company-name" placeholder="Winter Hill Bakery" />
+          <label>GitHub token</label>
+          <input type="password" id="settings-token" placeholder="ghp_…" />
         </div>
-        <div class="row" style="margin-top:8px">
-          <label>Address</label>
-          <textarea id="inv-company-address" rows="3" placeholder="123 Main St&#10;Cambridge, MA 02139"></textarea>
+        <p class="settings-hint">Create at <strong>github.com/settings/tokens</strong> with <strong>gist</strong> scope only. Stored in this browser only — never sent anywhere except GitHub.</p>
+
+        <div class="row">
+          <label>Gist ID</label>
+          <input type="text" id="settings-gist-id" placeholder="e.g. a1b2c3d4e5f6…" />
         </div>
-        <div class="row" style="margin-top:8px">
-          <label>Email</label>
-          <input type="email" id="inv-company-email" placeholder="hello@winterhillbakery.com" />
+        <p class="settings-hint">The ID at the end of your gist URL: gist.github.com/username/<strong>&lt;id&gt;</strong></p>
+
+        <div class="row" style="gap:8px;margin-top:4px">
+          <button onclick="saveGistSettings()">Save settings</button>
+          <button class="secondary" onclick="createGistFromSettings()">Create new Gist</button>
+          <button class="secondary" onclick="syncNow()">Sync now</button>
         </div>
-        <div class="row" style="margin-top:8px">
-          <label>Phone</label>
-          <input type="tel" id="inv-company-phone" placeholder="(617) 555-0100" />
-        </div>
-        <div class="row" style="margin-top:8px;align-items:flex-start">
-          <label style="padding-top:4px">Logo</label>
-          <div>
-            <input type="file" id="inv-logo-file" accept="image/*" onchange="onLogoFileChange()" />
-            <p class="settings-hint" style="margin-top:4px">Under 150 KB recommended for fast sync. Stored as base64 in your invoice Gist.</p>
-            <div id="inv-logo-preview"></div>
+        <div id="settings-msg" style="margin-top:10px;font-size:0.9rem"></div>
+        <p class="muted" style="font-size:0.85rem;margin:16px 0 0;text-align:center">Recipes sync automatically a few seconds after each change. Settings and the bake plan stay local to this device.</p>
+      </details>
+    </div>
+
+    <div class="card">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Schedule preferences</h2>
+        </summary>
+        <p class="muted" style="margin-top:8px;font-size:0.9rem">Active steps (mixing, folding, shaping) outside your oven windows will be flagged if they fall in your quiet hours. Stored locally on this device.</p>
+        <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+          <label>Quiet hours</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="quiet-start-select" class="settings-select" style="width:auto"></select>
+            <span style="color:var(--muted)">to</span>
+            <select id="quiet-end-select" class="settings-select" style="width:auto"></select>
           </div>
         </div>
+        <p class="settings-hint">Default: 11 PM to 5 AM. The scheduler avoids placing active steps in this window and warns you if one lands there.</p>
         <div style="margin-top:12px">
-          <button onclick="saveInvoiceCompanySettings()">Save company info</button>
+          <button onclick="saveQuietHours()">Save preferences</button>
         </div>
-        <div id="invoice-company-msg" style="margin-top:6px;font-size:0.9rem"></div>
-      </div>
+        <div id="quiet-hours-msg" style="margin-top:6px;font-size:0.9rem"></div>
+      </details>
+    </div>
 
-      <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
-        <h3 style="margin:0 0 8px;font-size:0.95rem">Saved customers</h3>
-        <div id="inv-customer-list"></div>
-      </div>
+    <div class="card">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Invoice settings</h2>
+        </summary>
+        <p class="muted" style="margin-top:8px;font-size:0.9rem">Configure your company details for generating invoices from the projected financials. Uses the same GitHub token as recipes.</p>
+
+        <div class="row">
+          <label>Invoice Gist ID</label>
+          <input type="text" id="invoice-gist-id" placeholder="Paste an existing ID, or create a new one →" />
+        </div>
+        <p class="settings-hint">A separate private Gist from your recipes. Stores company info, customers, and invoice counter.</p>
+        <div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">
+          <button onclick="saveInvoiceGistId()">Save ID</button>
+          <button class="secondary" onclick="createInvoiceGistNow()">Create new Gist</button>
+          <button class="secondary" onclick="syncInvoiceSettingsNow()">Sync now</button>
+        </div>
+        <div id="invoice-gist-msg" style="margin-top:6px;font-size:0.9rem"></div>
+
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+          <h3 style="margin:0 0 12px;font-size:0.95rem">Your company</h3>
+          <div class="row">
+            <label>Name</label>
+            <input type="text" id="inv-company-name" placeholder="Winter Hill Bakery" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label>Address</label>
+            <textarea id="inv-company-address" rows="3" placeholder="123 Main St&#10;Cambridge, MA 02139"></textarea>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label>Email</label>
+            <input type="email" id="inv-company-email" placeholder="hello@winterhillbakery.com" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label>Phone</label>
+            <input type="tel" id="inv-company-phone" placeholder="(617) 555-0100" />
+          </div>
+          <div class="row" style="margin-top:8px;align-items:flex-start">
+            <label style="padding-top:4px">Logo</label>
+            <div>
+              <input type="file" id="inv-logo-file" accept="image/*" onchange="onLogoFileChange()" />
+              <p class="settings-hint" style="margin-top:4px">Under 150 KB recommended for fast sync. Stored as base64 in your invoice Gist.</p>
+              <div id="inv-logo-preview"></div>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <button onclick="saveInvoiceCompanySettings()">Save company info</button>
+          </div>
+          <div id="invoice-company-msg" style="margin-top:6px;font-size:0.9rem"></div>
+        </div>
+
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+          <h3 style="margin:0 0 8px;font-size:0.95rem">Saved customers</h3>
+          <div id="inv-customer-list"></div>
+        </div>
+      </details>
     </div>
   </section>
 
