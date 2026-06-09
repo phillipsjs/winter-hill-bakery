@@ -926,17 +926,19 @@
       <div class="row"><label style="width:140px">Price paid</label><span class="muted">$</span><input type="number" id="pantry-price" min="0" step="0.01" style="width:90px;flex:none" oninput="updatePantryCostPreview()" /></div>
       <div id="pantry-cost-preview" class="muted" style="font-size:0.85rem;margin:4px 0 8px 140px"></div>
       <div class="row"><label style="width:140px">Category</label>
-        <select id="pantry-category" class="settings-select" style="width:auto" onchange="onPantryCategoryChange()">
-          <option value="">Auto-detect</option>
-          <option value="Flours">Flours</option>
-          <option value="Water">Water</option>
-          <option value="Levain &amp; starter">Levain &amp; starter</option>
-          <option value="Salt">Salt</option>
-          <option value="Sweeteners">Sweeteners</option>
-          <option value="Oils &amp; fats">Oils &amp; fats</option>
-          <option value="Yeast">Yeast</option>
-          <option value="Other">Other</option>
-        </select>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <select id="pantry-category" class="settings-select" style="width:auto" onchange="onPantryCategoryChange()">
+          </select>
+          <button type="button" class="secondary tiny" onclick="showNewCategoryInput()">+ New</button>
+        </div>
+      </div>
+      <div class="row" id="pantry-new-category-row" style="display:none">
+        <label style="width:140px"></label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="text" id="pantry-new-category-input" placeholder="e.g. Dairy" style="width:140px" />
+          <button type="button" class="secondary tiny" onclick="confirmNewCategory()">Add</button>
+          <button type="button" class="secondary tiny" onclick="cancelNewCategory()">Cancel</button>
+        </div>
       </div>
       <div class="row" id="pantry-milling-row" style="display:none">
         <label style="width:140px"></label>
@@ -1587,6 +1589,8 @@
   const SETTINGS_FILENAME = 'settings.json';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
   const CONTAINERS_KEY = 'cottage-bakery-containers-v1';
+  const CATEGORIES_KEY = 'cottage-bakery-categories-v1';
+  const BUILTIN_CATEGORIES = ['Flours', 'Water', 'Levain & starter', 'Salt', 'Sweeteners', 'Oils & fats', 'Yeast', 'Dairy', 'Other'];
   const DOUGH_DENSITY_G_PER_ML = 0.85;   // typical bread dough ~75% hydration
   const CONTAINER_FILL_FACTOR = 0.45;    // headroom for bulk-ferment rise (~1.8×)
 
@@ -2586,6 +2590,7 @@ ${notesHtml}
   let bakes = loadBakesLocally();
   let pantryItems = loadPantryLocally();
   let userContainers = loadContainersLocally();
+  let userCategories = loadCategoriesLocally();
 
   function loadPantryLocally() {
     try {
@@ -2625,7 +2630,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, containers: userContainers };
+    return { quietStart: start, quietEnd: end, containers: userContainers, customCategories: userCategories };
   }
 
   function applyRemoteSettings(settings) {
@@ -2635,6 +2640,10 @@ ${notesHtml}
     if (Array.isArray(settings.containers)) {
       userContainers = settings.containers;
       saveContainersLocally();
+    }
+    if (Array.isArray(settings.customCategories)) {
+      userCategories = settings.customCategories;
+      saveCategoriesLocally();
     }
   }
 
@@ -2675,6 +2684,23 @@ ${notesHtml}
   }
   function saveContainersLocally() {
     localStorage.setItem(CONTAINERS_KEY, JSON.stringify(userContainers));
+  }
+  function loadCategoriesLocally() {
+    try {
+      const raw = localStorage.getItem(CATEGORIES_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    return [];
+  }
+  function saveCategoriesLocally() {
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(userCategories));
+  }
+  function allCategories() {
+    const extras = userCategories.filter(c => !BUILTIN_CATEGORIES.includes(c));
+    const insertAt = BUILTIN_CATEGORIES.indexOf('Other');
+    const result = [...BUILTIN_CATEGORIES];
+    result.splice(insertAt, 0, ...extras);
+    return result;
   }
 
   function computeLevainCostPerGram() {
@@ -3530,12 +3556,44 @@ ${notesHtml}
     return Number(document.getElementById('pantry-weight').value) || 0;
   }
 
+  function populateCategorySelect(selectedValue) {
+    const sel = document.getElementById('pantry-category');
+    if (!sel) return;
+    const cats = allCategories();
+    sel.innerHTML = `<option value="">Auto-detect</option>` +
+      cats.map(c => `<option value="${escapeAttr(c)}"${c === selectedValue ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  }
+
   function onPantryCategoryChange() {
     const cat = document.getElementById('pantry-category').value;
     const nameVal = document.getElementById('pantry-name').value;
     const isFlour = cat === 'Flours' || (!cat && categIngredient(nameVal) === 'Flours');
     document.getElementById('pantry-milling-row').style.display = isFlour ? '' : 'none';
     if (!isFlour) document.getElementById('pantry-requires-milling').checked = false;
+  }
+
+  function showNewCategoryInput() {
+    document.getElementById('pantry-new-category-row').style.display = '';
+    document.getElementById('pantry-new-category-input').value = '';
+    document.getElementById('pantry-new-category-input').focus();
+  }
+
+  function cancelNewCategory() {
+    document.getElementById('pantry-new-category-row').style.display = 'none';
+  }
+
+  function confirmNewCategory() {
+    const input = document.getElementById('pantry-new-category-input');
+    const name = input.value.trim();
+    if (!name) return;
+    if (!userCategories.includes(name) && !BUILTIN_CATEGORIES.includes(name)) {
+      userCategories.push(name);
+      saveCategoriesLocally();
+      if (getGistConfig()) pushSettingsToGist().catch(() => {});
+    }
+    populateCategorySelect(name);
+    onPantryCategoryChange();
+    document.getElementById('pantry-new-category-row').style.display = 'none';
   }
 
   function onPantryWeightUnitChange() {
@@ -3574,7 +3632,7 @@ ${notesHtml}
       list.innerHTML = '<p class="muted" style="margin:8px 0 0;text-align:center">No ingredients yet — click <strong>+ Add ingredient</strong> to get started.</p>';
       return;
     }
-    const CATEGORY_ORDER = ['Flours', 'Water', 'Levain & starter', 'Salt', 'Sweeteners', 'Oils & fats', 'Yeast', 'Other'];
+    const CATEGORY_ORDER = allCategories();
     const byCategory = {};
     for (const p of pantryItems) {
       const cat = p.category || categIngredient(p.name);
@@ -3613,8 +3671,9 @@ ${notesHtml}
     onPantryWeightUnitChange();
     document.getElementById('pantry-price').value = item ? item.pricePaid : '';
     document.getElementById('pantry-cost-preview').textContent = item ? `= $${item.costPerGram.toFixed(4)} per gram` : '';
-    document.getElementById('pantry-category').value = item ? (item.category || '') : '';
+    populateCategorySelect(item ? (item.category || '') : '');
     document.getElementById('pantry-requires-milling').checked = item ? !!item.requiresMilling : false;
+    document.getElementById('pantry-new-category-row').style.display = 'none';
     onPantryCategoryChange();
     document.getElementById('pantry-add-msg').textContent = '';
     document.getElementById('pantry-add-form').dataset.editId = item ? item.id : '';
