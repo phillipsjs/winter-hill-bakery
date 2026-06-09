@@ -1405,6 +1405,7 @@
   const BAGEL_BAKETIME_KEY = 'cottage-bakery-baketime-bagel-v1';
   const BAGEL_BATCHSIZE_KEY = 'cottage-bakery-batchsize-bagel-v1';
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
+  const LEVAIN_INTRODUCED_KEY = 'cottage-bakery-levain-introduced-v1';
   const ANCHORS_KEY = 'cottage-bakery-anchors-v1';
   const GIST_TOKEN_KEY = 'whb-gist-token';
   const GIST_ID_KEY = 'whb-gist-id';
@@ -3547,6 +3548,15 @@ ${notesHtml}
         localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
       }
       localStorage.setItem(BAGEL_INTRODUCED_KEY, '1');
+    }
+    // One-time migration: add levain seed to existing saved lists that predate it.
+    if (hadSavedList && !localStorage.getItem(LEVAIN_INTRODUCED_KEY)) {
+      const levainSeed = SEED_RECIPES.find(r => r.id === 'seed-levain');
+      if (levainSeed && !list.some(r => r.id === levainSeed.id)) {
+        list.unshift({ ...levainSeed, ingredients: levainSeed.ingredients.map(i => ({...i})) });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      }
+      localStorage.setItem(LEVAIN_INTRODUCED_KEY, '1');
     }
     return list.map(r => ({ ...r, processType: getProcessType(r) }));
   }
