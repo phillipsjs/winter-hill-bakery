@@ -189,6 +189,10 @@
     color: var(--muted);
     margin-top: 4px;
   }
+  .recipe-card-header { cursor: pointer; user-select: none; }
+  .recipe-card-header:hover .recipe-toggle-icon { color: var(--accent); }
+  .recipe-toggle-icon { font-size: 0.7rem; color: var(--muted); margin-right: 4px; display: inline-block; transition: transform 0.15s; }
+  .recipe-toggle-icon.open { transform: rotate(90deg); }
   table.ingredients {
     width: 100%;
     border-collapse: collapse;
@@ -4471,13 +4475,24 @@ ${notesHtml}
             <button class="plan-btn${inPlan ? ' on' : ''}" onclick="setInPlan('${r.id}', ${!inPlan})">
               ${inPlan ? '✓ In bake plan' : '+ Add to bake plan'}
             </button>`;
+      let summaryExtra = '';
+      if (isLevainType && cost != null) {
+        summaryExtra = ' · $' + (cost / r.loafWeight).toFixed(4) + '/g';
+      } else if (!isLevainType) {
+        const summaryParts = [];
+        if (cost != null) summaryParts.push('Cost $' + cost.toFixed(2));
+        const price2 = r.wholesalePrice ?? r.msrp;
+        const profit2 = (cost != null && price2 != null) ? price2 - cost : null;
+        if (profit2 != null) summaryParts.push('Profit $' + profit2.toFixed(2));
+        if (summaryParts.length) summaryExtra = ' · ' + summaryParts.join(' · ');
+      }
       card.innerHTML = `
-        <div class="row" style="justify-content: space-between">
+        <div class="recipe-card-header row" style="justify-content: space-between" onclick="toggleRecipeCard(this, event)">
           <div>
-            <strong>${escapeHtml(r.name)}</strong>
+            <span class="recipe-toggle-icon">▶</span><strong>${escapeHtml(r.name)}</strong>
             <span class="pill">${escapeHtml(spec.processLabel)}</span>
             ${weightPill}${unschedNote}
-            <div class="recipe-summary">${r.ingredients.length} ingredients · sum ${sumPct.toFixed(1)}%</div>
+            <div class="recipe-summary">${r.ingredients.length} ingredients${summaryExtra}</div>
           </div>
           <div class="row" style="gap:6px; align-items:center">
             ${planBtn}
@@ -4485,13 +4500,15 @@ ${notesHtml}
             <button class="danger tiny" onclick="deleteRecipe('${r.id}')">Delete</button>
           </div>
         </div>
-        <table class="ingredients">
-          <thead><tr><th>Ingredient</th><th class="num">%</th></tr></thead>
-          <tbody>
-            ${r.ingredients.map(i => `<tr><td>${escapeHtml(i.name)}</td><td class="num">${i.pct}%</td></tr>`).join('')}
-          </tbody>
-        </table>
-        ${pricingHtml}
+        <div class="recipe-details" style="display:none">
+          <table class="ingredients">
+            <thead><tr><th>Ingredient</th><th class="num">%</th></tr></thead>
+            <tbody>
+              ${r.ingredients.map(i => `<tr><td>${escapeHtml(i.name)}</td><td class="num">${i.pct}%</td></tr>`).join('')}
+            </tbody>
+          </table>
+          ${pricingHtml}
+        </div>
       `;
       list.appendChild(card);
     });
@@ -4811,6 +4828,16 @@ ${notesHtml}
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
     wrap.appendChild(row);
+  }
+
+  function toggleRecipeCard(header, event) {
+    if (event.target.closest('button')) return;
+    const details = header.nextElementSibling;
+    if (!details) return;
+    const icon = header.querySelector('.recipe-toggle-icon');
+    const isOpen = details.style.display !== 'none';
+    details.style.display = isOpen ? 'none' : '';
+    if (icon) icon.classList.toggle('open', !isOpen);
   }
 
   function cancelEdit() {
