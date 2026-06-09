@@ -1208,7 +1208,7 @@
   </section>
 
   <section id="tab-bakesheet" style="display:none">
-    <div class="no-print" style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+    <div id="bakesheet-print-bar" class="no-print" style="display:none;align-items:center;gap:12px;margin-bottom:4px">
       <button onclick="window.print()">Print bake sheet</button>
       <span class="muted" style="font-size:0.82rem">Use your browser's print dialog — landscape works well for wide tables.</span>
     </div>
@@ -7417,10 +7417,13 @@ ${notesHtml}
     const content = document.getElementById('bakesheet-content');
     if (!content) return;
 
+    const printBar = document.getElementById('bakesheet-print-bar');
     if (!_scheduleResult || !_scheduleResult.events || _scheduleResult.events.length === 0) {
       content.innerHTML = '<div class="card"><p class="muted" style="margin:0">Set up your Bake Plan and Schedule to generate the bake sheet.</p></div>';
+      if (printBar) printBar.style.display = 'none';
       return;
     }
+    if (printBar) printBar.style.display = 'flex';
 
     const ingData = computeBakeSheetIngredientData();
     const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
