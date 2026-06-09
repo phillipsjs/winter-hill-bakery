@@ -4664,7 +4664,8 @@ ${notesHtml}
             oninput="updatePricesCostDisplay('${rid}')" />
           <input type="text" id="prices-sale-unit-${rid}"
             value="${escapeHtml(r.saleUnit || '')}" placeholder="${escapeHtml(r.unit || 'unit')}"
-            style="width:90px;flex:none" title="Name of what you sell" />
+            style="width:90px;flex:none" title="Name of what you sell"
+            oninput="updatePricesSaleUnitLabels('${rid}', this.value.trim() || this.placeholder)" />
         </div>`;
 
       const pricingRows = isLevainType ? `
@@ -4679,26 +4680,26 @@ ${notesHtml}
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(used automatically in bread recipe costs)</span>
         </div>` : `
         <div class="row" style="align-items:center">
-          <label style="width:160px">MSRP per ${saleUnitLabel}</label>
+          <label id="prices-label-msrp-${rid}" style="width:160px">MSRP per ${saleUnitLabel}</label>
           ${ratioNote}
           <span class="muted" style="margin-left:auto">$</span>
           <input type="number" id="prices-msrp-${rid}" min="0" step="0.25" style="width:90px;flex:none"
             value="${r.msrp != null ? r.msrp : ''}" oninput="updatePricesCostDisplay('${rid}')" />
         </div>
         <div class="row" style="align-items:center">
-          <label style="width:160px">Wholesale per ${saleUnitLabel}</label>
+          <label id="prices-label-wholesale-${rid}" style="width:160px">Wholesale per ${saleUnitLabel}</label>
           <span class="muted" style="margin-left:auto">$</span>
           <input type="number" id="prices-wholesale-${rid}" min="0" step="0.25" style="width:90px;flex:none"
             value="${r.wholesalePrice != null ? r.wholesalePrice : ''}" placeholder="optional"
             oninput="updatePricesCostDisplay('${rid}')" />
         </div>
         <div class="row" style="align-items:center">
-          <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per ${saleUnitLabel}</label>
+          <label id="prices-label-cost-${rid}" style="width:160px;color:var(--muted);font-size:0.9rem">Cost per ${saleUnitLabel}</label>
           <span id="prices-cost-${rid}" class="muted" style="font-size:0.9rem">${costPerSale != null ? '$' + costPerSale.toFixed(2) : '—'}</span>
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(from linked ingredients)</span>
         </div>
         <div class="row" style="align-items:center">
-          <label style="width:160px;color:var(--muted);font-size:0.9rem">Net profit per ${saleUnitLabel}</label>
+          <label id="prices-label-profit-${rid}" style="width:160px;color:var(--muted);font-size:0.9rem">Net profit per ${saleUnitLabel}</label>
           <span id="prices-profit-${rid}" class="muted" style="font-size:0.9rem;${profit != null && profit < 0 ? 'color:var(--danger)' : ''}">${profit != null ? '$' + profit.toFixed(2) : '—'}</span>
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(wholesale or MSRP − cost)</span>
         </div>`;
@@ -4727,6 +4728,19 @@ ${notesHtml}
       `;
       list.appendChild(card);
     });
+  }
+
+  function updatePricesSaleUnitLabels(recipeId, unitName) {
+    const rid = escapeAttr(recipeId);
+    const safe = escapeHtml(unitName);
+    const msrpLbl = document.getElementById('prices-label-msrp-' + rid);
+    const wholeLbl = document.getElementById('prices-label-wholesale-' + rid);
+    const costLbl = document.getElementById('prices-label-cost-' + rid);
+    const profitLbl = document.getElementById('prices-label-profit-' + rid);
+    if (msrpLbl) msrpLbl.textContent = 'MSRP per ' + safe;
+    if (wholeLbl) wholeLbl.textContent = 'Wholesale per ' + safe;
+    if (costLbl) costLbl.textContent = 'Cost per ' + safe;
+    if (profitLbl) profitLbl.textContent = 'Net profit per ' + safe;
   }
 
   function updatePricesCostDisplay(recipeId) {
