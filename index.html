@@ -194,6 +194,12 @@
   .recipe-toggle-icon { font-size: 0.7rem; color: var(--muted); margin-right: 4px; display: inline-block; transition: transform 0.15s; }
   .recipe-toggle-icon.open { transform: rotate(90deg); }
   .card.levain-card { background: #eef4ee; border-left: 3px solid var(--accent); }
+  .plan-details > summary { list-style: none; cursor: pointer; user-select: none; display: flex; align-items: baseline; gap: 8px; }
+  .plan-details > summary::-webkit-details-marker { display: none; }
+  .plan-details > summary h2 { margin: 0; }
+  .plan-card-toggle { font-size: 0.7rem; color: var(--muted); transition: transform 0.15s; display: inline-block; }
+  .plan-details[open] > summary .plan-card-toggle { transform: rotate(90deg); }
+  .plan-details > summary:hover .plan-card-toggle { color: var(--accent); }
   table.ingredients {
     width: 100%;
     border-collapse: collapse;
@@ -716,20 +722,38 @@
     </div>
 
     <div class="card totals" id="totals-card" style="display:none">
-      <h2>Ingredient totals</h2>
-      <div id="totals-output"></div>
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Ingredient totals</h2>
+          <span id="totals-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <div id="totals-output" style="margin-top:8px"></div>
+      </details>
     </div>
 
     <div class="card totals" id="levain-card" style="display:none">
-      <h2>Levain build plan</h2>
-      <p class="muted" style="margin-top:0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
-      <div id="levain-output"></div>
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Levain build plan</h2>
+          <span id="levain-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
+        <div id="levain-output"></div>
+      </details>
     </div>
 
     <div class="card totals" id="container-card" style="display:none">
-      <h2>Proofing containers</h2>
-      <p class="muted" style="margin-top:0">Recipes share a container only if their ingredient ratios are identical. Max 12,500 g per container; larger groups are split evenly.</p>
-      <div id="container-output"></div>
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Proofing containers</h2>
+          <span id="container-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Recipes share a container only if their ingredient ratios are identical. Max 12,500 g per container; larger groups are split evenly.</p>
+        <div id="container-output"></div>
+      </details>
     </div>
 
     <div id="plan-schedule-cta" style="display:none;margin-top:8px">
@@ -1111,7 +1135,10 @@
   <section id="tab-history" style="display:none">
     <div class="card" id="financials-card" style="display:none">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-        <h2 style="margin:0">Projected financials for this bake</h2>
+        <div style="cursor:pointer;user-select:none" onclick="toggleFinancialsTable()">
+          <h2 style="margin:0"><span class="plan-card-toggle" id="financials-toggle-icon">▶</span> Projected financials for this bake</h2>
+          <div id="financials-summary" class="muted" style="font-size:0.85rem;margin-top:2px"></div>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
           <button class="secondary" onclick="toggleSaleSavePanel()" style="white-space:nowrap">Save this sale</button>
           <button onclick="openInvoiceModal()" style="white-space:nowrap">Generate invoice</button>
@@ -1145,7 +1172,7 @@
         </div>
         <div id="sale-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
       </div>
-      <div id="financials-output"></div>
+      <div id="financials-output" style="display:none"></div>
     </div>
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -3952,8 +3979,35 @@ ${notesHtml}
       </div>
       ${missingNote}`;
 
+    // Keep the breakdown collapsed; reset icon in case plan changed
+    const finOut = document.getElementById('financials-output');
+    const finIcon = document.getElementById('financials-toggle-icon');
+    if (finOut) finOut.style.display = 'none';
+    if (finIcon) { finIcon.style.transform = ''; }
     card.style.display = '';
     recalcFinancialsTotals();
+    // Set summary line from _finData
+    let fTotSales = 0, fTotProfit = 0, fAnySales = false, fAnyProfit = false;
+    for (const d of _finData) {
+      if (d.price != null) { fTotSales += d.price * d.planUnits; fAnySales = true; }
+      if (d.profit != null) { fTotProfit += d.profit * d.planUnits; fAnyProfit = true; }
+    }
+    const finSummaryEl = document.getElementById('financials-summary');
+    if (finSummaryEl) {
+      const parts = [];
+      if (fAnySales) parts.push('Sales: $' + fTotSales.toFixed(2));
+      if (fAnyProfit) parts.push('Profit: $' + fTotProfit.toFixed(2));
+      finSummaryEl.textContent = parts.length ? parts.join(' · ') : 'Set prices in the Prices tab to see projections';
+    }
+  }
+
+  function toggleFinancialsTable() {
+    const out = document.getElementById('financials-output');
+    const icon = document.getElementById('financials-toggle-icon');
+    if (!out) return;
+    const opening = out.style.display === 'none';
+    out.style.display = opening ? '' : 'none';
+    if (icon) icon.style.transform = opening ? 'rotate(90deg)' : '';
   }
 
   function recalcFinancialsTotals() {
@@ -4108,6 +4162,8 @@ ${notesHtml}
       <h2 style="font-size:0.95rem; margin: 4px 0 6px">Per recipe</h2>
       ${perRecipeHtml}
     `;
+    const totalsSummaryEl = document.getElementById('totals-summary');
+    if (totalsSummaryEl) totalsSummaryEl.textContent = `${formatGrams(totalDough)} total · ${activeRecipes.length} recipe${activeRecipes.length > 1 ? 's' : ''}`;
     card.style.display = '';
 
     renderLevainPlan(aggregate, levainByProcess);
@@ -4251,6 +4307,8 @@ ${notesHtml}
       </div>`;
     }
     out.innerHTML = html;
+    const containerSummaryEl = document.getElementById('container-summary');
+    if (containerSummaryEl) containerSummaryEl.textContent = `${totalContainers} container${totalContainers > 1 ? 's' : ''} · ${formatGrams(totalDough)} dough`;
     card.style.display = '';
   }
 
@@ -4430,6 +4488,8 @@ ${notesHtml}
       }
       levainOut.innerHTML = html;
     }
+    const levainSummaryEl = document.getElementById('levain-summary');
+    if (levainSummaryEl) levainSummaryEl.textContent = `${formatGrams(levainTotal)} needed`;
     levainCard.style.display = '';
   }
 
