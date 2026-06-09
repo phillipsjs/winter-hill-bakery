@@ -799,6 +799,15 @@
         <label style="width:120px">Unit name</label>
         <input type="text" id="r-unit" placeholder="e.g. loaf, muffin, pan" />
       </div>
+      <div class="row" id="r-sale-packaging-row" style="align-items:center;gap:6px">
+        <label style="width:120px">Sale packaging</label>
+        <input type="number" id="r-sale-qty-baked" min="1" step="1" value="1" style="width:48px;flex:none" title="Baked units per sale unit" />
+        <span class="muted" id="r-sale-baked-label">loaf</span>
+        <span class="muted">→</span>
+        <input type="number" id="r-sale-qty-sold" min="1" step="1" value="1" style="width:48px;flex:none" title="Sale units per group" />
+        <input type="text" id="r-sale-unit" placeholder="loaf" style="width:90px;flex:none" title="Name of what you sell" />
+        <span class="muted" style="font-size:0.8rem">(e.g. 1 pan → 4 slices, or 6 muffins → 1 pack)</span>
+      </div>
       <div class="row">
         <label id="r-weight-label" style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
         <input type="number" id="r-weight" min="0" step="10" oninput="updateRecipeEditorCostDisplay()" />
@@ -3920,10 +3929,13 @@ ${notesHtml}
     _finData = planned.map(r => {
       const price = r.wholesalePrice != null ? r.wholesalePrice : (r.msrp != null ? r.msrp : null);
       const priceLabel = r.wholesalePrice != null ? 'wholesale' : (r.msrp != null ? 'MSRP' : null);
-      const cost = computeRecipeCostPerItem(r);
+      const { bakedQty, soldQty, saleUnit: sUnit } = getSaleRatio(r);
+      const costPerBaked = computeRecipeCostPerItem(r);
+      const cost = costPerBaked != null ? costPerBaked * bakedQty / soldQty : null;
       const profit = (price != null && cost != null) ? price - cost : null;
+      const planSaleUnits = saleUnitsFromPlan(r, plan[r.id] || 0);
       if (price == null || cost == null) missing.push(r.name);
-      return { id: r.id, name: r.name, planUnits: plan[r.id], price, priceLabel, cost, profit, msrp: r.msrp ?? null };
+      return { id: r.id, name: r.name, planUnits: planSaleUnits, saleUnit: sUnit, price, priceLabel, cost, profit, msrp: r.msrp ?? null };
     });
 
     const rows = _finData.map(d => {
@@ -3933,12 +3945,14 @@ ${notesHtml}
       const sales   = d.price  != null ? fmt(d.price  * units) : null;
       const tCost   = d.cost   != null ? fmt(d.cost   * units) : null;
       const tProfit = d.profit != null ? fmt(d.profit * units) : null;
+      const saleUnitDisp = escapeHtml(d.saleUnit || 'unit');
       return `<tr>
         <td>${escapeHtml(d.name)}</td>
         <td class="num"><input type="number" class="fin-units-input" data-recipe-id="${rid}"
           value="${units}" min="0" step="1"
           style="width:58px;text-align:right;padding:2px 4px;font-size:inherit"
-          oninput="recalcFinancialsTotals()" /></td>
+          oninput="recalcFinancialsTotals()" />
+          <span class="muted" style="font-size:0.75rem"> ${saleUnitDisp}</span></td>
         <td class="num">${d.price != null ? `${fmt(d.price)} <span class="muted" style="font-size:0.75rem">(${d.priceLabel})</span>` : '<span class="muted">—</span>'}</td>
         <td class="num" id="fin-sales-${rid}">${sales != null ? sales : '<span class="muted">—</span>'}</td>
         <td class="num">${d.cost != null ? fmt(d.cost) : '<span class="muted">—</span>'}</td>
@@ -4633,16 +4647,23 @@ ${notesHtml}
           </tr>`;
       }).join('');
 
-      const cost = computeRecipeCostPerItem(r);
+      const costPerBaked = computeRecipeCostPerItem(r);
       const isLevainType = r.processType === 'levain';
+      const { bakedQty, soldQty, saleUnit: sUnit } = getSaleRatio(r);
+      const hasRatio = bakedQty !== 1 || soldQty !== 1 || sUnit !== (r.unit || 'unit');
+      const costPerSale = costPerBaked != null ? costPerBaked * bakedQty / soldQty : null;
+      const saleUnitLabel = escapeHtml(sUnit);
       const price = r.wholesalePrice != null ? r.wholesalePrice : (r.msrp != null ? r.msrp : null);
-      const profit = (cost != null && price != null) ? price - cost : null;
-      const cpg = (isLevainType && cost != null && r.loafWeight) ? cost / r.loafWeight : null;
+      const profit = (costPerSale != null && price != null) ? price - costPerSale : null;
+      const cpg = (isLevainType && costPerBaked != null && r.loafWeight) ? costPerBaked / r.loafWeight : null;
+      const ratioNote = hasRatio
+        ? `<span class="muted" style="font-size:0.8rem"> · ${bakedQty} ${escapeHtml(r.unit || 'unit')} → ${soldQty} ${saleUnitLabel}</span>`
+        : '';
 
       const pricingRows = isLevainType ? `
         <div class="row" style="align-items:center">
           <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per batch</label>
-          <span id="prices-cost-${rid}" class="muted" style="font-size:0.9rem">${cost != null ? '$' + cost.toFixed(2) : '—'}</span>
+          <span id="prices-cost-${rid}" class="muted" style="font-size:0.9rem">${costPerBaked != null ? '$' + costPerBaked.toFixed(2) : '—'}</span>
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(from linked ingredients)</span>
         </div>
         <div class="row" style="align-items:center">
@@ -4650,33 +4671,34 @@ ${notesHtml}
           <span id="prices-profit-${rid}" class="muted" style="font-size:0.9rem">${cpg != null ? '$' + cpg.toFixed(4) : '—'}</span>
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(used automatically in bread recipe costs)</span>
         </div>` : `
-        <div class="row">
-          <label style="width:160px">MSRP per ${unit}</label>
-          <span class="muted">$</span>
+        <div class="row" style="align-items:center">
+          <label style="width:160px">MSRP per ${saleUnitLabel}</label>
+          ${ratioNote}
+          <span class="muted" style="margin-left:auto">$</span>
           <input type="number" id="prices-msrp-${rid}" min="0" step="0.25" style="width:90px;flex:none"
             value="${r.msrp != null ? r.msrp : ''}" oninput="updatePricesCostDisplay('${rid}')" />
         </div>
-        <div class="row">
-          <label style="width:160px">Wholesale per ${unit}</label>
-          <span class="muted">$</span>
+        <div class="row" style="align-items:center">
+          <label style="width:160px">Wholesale per ${saleUnitLabel}</label>
+          <span class="muted" style="margin-left:auto">$</span>
           <input type="number" id="prices-wholesale-${rid}" min="0" step="0.25" style="width:90px;flex:none"
             value="${r.wholesalePrice != null ? r.wholesalePrice : ''}" placeholder="optional"
             oninput="updatePricesCostDisplay('${rid}')" />
         </div>
         <div class="row" style="align-items:center">
-          <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per ${unit}</label>
-          <span id="prices-cost-${rid}" class="muted" style="font-size:0.9rem">${cost != null ? '$' + cost.toFixed(2) : '—'}</span>
+          <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per ${saleUnitLabel}</label>
+          <span id="prices-cost-${rid}" class="muted" style="font-size:0.9rem">${costPerSale != null ? '$' + costPerSale.toFixed(2) : '—'}</span>
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(from linked ingredients)</span>
         </div>
         <div class="row" style="align-items:center">
-          <label style="width:160px;color:var(--muted);font-size:0.9rem">Net profit per ${unit}</label>
+          <label style="width:160px;color:var(--muted);font-size:0.9rem">Net profit per ${saleUnitLabel}</label>
           <span id="prices-profit-${rid}" class="muted" style="font-size:0.9rem;${profit != null && profit < 0 ? 'color:var(--danger)' : ''}">${profit != null ? '$' + profit.toFixed(2) : '—'}</span>
           <span class="muted" style="font-size:0.75rem;margin-left:6px">(wholesale or MSRP − cost)</span>
         </div>`;
 
       const pricesSummary = isLevainType
         ? (cpg != null ? ' · $' + cpg.toFixed(4) + '/g' : '')
-        : (cost != null ? ' · Cost $' + cost.toFixed(2) + (profit != null ? ' · Profit $' + profit.toFixed(2) : '') : '');
+        : (costPerSale != null ? ' · Cost $' + costPerSale.toFixed(2) + (profit != null ? ' · Profit $' + profit.toFixed(2) : '') : '');
       card.innerHTML = `
         <div class="recipe-card-header row" style="justify-content:space-between;align-items:center" onclick="toggleRecipeCard(this, event)">
           <div>
@@ -4717,12 +4739,14 @@ ${notesHtml}
       return result;
     });
     const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight, processType: recipe.processType };
-    const cost = computeRecipeCostPerItem(tmpRecipe);
+    const costPerBaked = computeRecipeCostPerItem(tmpRecipe);
+    const { bakedQty, soldQty } = getSaleRatio(recipe);
+    const cost = costPerBaked != null ? costPerBaked * bakedQty / soldQty : null;
 
     costEl.textContent = cost != null ? '$' + cost.toFixed(2) : '—';
 
     if (recipe.processType === 'levain') {
-      const cpg = (cost != null && recipe.loafWeight) ? cost / recipe.loafWeight : null;
+      const cpg = (costPerBaked != null && recipe.loafWeight) ? costPerBaked / recipe.loafWeight : null;
       profitEl.textContent = cpg != null ? '$' + cpg.toFixed(4) : '—';
       profitEl.style.color = '';
       return;
@@ -4862,6 +4886,11 @@ ${notesHtml}
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
     }
     document.getElementById('r-bake-temp').value = '';
+    document.getElementById('r-sale-qty-baked').value = 1;
+    document.getElementById('r-sale-qty-sold').value  = 1;
+    document.getElementById('r-sale-unit').value      = '';
+    document.getElementById('r-sale-unit').placeholder = 'loaf';
+    document.getElementById('r-sale-baked-label').textContent = 'loaf';
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -4900,6 +4929,11 @@ ${notesHtml}
     }
     document.getElementById('r-bake-temp').value =
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
+    document.getElementById('r-sale-qty-baked').value = r.saleBakedQty || 1;
+    document.getElementById('r-sale-qty-sold').value  = r.saleSoldQty  || 1;
+    document.getElementById('r-sale-unit').value      = r.saleUnit || '';
+    document.getElementById('r-sale-unit').placeholder = unit;
+    document.getElementById('r-sale-baked-label').textContent = unit;
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5000,7 +5034,14 @@ ${notesHtml}
     const tmpRecipe = { ingredients, loafWeight };
     const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides };
+    const saleBakedQty = Math.max(1, Math.round(Number(document.getElementById('r-sale-qty-baked').value) || 1));
+    const saleSoldQty  = Math.max(1, Math.round(Number(document.getElementById('r-sale-qty-sold').value)  || 1));
+    const saleUnit     = document.getElementById('r-sale-unit').value.trim() || null;
+    const saleFields   = (saleBakedQty === 1 && saleSoldQty === 1 && !saleUnit)
+      ? {}
+      : { saleBakedQty, saleSoldQty, saleUnit: saleUnit || unit };
+
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides, ...saleFields };
 
     if (editingId) {
       const existing = recipes.find(x => x.id === editingId);
@@ -6916,6 +6957,26 @@ ${notesHtml}
   }
   function escapeAttr(s) { return escapeHtml(s); }
 
+  function getSaleRatio(r) {
+    const bakedQty  = Math.max(1, Math.round(Number(r.saleBakedQty)  || 1));
+    const soldQty   = Math.max(1, Math.round(Number(r.saleSoldQty)   || 1));
+    const saleUnit  = (r.saleUnit && r.saleUnit.trim()) || r.unit || 'unit';
+    // saleUnitsFromBaked: how many sale units come from `bakedQty` baked units
+    return { bakedQty, soldQty, saleUnit };
+  }
+  // Cost per sale unit = costPerBaked * (bakedQty / soldQty)
+  function saleUnitCost(r) {
+    const cost = computeRecipeCostPerItem(r);
+    if (cost == null) return null;
+    const { bakedQty, soldQty } = getSaleRatio(r);
+    return cost * bakedQty / soldQty;
+  }
+  // Sale units expected from a given number of baked units
+  function saleUnitsFromPlan(r, bakedCount) {
+    const { bakedQty, soldQty } = getSaleRatio(r);
+    return (bakedCount * soldQty) / bakedQty;
+  }
+
   const IRREGULAR_PLURALS = { loaf: 'loaves' };
   function pluralize(unit) {
     if (!unit) return 'items';
@@ -6926,7 +6987,12 @@ ${notesHtml}
 
   // ---- init ----
   document.getElementById('r-unit').addEventListener('input', e => {
-    document.getElementById('r-unit-label').textContent = e.target.value.trim() || 'unit';
+    const val = e.target.value.trim() || 'unit';
+    document.getElementById('r-unit-label').textContent = val;
+    document.getElementById('r-sale-baked-label').textContent = val;
+    if (!document.getElementById('r-sale-unit').value.trim()) {
+      document.getElementById('r-sale-unit').placeholder = val;
+    }
   });
   // Keep oven capacity and deck capacity in sync (3-deck oven). Editing
   // either field auto-recomputes the other.
