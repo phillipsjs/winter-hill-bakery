@@ -7505,14 +7505,25 @@ ${notesHtml}
 
     const byRecipe = recipes
       .filter(r => isInPlan(r.id) && (plan[r.id] || 0) > 0)
-      .map(r => ({
-        id: r.id,
-        name: r.name,
-        unit: r.unit || 'unit',
-        count: plan[r.id],
-        ingredients: computeIngredientWeights(r, plan[r.id]),
-        processType: getProcessType(r),
-      }));
+      .map(r => {
+        const count = plan[r.id];
+        const sumPct = (r.ingredients || []).reduce((s, i) => s + (Number(i.pct) || 0), 0);
+        const flourWeight = sumPct > 0 ? (r.loafWeight * count) / (sumPct / 100) : 0;
+        return {
+          id: r.id,
+          name: r.name,
+          unit: r.unit || 'unit',
+          count,
+          ingredients: (r.ingredients || []).map(i => ({
+            name: i.name,
+            pct: Number(i.pct) || 0,
+            grams: flourWeight * ((Number(i.pct) || 0) / 100),
+            flourType: i.flourType || '',
+            pantryId: i.pantryId || '',
+          })),
+          processType: getProcessType(r),
+        };
+      });
 
     // Aggregate ingredient totals and levain-by-process
     const levainByProcess = { loaf: 0, muffin: 0, bagel: 0 };
@@ -7616,19 +7627,59 @@ ${notesHtml}
         (proc === 'focaccia' && r.processType === 'focaccia')
       );
 
-      // Weigh-out, autolyse, and single-step mix events — show full ingredient list
-      if (/Weigh out|autolyse|Autolyse|Mix muffin|Mix bagel|Mix focaccia/.test(t)) {
-        return byProc.length ? { type: 'byRecipe', recipes: byProc } : null;
+      // Mill flour — milling-flagged flours with their computed weights
+      if (t.includes('Mill flour')) {
+        const merged = {};
+        for (const r of byProc) {
+          for (const ing of r.ingredients) {
+            if (!ing.pantryId) continue;
+            const pi = pantryItems.find(p => p.id === ing.pantryId);
+            if (!pi || !pi.requiresMilling) continue;
+            const key = normalizeIngredientKey(ing.name);
+            if (!merged[key]) merged[key] = { name: ing.name, grams: 0 };
+            merged[key].grams += ing.grams;
+          }
+        }
+        const rows = Object.values(merged);
+        return rows.length ? { type: 'simple', rows } : null;
       }
 
-      // Salt + levain addition step — show only the non-flour non-water ingredients
-      if (t.includes('Mix in salt')) {
-        const relevant = byProc.map(r => ({
+      // Weigh out — all flours (anchor + specialty) + salt + water
+      if (t.includes('Weigh out')) {
+        const filtered = byProc.map(r => ({
           ...r,
           ingredients: r.ingredients.filter(i => {
             const n = i.name.toLowerCase();
-            return !n.includes('flour') && !n.includes('water');
+            return i.flourType === 'anchor' || i.flourType === 'specialty' ||
+                   n.includes('water') || n.includes('salt');
           }),
+        })).filter(r => r.ingredients.length > 0);
+        return filtered.length ? { type: 'byRecipe', recipes: filtered } : null;
+      }
+
+      // Autolyse — anchor flours + water only
+      if (/autolyse|Autolyse/.test(t)) {
+        const filtered = byProc.map(r => ({
+          ...r,
+          ingredients: r.ingredients.filter(i =>
+            i.flourType === 'anchor' || i.name.toLowerCase().includes('water')
+          ),
+        })).filter(r => r.ingredients.length > 0);
+        return filtered.length ? { type: 'byRecipe', recipes: filtered } : null;
+      }
+
+      // Single-step mix (muffin, bagel, focaccia) — all ingredients
+      if (/Mix muffin|Mix bagel|Mix focaccia/.test(t)) {
+        return byProc.length ? { type: 'byRecipe', recipes: byProc } : null;
+      }
+
+      // Mix in salt + ripe levain — specialty flours + salt + levain (not anchor flour, not water)
+      if (t.includes('Mix in salt')) {
+        const relevant = byProc.map(r => ({
+          ...r,
+          ingredients: r.ingredients.filter(i =>
+            i.flourType !== 'anchor' && !i.name.toLowerCase().includes('water')
+          ),
         })).filter(r => r.ingredients.length > 0);
         return relevant.length ? { type: 'byRecipe', recipes: relevant } : null;
       }
