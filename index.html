@@ -4454,7 +4454,7 @@ ${notesHtml}
     if (cta) cta.style.display = '';
 
     // Per-recipe breakdown + aggregate
-    const aggregate = {}; // lowercased name -> { name, grams }
+    const aggregate = {}; // normalized name key -> { name, grams }
     const levainByProcess = { loaf: 0, muffin: 0, bagel: 0 };
     let totalDough = 0;
     const perRecipeHtml = activeRecipes.map(r => {
@@ -4471,7 +4471,7 @@ ${notesHtml}
       const fullWeights = computeIngredientWeights(r, count);
       const procBucket = isMuffin ? 'muffin' : (isBagel ? 'bagel' : 'loaf');
       for (const w of fullWeights) {
-        const key = w.name.trim().toLowerCase();
+        const key = normalizeIngredientKey(w.name);
         if (!aggregate[key]) aggregate[key] = { name: w.name.trim(), grams: 0 };
         aggregate[key].grams += w.grams;
         if (key.includes('levain')) levainByProcess[procBucket] += w.grams;
@@ -4532,6 +4532,15 @@ ${notesHtml}
 
     renderLevainPlan(aggregate, levainByProcess);
     renderDoughContainerPlan();
+  }
+
+  function normalizeIngredientKey(name) {
+    return (name || '')
+      .toLowerCase()
+      .replace(/\s*\([^)]*\)/g, '')
+      .replace(/[-–—]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function categIngredient(name) {
