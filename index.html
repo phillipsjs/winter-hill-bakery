@@ -5782,7 +5782,8 @@ ${notesHtml}
     const numContainers = containerInfo.length;
     const muffinMixBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
     const bagelMixBatches = totalBagels > 0 ? Math.ceil(totalBagels / SCHED.BAGEL_MIXER_CAPACITY) : 0;
-    const totalMixBatches = numContainers + muffinMixBatches + bagelMixBatches;
+    const focacciaMixBatches = totalFocaccia > 0 ? 1 : 0;
+    const totalMixBatches = numContainers + muffinMixBatches + bagelMixBatches + focacciaMixBatches;
 
     // Compute muffin sub-timeline up-front so the shared Build 2 levain can be
     // anchored to the earlier of the loaf mix and the muffin mix.
@@ -5861,7 +5862,7 @@ ${notesHtml}
         warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall in the 11 PM – 5 AM window (${fmtLate(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
       }
       events.sort((a, b) => a.time - b.time);
-      return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia, batches: focacciaBatches, events, warnings };
+      return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia, batches: focacciaBatches, mixBatches: 1, events, warnings };
     }
 
     const build1Pref = (document.getElementById('build1-ratio-input')?.value) || '';
@@ -6763,10 +6764,11 @@ ${notesHtml}
     const hasLoaves = result.totalLoaves > 0;
     const hasMuffins = (result.totalMuffins || 0) > 0;
     const hasBagels = (result.totalBagels || 0) > 0;
+    const hasFocacciaResult = (result.totalFocaccia || 0) > 0;
     // Columns present in the split view, in fixed order.
-    const PROC_LABELS = { loaf: 'Sourdough loaves', muffin: 'English muffins', bagel: 'Bagels' };
-    const presentCols = ['loaf', 'muffin', 'bagel'].filter(p =>
-      p === 'loaf' ? hasLoaves : p === 'muffin' ? hasMuffins : hasBagels);
+    const PROC_LABELS = { loaf: 'Sourdough loaves', muffin: 'English muffins', bagel: 'Bagels', focaccia: 'Focaccia' };
+    const presentCols = ['loaf', 'muffin', 'bagel', 'focaccia'].filter(p =>
+      p === 'loaf' ? hasLoaves : p === 'muffin' ? hasMuffins : p === 'bagel' ? hasBagels : hasFocacciaResult);
     const splitView = presentCols.length >= 2;
 
     const buildInput1El = document.getElementById('build1-ratio-input');
@@ -6818,11 +6820,14 @@ ${notesHtml}
       cpParts.push(`cold proof ${muffinCpWindow}${muffinColdProofAuto ? ' (auto)' : ''}`);
     } else if ((result.totalBagels || 0) > 0) {
       cpParts.push(`cold proof ${bagelCpWindow}${bagelColdProofAuto ? ' (auto)' : ''}`);
-    } else {
+    } else if (result.totalLoaves > 0) {
       cpParts.push(`cold proof ${loafCpWindow}${loafColdProofAuto ? ' (auto — longest fit)' : ''}`);
     }
     const coldProofMetaLabel = cpParts.join(', ');
-    html += `<p class="schedule-meta">${countLabel} · ${result.mixBatches} mix ${result.mixBatches === 1 ? 'batch' : 'batches'} · ${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'} · ${coldProofMetaLabel}</p>`;
+    const mixBatches = result.mixBatches || 0;
+    const metaParts = [`${countLabel}`, `${mixBatches} mix ${mixBatches === 1 ? 'batch' : 'batches'}`, `${result.batches} oven ${result.batches === 1 ? 'batch' : 'batches'}`];
+    if (coldProofMetaLabel) metaParts.push(coldProofMetaLabel);
+    html += `<p class="schedule-meta">${metaParts.join(' · ')}</p>`;
     if (anchoredTitles.size > 0) {
       const word = anchoredTitles.size === 1 ? 'anchor' : 'anchors';
       html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Click any time to set one.</p>`;
