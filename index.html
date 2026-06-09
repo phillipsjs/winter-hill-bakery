@@ -4674,10 +4674,12 @@ ${notesHtml}
           ).join('');
           costCell = `<td>
               <select class="prices-pantry" data-recipe-id="${rid}" data-ing-idx="${idx}"
-                onchange="updatePricesCostDisplay('${rid}')">
+                data-ing-name="${escapeAttr(ing.name)}"
+                onchange="onPricesPantryChange(this, '${rid}')">
                 <option value="">— no cost link —</option>
                 <option value="__free__"${ing.pantryId === '__free__' ? ' selected' : ''}>no cost ($0.00)</option>
                 ${pantryOptions}
+                <option value="__add_pantry__">+ Add new pantry item…</option>
               </select>
             </td>`;
         }
@@ -4792,6 +4794,18 @@ ${notesHtml}
     if (wholeLbl) wholeLbl.textContent = 'Wholesale per ' + safe;
     if (costLbl) costLbl.textContent = 'Cost per ' + safe;
     if (profitLbl) profitLbl.textContent = 'Net profit per ' + safe;
+  }
+
+  function onPricesPantryChange(sel, recipeId) {
+    if (sel.value === '__add_pantry__') {
+      sel.value = sel.dataset.prevValue || '';
+      showTab('ingredients');
+      showPantryAddForm({ suggestName: sel.dataset.ingName || '' });
+      document.getElementById('pantry-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    sel.dataset.prevValue = sel.value;
+    updatePricesCostDisplay(recipeId);
   }
 
   function updatePricesCostDisplay(recipeId) {
