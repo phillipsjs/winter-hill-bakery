@@ -799,15 +799,6 @@
         <label style="width:120px">Unit name</label>
         <input type="text" id="r-unit" placeholder="e.g. loaf, muffin, pan" />
       </div>
-      <div class="row" id="r-sale-packaging-row" style="align-items:center;gap:6px">
-        <label style="width:120px">Sale packaging</label>
-        <input type="number" id="r-sale-qty-baked" min="1" step="1" value="1" style="width:48px;flex:none" title="Baked units per sale unit" />
-        <span class="muted" id="r-sale-baked-label">loaf</span>
-        <span class="muted">→</span>
-        <input type="number" id="r-sale-qty-sold" min="1" step="1" value="1" style="width:48px;flex:none" title="Sale units per group" />
-        <input type="text" id="r-sale-unit" placeholder="loaf" style="width:90px;flex:none" title="Name of what you sell" />
-        <span class="muted" style="font-size:0.8rem">(e.g. 1 pan → 4 slices, or 6 muffins → 1 pack)</span>
-      </div>
       <div class="row">
         <label id="r-weight-label" style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
         <input type="number" id="r-weight" min="0" step="10" oninput="updateRecipeEditorCostDisplay()" />
@@ -4660,6 +4651,22 @@ ${notesHtml}
         ? `<span class="muted" style="font-size:0.8rem"> · ${bakedQty} ${escapeHtml(r.unit || 'unit')} → ${soldQty} ${saleUnitLabel}</span>`
         : '';
 
+      const packagingRow = isLevainType ? '' : `
+        <div class="row" style="align-items:center;gap:6px;margin-bottom:4px">
+          <label style="width:160px">Sale packaging</label>
+          <input type="number" id="prices-sale-baked-${rid}" min="1" step="1"
+            value="${r.saleBakedQty || 1}" style="width:48px;flex:none" title="Baked units per sale unit"
+            oninput="updatePricesCostDisplay('${rid}')" />
+          <span class="muted">${escapeHtml(r.unit || 'unit')}</span>
+          <span class="muted">→</span>
+          <input type="number" id="prices-sale-sold-${rid}" min="1" step="1"
+            value="${r.saleSoldQty || 1}" style="width:48px;flex:none" title="Sale units sold"
+            oninput="updatePricesCostDisplay('${rid}')" />
+          <input type="text" id="prices-sale-unit-${rid}"
+            value="${escapeHtml(r.saleUnit || '')}" placeholder="${escapeHtml(r.unit || 'unit')}"
+            style="width:90px;flex:none" title="Name of what you sell" />
+        </div>`;
+
       const pricingRows = isLevainType ? `
         <div class="row" style="align-items:center">
           <label style="width:160px;color:var(--muted);font-size:0.9rem">Cost per batch</label>
@@ -4713,6 +4720,7 @@ ${notesHtml}
             <thead><tr><th>Ingredient</th><th class="num">%</th><th>Cost link</th></tr></thead>
             <tbody>${ingRows}</tbody>
           </table>
+          ${packagingRow}
           ${pricingRows}
           <div id="prices-msg-${rid}" style="font-size:0.85rem;color:var(--accent);margin-top:6px"></div>
         </div>
@@ -4740,7 +4748,10 @@ ${notesHtml}
     });
     const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight, processType: recipe.processType };
     const costPerBaked = computeRecipeCostPerItem(tmpRecipe);
-    const { bakedQty, soldQty } = getSaleRatio(recipe);
+    const bakedQtyEl = document.getElementById('prices-sale-baked-' + rid);
+    const soldQtyEl  = document.getElementById('prices-sale-sold-'  + rid);
+    const bakedQty = Math.max(1, Math.round(Number(bakedQtyEl && bakedQtyEl.value) || 1));
+    const soldQty  = Math.max(1, Math.round(Number(soldQtyEl  && soldQtyEl.value)  || 1));
     const cost = costPerBaked != null ? costPerBaked * bakedQty / soldQty : null;
 
     costEl.textContent = cost != null ? '$' + cost.toFixed(2) : '—';
@@ -4790,10 +4801,20 @@ ${notesHtml}
     const msrp = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
     const wholesale = wholesaleEl && wholesaleEl.value !== '' ? Number(wholesaleEl.value) : null;
 
+    const saleBakedEl = document.getElementById('prices-sale-baked-' + rid);
+    const saleSoldEl  = document.getElementById('prices-sale-sold-'  + rid);
+    const saleUnitEl  = document.getElementById('prices-sale-unit-'  + rid);
+    const saleBakedQty = Math.max(1, Math.round(Number(saleBakedEl && saleBakedEl.value) || 1));
+    const saleSoldQty  = Math.max(1, Math.round(Number(saleSoldEl  && saleSoldEl.value)  || 1));
+    const saleUnitVal  = saleUnitEl ? saleUnitEl.value.trim() : '';
+    const saleFields = (saleBakedQty === 1 && saleSoldQty === 1 && !saleUnitVal)
+      ? { saleBakedQty: undefined, saleSoldQty: undefined, saleUnit: undefined }
+      : { saleBakedQty, saleSoldQty, saleUnit: saleUnitVal || recipe.unit };
+
     const tmpRecipe = { ingredients, loafWeight: recipe.loafWeight, processType: recipe.processType };
     const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
-    recipes[idx] = { ...recipe, ingredients, msrp, wholesalePrice: wholesale, costPerItem: costPerItem !== null ? costPerItem : undefined };
+    recipes[idx] = { ...recipe, ingredients, msrp, wholesalePrice: wholesale, costPerItem: costPerItem !== null ? costPerItem : undefined, ...saleFields };
     saveRecipes();
 
     const msgEl = document.getElementById('prices-msg-' + rid);
@@ -4886,11 +4907,6 @@ ${notesHtml}
       document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
     }
     document.getElementById('r-bake-temp').value = '';
-    document.getElementById('r-sale-qty-baked').value = 1;
-    document.getElementById('r-sale-qty-sold').value  = 1;
-    document.getElementById('r-sale-unit').value      = '';
-    document.getElementById('r-sale-unit').placeholder = 'loaf';
-    document.getElementById('r-sale-baked-label').textContent = 'loaf';
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -4929,11 +4945,6 @@ ${notesHtml}
     }
     document.getElementById('r-bake-temp').value =
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
-    document.getElementById('r-sale-qty-baked').value = r.saleBakedQty || 1;
-    document.getElementById('r-sale-qty-sold').value  = r.saleSoldQty  || 1;
-    document.getElementById('r-sale-unit').value      = r.saleUnit || '';
-    document.getElementById('r-sale-unit').placeholder = unit;
-    document.getElementById('r-sale-baked-label').textContent = unit;
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5034,14 +5045,7 @@ ${notesHtml}
     const tmpRecipe = { ingredients, loafWeight };
     const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
-    const saleBakedQty = Math.max(1, Math.round(Number(document.getElementById('r-sale-qty-baked').value) || 1));
-    const saleSoldQty  = Math.max(1, Math.round(Number(document.getElementById('r-sale-qty-sold').value)  || 1));
-    const saleUnit     = document.getElementById('r-sale-unit').value.trim() || null;
-    const saleFields   = (saleBakedQty === 1 && saleSoldQty === 1 && !saleUnit)
-      ? {}
-      : { saleBakedQty, saleSoldQty, saleUnit: saleUnit || unit };
-
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides, ...saleFields };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, ...overrides };
 
     if (editingId) {
       const existing = recipes.find(x => x.id === editingId);
@@ -6987,12 +6991,7 @@ ${notesHtml}
 
   // ---- init ----
   document.getElementById('r-unit').addEventListener('input', e => {
-    const val = e.target.value.trim() || 'unit';
-    document.getElementById('r-unit-label').textContent = val;
-    document.getElementById('r-sale-baked-label').textContent = val;
-    if (!document.getElementById('r-sale-unit').value.trim()) {
-      document.getElementById('r-sale-unit').placeholder = val;
-    }
+    document.getElementById('r-unit-label').textContent = e.target.value.trim() || 'unit';
   });
   // Keep oven capacity and deck capacity in sync (3-deck oven). Editing
   // either field auto-recomputes the other.
