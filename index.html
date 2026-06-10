@@ -899,6 +899,11 @@
         </div>
       </details>
 
+      <details id="r-equipment-settings">
+        <summary>Kitchen equipment <span class="muted" style="font-size:0.85rem">(optional preferences)</span></summary>
+        <div id="r-equipment-content" class="scheduler-overrides"></div>
+      </details>
+
       <hr class="sep" />
       <div class="row" style="justify-content: flex-end; gap: 8px">
         <button class="secondary" onclick="cancelEdit()">Cancel</button>
@@ -6037,6 +6042,8 @@ ${notesHtml}
     document.getElementById('r-recipe-settings').style.display = isLevain ? 'none' : '';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
     document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
+    const eqEl = document.getElementById('r-equipment-settings');
+    if (eqEl) eqEl.style.display = isLevain ? 'none' : '';
     const weightLabel = document.getElementById('r-weight-label');
     if (weightLabel) weightLabel.innerHTML = isLevain
       ? 'Typical yield'
@@ -6051,6 +6058,93 @@ ${notesHtml}
       setUnitLabels(unitInput.value.trim() || tmpl.unit);
       applyOverridePlaceholders(processType);
     }
+    const prefContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
+    const prefBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
+    const prefPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
+    const prefOvenEl = document.getElementById('r-pref-oven');
+    const prefOvenId = prefOvenEl ? prefOvenEl.value : '';
+    if (!isLevain) renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredOvenId: prefOvenId });
+  }
+
+  function renderRecipeEquipment(processType, prefs) {
+    const el = document.getElementById('r-equipment-content');
+    if (!el) return;
+    const prefContainers = (prefs && prefs.preferredContainerIds) || [];
+    const prefBannetons = (prefs && prefs.preferredBannetonIds) || [];
+    const prefPans = (prefs && prefs.preferredPanIds) || [];
+    const prefOven = (prefs && prefs.preferredOvenId) || '';
+    const isLoaf = processType === 'sourdough-loaf';
+    const needsPan = processType === 'sourdough-muffin' || processType === 'focaccia';
+    const relevantContainers = userContainers.filter(c =>
+      isLoaf ? (c.processTag === 'any' || c.processTag === 'loaf') : c.processTag === 'any'
+    );
+    let html = '';
+
+    html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Proofing containers</div>';
+    if (relevantContainers.length === 0) {
+      html += '<span class="muted" style="font-size:0.9rem">No containers added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'container\')">+ Add to Kitchen</button>';
+    } else {
+      html += '<div style="display:flex;flex-direction:column;gap:4px">';
+      relevantContainers.forEach(function(c) {
+        var chk = prefContainers.indexOf(c.id) >= 0 ? ' checked' : '';
+        html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem"><input type="checkbox" class="r-pref-container" value="' + escapeAttr(c.id) + '"' + chk + ' />' + escapeHtml(c.name) + ' <span class="muted" style="font-size:0.8rem">(qty ' + c.quantity + ')</span></label>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    if (isLoaf) {
+      html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Bannetons</div>';
+      if (userBannetons.length === 0) {
+        html += '<span class="muted" style="font-size:0.9rem">No bannetons added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'banneton\')">+ Add to Kitchen</button>';
+      } else {
+        html += '<div style="display:flex;flex-direction:column;gap:4px">';
+        userBannetons.forEach(function(b) {
+          var chk = prefBannetons.indexOf(b.id) >= 0 ? ' checked' : '';
+          html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem"><input type="checkbox" class="r-pref-banneton" value="' + escapeAttr(b.id) + '"' + chk + ' />' + escapeHtml(b.name) + ' <span class="muted" style="font-size:0.8rem">(qty ' + b.quantity + ')</span></label>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    if (needsPan) {
+      html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Pans</div>';
+      if (userPans.length === 0) {
+        html += '<span class="muted" style="font-size:0.9rem">No pans added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'pan\')">+ Add to Kitchen</button>';
+      } else {
+        html += '<div style="display:flex;flex-direction:column;gap:4px">';
+        userPans.forEach(function(p) {
+          var chk = prefPans.indexOf(p.id) >= 0 ? ' checked' : '';
+          html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem"><input type="checkbox" class="r-pref-pan" value="' + escapeAttr(p.id) + '"' + chk + ' />' + escapeHtml(p.name) + ' <span class="muted" style="font-size:0.8rem">(qty ' + p.quantity + ')</span></label>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Oven</div>';
+    if (userOvens.length === 0) {
+      html += '<span class="muted" style="font-size:0.9rem">No ovens added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'oven\')">+ Add to Kitchen</button>';
+    } else {
+      html += '<select id="r-pref-oven" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>';
+      userOvens.forEach(function(o) {
+        var sel = o.id === prefOven ? ' selected' : '';
+        html += '<option value="' + escapeAttr(o.id) + '"' + sel + '>' + escapeHtml(o.name) + '</option>';
+      });
+      html += '</select>';
+    }
+    html += '</div>';
+
+    el.innerHTML = html;
+  }
+
+  function openKitchenEquipmentForm(type) {
+    showTab('ingredients');
+    if (type === 'container') { showContainerAddForm(); document.getElementById('container-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else if (type === 'oven') { showOvenAddForm(); }
+    else if (type === 'banneton') { showBannetonAddForm(); document.getElementById('banneton-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else if (type === 'pan') { showPanAddForm(); document.getElementById('pan-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
 
   function toggleTemplatePanel() {
@@ -6120,6 +6214,9 @@ ${notesHtml}
     document.getElementById('r-bake-temp').value = '';
     document.getElementById('r-leavening').value = 'sourdough';
     document.getElementById('r-leavening-row').style.display = '';
+    const newEqEl = document.getElementById('r-equipment-settings');
+    if (newEqEl) newEqEl.style.display = '';
+    renderRecipeEquipment('sourdough-loaf', {});
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -6160,6 +6257,14 @@ ${notesHtml}
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
     document.getElementById('r-leavening').value = r.leavening || 'sourdough';
     document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
+    const editEqEl = document.getElementById('r-equipment-settings');
+    if (editEqEl) editEqEl.style.display = isLevain ? 'none' : '';
+    if (!isLevain) renderRecipeEquipment(processType, {
+      preferredContainerIds: r.preferredContainerIds || [],
+      preferredBannetonIds: r.preferredBannetonIds || [],
+      preferredPanIds: r.preferredPanIds || [],
+      preferredOvenId: r.preferredOvenId || null,
+    });
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -6262,7 +6367,12 @@ ${notesHtml}
 
     const leavening = processType === 'levain' ? undefined
       : (document.getElementById('r-leavening').value || 'sourdough');
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, ...overrides };
+    const preferredContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
+    const preferredBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
+    const preferredPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
+    const prefOvenEl = document.getElementById('r-pref-oven');
+    const preferredOvenId = prefOvenEl ? (prefOvenEl.value || null) : null;
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredOvenId, ...overrides };
 
     if (editingId) {
       const existing = recipes.find(x => x.id === editingId);
