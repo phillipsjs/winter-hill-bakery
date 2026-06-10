@@ -897,15 +897,28 @@
         <label style="width:120px">Unit name</label>
         <input type="text" id="r-unit" placeholder="e.g. loaf, muffin, pan" />
       </div>
-      <div class="row">
+      <div class="row" id="r-weight-row">
         <label id="r-weight-label" style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
         <input type="number" id="r-weight" min="0" step="10" oninput="updateRecipeEditorCostDisplay()" />
         <span class="muted">grams</span>
       </div>
+      <div class="row" id="r-batch-yield-row" style="display:none">
+        <label style="width:120px">Batch makes</label>
+        <input type="number" id="r-batch-yield" min="1" step="1" value="1" style="flex:none;width:70px" oninput="updateFlourSummary()" />
+        <span class="muted"><span id="r-unit-label-yield">loaf</span>(s) from the amounts below</span>
+      </div>
 
       <hr class="sep" />
-      <h2 style="font-size:1rem; margin:6px 0">Ingredients (baker's %)</h2>
-      <p class="muted" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally.</p>
+      <div class="row" style="justify-content:space-between;align-items:center;margin:6px 0">
+        <h2 style="font-size:1rem;margin:0">Ingredients</h2>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="muted" style="font-size:0.82rem">Enter as:</span>
+          <button type="button" id="r-mode-percent-btn" class="tiny" onclick="setRecipeEntryMode('percent')">Baker's %</button>
+          <button type="button" id="r-mode-grams-btn" class="secondary tiny" onclick="setRecipeEntryMode('grams')">Grams</button>
+        </div>
+      </div>
+      <p class="muted" id="r-mode-hint-percent" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally.</p>
+      <p class="muted" id="r-mode-hint-grams" style="margin-top:0;display:none">Enter each ingredient's weight in grams for the whole batch, and set how many units the batch makes above. Mark which ingredients are flour. We'll convert to baker's percentages on save.</p>
       <div id="r-ingredients"></div>
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
       <div id="r-flour-summary" class="muted" style="font-size:0.85rem;margin-top:8px"></div>
@@ -5008,6 +5021,7 @@ ${notesHtml}
   let recipes = loadRecipes();
   let plan = loadPlan();      // { recipeId: count }
   let editingId = null;       // null = not editing
+  let recipeEntryMode = 'percent'; // 'percent' | 'grams' — how ingredient amounts are entered
 
   function ensureLevainFirst(list) {
     const seed = SEED_RECIPES.find(r => r.id === 'seed-levain');
@@ -6446,6 +6460,8 @@ ${notesHtml}
 
   function setUnitLabels(unit) {
     document.getElementById('r-unit-label').textContent = unit;
+    const yieldLabel = document.getElementById('r-unit-label-yield');
+    if (yieldLabel) yieldLabel.textContent = unit;
     document.querySelectorAll('.r-unit-label2,.r-unit-label2b,.r-unit-label2c,.r-unit-label2d,.r-unit-label3').forEach(el => el.textContent = unit);
   }
 
@@ -6673,6 +6689,7 @@ ${notesHtml}
 
   function startNewRecipe() {
     editingId = null;
+    resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'New recipe';
     document.getElementById('r-name').value = '';
     document.getElementById('r-process-type').value = 'sourdough-loaf';
@@ -6707,6 +6724,7 @@ ${notesHtml}
     const r = recipes.find(x => x.id === id);
     if (!r) return;
     editingId = id;
+    resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'Edit recipe';
     document.getElementById('r-name').value = r.name;
     const processType = getProcessType(r);
@@ -6753,9 +6771,10 @@ ${notesHtml}
     const name = prefill ? prefill.name : '';
     const pct = prefill && prefill.pct !== undefined ? prefill.pct : '';
     const flourType = prefill ? (prefill.flourType || detectFlourType(name)) : '';
+    const amountPlaceholder = recipeEntryMode === 'grams' ? 'g' : '%';
     row.innerHTML = `
       <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
-      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="%" value="${pct}" oninput="onIngredientPctInput(this)" />
+      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
       <select class="ing-flour-type" onchange="onFlourTypeChange(this)" title="Flour role">
         <option value=""${flourType === '' ? ' selected' : ''}>— not flour —</option>
         <option value="anchor"${flourType === 'anchor' ? ' selected' : ''}>Anchor flour</option>
@@ -6783,6 +6802,17 @@ ${notesHtml}
   }
 
   function saveRecipe() {
+    // If the user entered amounts in grams, convert to baker's % (and derive weight per unit) first.
+    if (recipeEntryMode === 'grams') {
+      const gramsRows = readEditorRows();
+      const flourG = gramsRows.filter(r => r.flourType).reduce((s, r) => s + r.amount, 0);
+      if (flourG <= 0) {
+        alert('In grams mode, mark at least one ingredient as flour so the amounts can be converted to baker’s percentages.');
+        return;
+      }
+      setRecipeEntryMode('percent'); // mutates the rows to % and sets weight-per-unit
+    }
+
     const name = document.getElementById('r-name').value.trim();
     const processType = document.getElementById('r-process-type').value || 'sourdough-loaf';
     const template = PROCESS_TEMPLATES[processType] || PROCESS_TEMPLATES['sourdough-loaf'];
@@ -9142,19 +9172,49 @@ ${notesHtml}
     updateFlourSummary();
   }
 
-  // Live readout under the ingredient list: do the flours sum to 100%, and what's the hydration?
+  // Read the editor's ingredient rows as {name, amount, flourType, isLiquid}.
+  function readEditorRows() {
+    return Array.from(document.querySelectorAll('#r-ingredients .ingredient-edit-row')).map(function(row) {
+      const name = row.querySelector('.ing-name').value.trim();
+      return {
+        row,
+        name,
+        amount: Number(row.querySelector('.ing-pct').value) || 0,
+        flourType: row.querySelector('.ing-flour-type').value,
+        isLiquid: /water|milk|buttermilk/.test(name.toLowerCase()),
+      };
+    });
+  }
+
+  // Live readout under the ingredient list. In percent mode: do flours sum to 100% + hydration.
+  // In grams mode: flour weight, total dough, per-unit weight, hydration.
   function updateFlourSummary() {
     const el = document.getElementById('r-flour-summary');
     if (!el) return;
-    const rows = document.querySelectorAll('#r-ingredients .ingredient-edit-row');
-    let flourTotal = 0, liquidTotal = 0;
-    rows.forEach(function(row) {
-      const name = row.querySelector('.ing-name').value.trim().toLowerCase();
-      const type = row.querySelector('.ing-flour-type').value;
-      const pct = Number(row.querySelector('.ing-pct').value) || 0;
-      if (type === 'anchor' || type === 'specialty') flourTotal += pct;
-      if (/water|milk|buttermilk/.test(name)) liquidTotal += pct;
+    const rows = readEditorRows();
+    let flourTotal = 0, liquidTotal = 0, grandTotal = 0;
+    rows.forEach(function(r) {
+      grandTotal += r.amount;
+      if (r.flourType) flourTotal += r.amount;
+      if (r.isLiquid) liquidTotal += r.amount;
     });
+
+    if (recipeEntryMode === 'grams') {
+      if (grandTotal === 0) { el.innerHTML = ''; return; }
+      const unit = (document.getElementById('r-unit').value || 'unit').trim() || 'unit';
+      const yld = Math.max(1, Math.round(Number(document.getElementById('r-batch-yield').value) || 1));
+      let s = '';
+      if (flourTotal === 0) {
+        s = '<span style="color:var(--danger)">Mark at least one ingredient as flour so we can convert to baker\'s %.</span>';
+      } else {
+        const perUnit = Math.round(grandTotal / yld);
+        s = 'Flour: <strong>' + Math.round(flourTotal) + ' g</strong> · Total dough: <strong>' + Math.round(grandTotal) + ' g</strong> · Per ' + escapeHtml(unit) + ': <strong>' + perUnit + ' g</strong>';
+        if (liquidTotal > 0) s += ' · Hydration: ' + Math.round((liquidTotal / flourTotal) * 100) + '%';
+      }
+      el.innerHTML = s;
+      return;
+    }
+
     if (flourTotal === 0) { el.innerHTML = ''; return; }
     const flourRounded = Math.round(flourTotal * 10) / 10;
     const off = Math.abs(flourTotal - 100) > 0.5;
@@ -9164,7 +9224,72 @@ ${notesHtml}
     el.innerHTML = s;
   }
 
+  // Set ingredient-amount input placeholders to match the current entry mode.
+  function applyEntryModePlaceholders() {
+    document.querySelectorAll('#r-ingredients .ing-pct').forEach(function(inp) {
+      inp.placeholder = recipeEntryMode === 'grams' ? 'g' : '%';
+    });
+  }
+
+  // Force the editor back to percent mode with NO conversion — used when (re)loading a recipe,
+  // whose ingredients are already stored as baker's %.
+  function resetRecipeEntryModeToPercent() {
+    recipeEntryMode = 'percent';
+    const yieldEl = document.getElementById('r-batch-yield');
+    if (yieldEl) yieldEl.value = 1;
+    document.getElementById('r-weight-row').style.display = '';
+    document.getElementById('r-batch-yield-row').style.display = 'none';
+    document.getElementById('r-mode-hint-percent').style.display = '';
+    document.getElementById('r-mode-hint-grams').style.display = 'none';
+    document.getElementById('r-mode-percent-btn').className = 'tiny';
+    document.getElementById('r-mode-grams-btn').className = 'secondary tiny';
+  }
+
+  // Switch the ingredient editor between baker's-% and grams entry, converting current values.
+  function setRecipeEntryMode(mode) {
+    if (mode !== 'percent' && mode !== 'grams') return;
+    if (mode === recipeEntryMode) return;
+    const rows = readEditorRows();
+    const yld = Math.max(1, Math.round(Number(document.getElementById('r-batch-yield').value) || 1));
+
+    if (mode === 'grams') {
+      // Convert baker's % → grams for the whole batch.
+      const sumAllPct = rows.reduce((s, r) => s + r.amount, 0);
+      const loafWeight = Number(document.getElementById('r-weight').value) || 0;
+      if (sumAllPct > 0 && loafWeight > 0) {
+        const totalFlourG = (loafWeight * yld) / (sumAllPct / 100);
+        rows.forEach(function(r) {
+          r.row.querySelector('.ing-pct').value = Math.round(r.amount / 100 * totalFlourG);
+        });
+      }
+    } else {
+      // Convert grams → baker's % (flour = 100%) and derive weight per unit.
+      const flourG = rows.filter(r => r.flourType).reduce((s, r) => s + r.amount, 0);
+      const totalG = rows.reduce((s, r) => s + r.amount, 0);
+      if (flourG > 0) {
+        rows.forEach(function(r) {
+          r.row.querySelector('.ing-pct').value = round2(r.amount / flourG * 100);
+        });
+        document.getElementById('r-weight').value = Math.round(totalG / yld);
+      }
+    }
+
+    recipeEntryMode = mode;
+    // Toggle UI chrome.
+    document.getElementById('r-weight-row').style.display = mode === 'grams' ? 'none' : '';
+    document.getElementById('r-batch-yield-row').style.display = mode === 'grams' ? '' : 'none';
+    document.getElementById('r-mode-hint-percent').style.display = mode === 'grams' ? 'none' : '';
+    document.getElementById('r-mode-hint-grams').style.display = mode === 'grams' ? '' : 'none';
+    const pctBtn = document.getElementById('r-mode-percent-btn');
+    const gBtn = document.getElementById('r-mode-grams-btn');
+    pctBtn.className = mode === 'percent' ? 'tiny' : 'secondary tiny';
+    gBtn.className = mode === 'grams' ? 'tiny' : 'secondary tiny';
+    applyEntryModePlaceholders();
+    updateFlourSummary();
+  }
+
   function rebalanceAnchors() {
+    if (recipeEntryMode === 'grams') return; // grams are absolute — never auto-rescale
     const rows = Array.from(document.querySelectorAll('#r-ingredients .ingredient-edit-row'));
     const anchors = [];
     let specialtySum = 0;
