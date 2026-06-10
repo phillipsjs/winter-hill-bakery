@@ -990,7 +990,7 @@
         <summary>
           <span class="plan-card-toggle">▶</span>
           <h2>Kitchen equipment</h2>
-          <span class="muted" style="font-size:0.85rem;font-weight:normal">Proofing containers, ovens, bannetons, and pans</span>
+          <span class="muted" style="font-size:0.85rem;font-weight:normal">Proofing containers, ovens, bannetons, pans, and mixers</span>
         </summary>
 
         <div style="margin-top:12px">
@@ -1033,6 +1033,17 @@
           </div>
           <p class="muted" style="margin:0 0 4px;font-size:0.88rem">Focaccia and muffin recipes need pans. Enter yours so the app can check you have enough for a given bake.</p>
           <div id="pan-list" style="margin-top:4px"></div>
+        </div>
+
+        <hr class="sep" style="margin:16px 0">
+
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <h3 style="margin:0;font-size:1rem">Mixers</h3>
+            <button onclick="showMixerAddForm();event.stopPropagation()" class="secondary tiny">+ Add mixer</button>
+          </div>
+          <p class="muted" style="margin:0 0 4px;font-size:0.88rem">Add your stand or spiral mixer and specify how many units of each recipe it can handle per batch.</p>
+          <div id="mixer-list" style="margin-top:4px"></div>
         </div>
 
       </details>
@@ -1150,6 +1161,25 @@
         <button onclick="savePan()">Save</button>
       </div>
       <p id="pan-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
+    </div>
+
+    <div id="mixer-add-form" class="card" style="display:none">
+      <h3 style="margin:0 0 12px" id="mixer-add-form-title">Add mixer</h3>
+      <div class="row"><label style="width:160px">Name</label><input type="text" id="mixer-name" placeholder='e.g. KitchenAid 7qt' /></div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">Quantity</label>
+        <input type="number" id="mixer-qty" min="1" step="1" style="width:80px;flex:none" placeholder="1" />
+      </div>
+      <div class="row" style="margin-top:8px;align-items:flex-start">
+        <label style="width:160px;padding-top:2px">For recipes</label>
+        <div id="mixer-recipe-checks" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <p class="settings-hint" style="margin-left:160px">Tick the recipes this mixer is used for and enter how many units fit per batch. Mixers with no recipes assigned won't appear in recipe preferences.</p>
+      <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="secondary" onclick="hideMixerAddForm()">Cancel</button>
+        <button onclick="saveMixer()">Save</button>
+      </div>
+      <p id="mixer-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
     </div>
 
   </section>
@@ -2800,7 +2830,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, containers: userContainers, customCategories: userCategories };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, containers: userContainers, customCategories: userCategories };
   }
 
   function applyRemoteSettings(settings) {
@@ -2826,6 +2856,10 @@ ${notesHtml}
     if (Array.isArray(settings.pans)) {
       userPans = settings.pans;
       savePansLocally();
+    }
+    if (Array.isArray(settings.mixers)) {
+      userMixers = settings.mixers;
+      saveMixersLocally();
     }
     if (Array.isArray(settings.containers)) {
       userContainers = settings.containers;
@@ -4417,6 +4451,125 @@ ${notesHtml}
     renderPanPlan();
     pushSettingsToGist().catch(() => {});
   }
+
+  // ── Mixers ──────────────────────────────────────────────────────────────
+  const KITCHEN_MIXERS_KEY = 'whb-kitchen-mixers-v1';
+  let userMixers = loadMixersLocally();
+  function loadMixersLocally() {
+    try { const r = localStorage.getItem(KITCHEN_MIXERS_KEY); if (!r) return []; return JSON.parse(r); } catch(e) { return []; }
+  }
+  function saveMixersLocally() { localStorage.setItem(KITCHEN_MIXERS_KEY, JSON.stringify(userMixers)); }
+  function renderMixers() {
+    const listEl = document.getElementById('mixer-list');
+    if (!listEl) return;
+    if (userMixers.length === 0) {
+      listEl.innerHTML = '<p class="muted" style="margin:4px 0;font-size:0.88rem">No mixers added yet.</p>';
+      return;
+    }
+    listEl.innerHTML = userMixers.map(function(m) {
+      const caps = m.recipeCapacities || {};
+      const entries = Object.entries(caps);
+      const capacityDesc = entries.length === 0 ? 'not assigned'
+        : entries.map(function(e) {
+            const rec = recipes.find(function(r) { return r.id === e[0]; });
+            return e[1] + ' \xd7 ' + (rec ? escapeHtml(rec.name) : e[0]);
+          }).join(' \xb7 ');
+      return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="flex:1;font-weight:500">' + escapeHtml(m.name) + '</span>'
+        + '<span class="muted" style="font-size:0.88rem">qty ' + m.quantity + '</span>'
+        + '<span class="muted" style="font-size:0.82rem">' + capacityDesc + '</span>'
+        + '<button class="secondary tiny" onclick="showMixerAddForm(\'' + m.id + '\')">Edit</button>'
+        + '<button class="secondary tiny" onclick="removeMixer(\'' + m.id + '\')">Remove</button>'
+        + '</div>';
+    }).join('');
+  }
+  function onMixerRecipeCheck(checkbox) {
+    const row = checkbox.closest('.mixer-recipe-row');
+    const capInput = row.querySelector('.mixer-cap-input');
+    const capLabel = row.querySelector('.mixer-cap-label');
+    capInput.style.display = checkbox.checked ? '' : 'none';
+    capLabel.style.display = checkbox.checked ? '' : 'none';
+  }
+  function showMixerAddForm(editId) {
+    const form = document.getElementById('mixer-add-form');
+    const titleEl = document.getElementById('mixer-add-form-title');
+    const checksEl = document.getElementById('mixer-recipe-checks');
+    document.getElementById('mixer-add-msg').textContent = '';
+    const allRecipes = recipes.filter(function(r) { return getProcessType(r) !== 'levain'; });
+    let recipeCapacities = {};
+    if (editId && typeof editId === 'string') {
+      const item = userMixers.find(function(m) { return m.id === editId; });
+      if (item) {
+        document.getElementById('mixer-name').value = item.name;
+        document.getElementById('mixer-qty').value = item.quantity;
+        recipeCapacities = item.recipeCapacities || {};
+        titleEl.textContent = 'Edit mixer';
+        form.dataset.editId = editId;
+      }
+    } else {
+      document.getElementById('mixer-name').value = '';
+      document.getElementById('mixer-qty').value = '';
+      titleEl.textContent = 'Add mixer';
+      form.dataset.editId = '';
+    }
+    checksEl.innerHTML = allRecipes.length === 0
+      ? '<span class="muted" style="font-size:0.88rem">No recipes yet.</span>'
+      : allRecipes.map(function(r) {
+          const isSelected = recipeCapacities[r.id] != null;
+          const cap = isSelected ? recipeCapacities[r.id] : '';
+          return '<div class="mixer-recipe-row" style="display:flex;align-items:center;gap:8px">'
+            + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;min-width:190px;font-size:0.9rem">'
+            + '<input type="checkbox" value="' + escapeAttr(r.id) + '" onchange="onMixerRecipeCheck(this)" ' + (isSelected ? 'checked' : '') + ' />'
+            + escapeHtml(r.name)
+            + '</label>'
+            + '<input type="number" class="mixer-cap-input" min="1" step="1" style="width:65px;flex:none' + (isSelected ? '' : ';display:none') + '" placeholder="1" value="' + escapeAttr(String(cap)) + '" />'
+            + '<span class="muted mixer-cap-label" style="font-size:0.85rem' + (isSelected ? '' : ';display:none') + '">per batch</span>'
+            + '</div>';
+        }).join('');
+    form.style.display = '';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function hideMixerAddForm() {
+    document.getElementById('mixer-add-form').style.display = 'none';
+    document.getElementById('mixer-add-form').dataset.editId = '';
+  }
+  function saveMixer() {
+    const name = document.getElementById('mixer-name').value.trim();
+    const qty = parseInt(document.getElementById('mixer-qty').value, 10);
+    const msgEl = document.getElementById('mixer-add-msg');
+    if (!name) { msgEl.textContent = 'Name is required.'; return; }
+    if (!Number.isFinite(qty) || qty < 1) { msgEl.textContent = 'Enter a valid quantity (at least 1).'; return; }
+    const recipeCapacities = {};
+    let capError = false;
+    document.querySelectorAll('#mixer-recipe-checks .mixer-recipe-row').forEach(function(row) {
+      const cb = row.querySelector('input[type=checkbox]');
+      if (!cb.checked) return;
+      const cap = parseInt(row.querySelector('.mixer-cap-input').value, 10);
+      if (!Number.isFinite(cap) || cap < 1) { capError = true; return; }
+      recipeCapacities[cb.value] = cap;
+    });
+    if (capError) { msgEl.textContent = 'Enter a valid capacity for each selected recipe (at least 1).'; return; }
+    const editId = document.getElementById('mixer-add-form').dataset.editId;
+    const newItem = { id: editId || ('mixer-' + Math.random().toString(36).slice(2, 10)), name, quantity: qty, recipeCapacities };
+    if (editId) {
+      const idx = userMixers.findIndex(function(m) { return m.id === editId; });
+      if (idx >= 0) userMixers[idx] = newItem; else userMixers.push(newItem);
+    } else {
+      userMixers.push(newItem);
+    }
+    saveMixersLocally();
+    hideMixerAddForm();
+    renderMixers();
+    pushSettingsToGist().catch(function() {});
+  }
+  function removeMixer(id) {
+    userMixers = userMixers.filter(function(m) { return m.id !== id; });
+    saveMixersLocally();
+    renderMixers();
+    pushSettingsToGist().catch(function() {});
+  }
+  // ── end Mixers ───────────────────────────────────────────────────────────
+
   function renderPanPlan() {
     const card = document.getElementById('pan-card');
     const out = document.getElementById('pan-output');
@@ -4852,7 +5005,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderKitchenWindows(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderKitchenWindows(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -6089,12 +6242,21 @@ ${notesHtml}
     capLabel.style.display = checkbox.checked ? '' : 'none';
   }
 
+  function onRecipeMixerCheck(checkbox) {
+    const row = checkbox.closest('.r-recipe-mixer-row');
+    const capInput = row.querySelector('.r-mixer-cap-input');
+    const capLabel = row.querySelector('.r-mixer-cap-label');
+    capInput.style.display = checkbox.checked ? '' : 'none';
+    capLabel.style.display = checkbox.checked ? '' : 'none';
+  }
+
   function renderRecipeEquipment(processType, prefs) {
     const el = document.getElementById('r-equipment-content');
     if (!el) return;
     const prefContainers = (prefs && prefs.preferredContainerIds) || [];
     const prefBannetons = (prefs && prefs.preferredBannetonIds) || [];
     const prefPans = (prefs && prefs.preferredPanIds) || [];
+    const prefMixers = (prefs && prefs.preferredMixerIds) || [];
     const prefOven = (prefs && prefs.preferredOvenId) || '';
     const isLoaf = processType === 'sourdough-loaf';
     const isLevain = processType === 'levain';
@@ -6161,6 +6323,35 @@ ${notesHtml}
     }
 
     if (!isLevain) {
+      const relevantMixers = userMixers.filter(function(m) { return m.recipeCapacities && Object.keys(m.recipeCapacities).length > 0; });
+      html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Mixer</div>';
+      if (userMixers.length === 0) {
+        html += '<span class="muted" style="font-size:0.9rem">No mixers added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'mixer\')">+ Add to Kitchen</button>';
+      } else if (relevantMixers.length === 0) {
+        html += '<span class="muted" style="font-size:0.9rem">No mixer capacities set for any recipe yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'mixer\')">Set up in Kitchen</button>';
+      } else {
+        html += '<div style="display:flex;flex-direction:column;gap:6px">';
+        relevantMixers.forEach(function(m) {
+          var caps = m.recipeCapacities || {};
+          var isChecked = prefMixers.indexOf(m.id) >= 0 || (editingId && editingId in caps);
+          var cap = (editingId && caps[editingId] != null) ? caps[editingId] : '';
+          var chk = isChecked ? ' checked' : '';
+          var hideStyle = isChecked ? '' : ';display:none';
+          html += '<div class="r-recipe-mixer-row" style="display:flex;align-items:center;gap:8px">'
+            + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem;min-width:180px">'
+            + '<input type="checkbox" class="r-pref-mixer" value="' + escapeAttr(m.id) + '"' + chk + ' onchange="onRecipeMixerCheck(this)" />'
+            + escapeHtml(m.name) + ' <span class="muted" style="font-size:0.8rem">(qty ' + m.quantity + ')</span>'
+            + '</label>'
+            + '<input type="number" class="r-mixer-cap-input" min="1" step="1" style="width:65px;flex:none' + hideStyle + '" placeholder="1" value="' + escapeAttr(String(cap)) + '" />'
+            + '<span class="muted r-mixer-cap-label" style="font-size:0.85rem' + hideStyle + '">per batch</span>'
+            + '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    if (!isLevain) {
       html += '<div><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Oven</div>';
       if (userOvens.length === 0) {
         html += '<span class="muted" style="font-size:0.9rem">No ovens added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'oven\')">+ Add to Kitchen</button>';
@@ -6184,6 +6375,7 @@ ${notesHtml}
     else if (type === 'oven') { showOvenAddForm(); }
     else if (type === 'banneton') { showBannetonAddForm(); document.getElementById('banneton-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else if (type === 'pan') { showPanAddForm(); document.getElementById('pan-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else if (type === 'mixer') { showMixerAddForm(); document.getElementById('mixer-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
 
   function toggleTemplatePanel() {
@@ -6300,6 +6492,7 @@ ${notesHtml}
       preferredContainerIds: r.preferredContainerIds || [],
       preferredBannetonIds: r.preferredBannetonIds || [],
       preferredPanIds: r.preferredPanIds || [],
+      preferredMixerIds: r.preferredMixerIds || [],
       preferredOvenId: r.preferredOvenId || null,
     });
     applyOverridePlaceholders(processType);
@@ -6407,9 +6600,10 @@ ${notesHtml}
     const preferredContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
     const preferredBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
     const preferredPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
+    const preferredMixerIds = Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(function(e) { return e.value; });
     const prefOvenEl = document.getElementById('r-pref-oven');
     const preferredOvenId = prefOvenEl ? (prefOvenEl.value || null) : null;
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredOvenId, ...overrides };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ...overrides };
 
     let recipeId;
     if (editingId) {
@@ -6443,6 +6637,27 @@ ${notesHtml}
         }
       });
       if (pansChanged) savePansLocally();
+    }
+
+    // Sync mixer capacities back into userMixers
+    const mixerRows = document.querySelectorAll('.r-recipe-mixer-row');
+    if (mixerRows.length > 0) {
+      let mixersChanged = false;
+      mixerRows.forEach(function(row) {
+        const cb = row.querySelector('.r-pref-mixer');
+        if (!cb) return;
+        const mixer = userMixers.find(function(m) { return m.id === cb.value; });
+        if (!mixer) return;
+        const caps = mixer.recipeCapacities || {};
+        if (cb.checked) {
+          const capRaw = parseInt(row.querySelector('.r-mixer-cap-input').value, 10);
+          const cap = (Number.isFinite(capRaw) && capRaw > 0) ? capRaw : 1;
+          if (caps[recipeId] !== cap) { caps[recipeId] = cap; mixer.recipeCapacities = caps; mixersChanged = true; }
+        } else {
+          if (recipeId in caps) { delete caps[recipeId]; mixer.recipeCapacities = caps; mixersChanged = true; }
+        }
+      });
+      if (mixersChanged) saveMixersLocally();
     }
 
     saveRecipes();
