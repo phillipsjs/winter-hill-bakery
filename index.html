@@ -380,6 +380,8 @@
   .schedule-inputs-grid.cols-2 { grid-template-columns: 1fr 1fr; }
   .schedule-inputs-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
   .schedule-inputs-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .schedule-inputs-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
+  .schedule-inputs-grid.cols-6 { grid-template-columns: repeat(6, 1fr); }
   .schedule-input-col-header {
     font-weight: 600;
     font-size: 0.8rem;
@@ -399,7 +401,9 @@
     .schedule-inputs-grid,
     .schedule-inputs-grid.cols-2,
     .schedule-inputs-grid.cols-3,
-    .schedule-inputs-grid.cols-4 { grid-template-columns: 1fr; }
+    .schedule-inputs-grid.cols-4,
+    .schedule-inputs-grid.cols-5,
+    .schedule-inputs-grid.cols-6 { grid-template-columns: 1fr; }
   }
   .schedule-day { margin-bottom: 16px; }
   .schedule-day:last-child { margin-bottom: 0; }
@@ -1453,6 +1457,42 @@
             </select>
           </div>
         </div>
+
+        <div class="schedule-input-col" id="schedule-input-simple-col">
+          <div class="schedule-input-col-header">Other / simple bake</div>
+          <div class="row" id="deadline-simple-row" style="align-items: center; gap: 10px;">
+            <label>Deadline:</label>
+            <input type="datetime-local" id="deadline-simple-input" />
+          </div>
+          <div class="row" id="bake-time-simple-row" style="align-items: center; gap: 10px;">
+            <label>Bake time:</label>
+            <select id="bake-time-simple-input" class="settings-select">
+              <option value="">— any (use deadline) —</option>
+              <option value="morning">Morning (6 AM – 11 AM)</option>
+              <option value="lunch">Lunch (11 AM – 2 PM)</option>
+              <option value="afternoon">Afternoon (2 PM – 6 PM)</option>
+              <option value="evening">Evening (6 PM – 10 PM)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="schedule-input-col" id="schedule-input-enriched-col">
+          <div class="schedule-input-col-header">Enriched yeast dough</div>
+          <div class="row" id="deadline-enriched-row" style="align-items: center; gap: 10px;">
+            <label>Deadline:</label>
+            <input type="datetime-local" id="deadline-enriched-input" />
+          </div>
+          <div class="row" id="bake-time-enriched-row" style="align-items: center; gap: 10px;">
+            <label>Bake time:</label>
+            <select id="bake-time-enriched-input" class="settings-select">
+              <option value="">— any (use deadline) —</option>
+              <option value="morning">Morning (6 AM – 11 AM)</option>
+              <option value="lunch">Lunch (11 AM – 2 PM)</option>
+              <option value="afternoon">Afternoon (2 PM – 6 PM)</option>
+              <option value="evening">Evening (6 PM – 10 PM)</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <hr class="sep" />
@@ -1846,6 +1886,10 @@
   const BAGEL_BATCHSIZE_KEY = 'cottage-bakery-batchsize-bagel-v1';
   const FOCACCIA_DEADLINE_KEY = 'cottage-bakery-deadline-focaccia-v1';
   const FOCACCIA_BAKETIME_KEY = 'cottage-bakery-baketime-focaccia-v1';
+  const SIMPLE_DEADLINE_KEY = 'whb-deadline-simple-v1';
+  const SIMPLE_BAKETIME_KEY = 'whb-baketime-simple-v1';
+  const ENRICHED_DEADLINE_KEY = 'whb-deadline-enriched-v1';
+  const ENRICHED_BAKETIME_KEY = 'whb-baketime-enriched-v1';
   const QUIET_START_KEY = 'cottage-bakery-quiet-start-v1';
   const QUIET_END_KEY = 'cottage-bakery-quiet-end-v1';
   const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';       // legacy: stored closed/quiet windows
@@ -8681,18 +8725,24 @@ ${notesHtml}
     const hasMuffin = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'sourdough-muffin');
     const hasBagel = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'bagel');
     const hasFocaccia = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'focaccia');
+    const hasSimple = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'simple');
+    const hasEnriched = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'enriched');
     const loafCol = document.getElementById('schedule-input-loaf-col');
     const muffinCol = document.getElementById('schedule-input-muffin-col');
     const bagelCol = document.getElementById('schedule-input-bagel-col');
     const focacciaCol = document.getElementById('schedule-input-focaccia-col');
+    const simpleCol = document.getElementById('schedule-input-simple-col');
+    const enrichedCol = document.getElementById('schedule-input-enriched-col');
     if (loafCol) loafCol.style.display = hasLoaf ? '' : 'none';
     if (muffinCol) muffinCol.style.display = hasMuffin ? '' : 'none';
     if (bagelCol) bagelCol.style.display = hasBagel ? '' : 'none';
     if (focacciaCol) focacciaCol.style.display = hasFocaccia ? '' : 'none';
+    if (simpleCol) simpleCol.style.display = hasSimple ? '' : 'none';
+    if (enrichedCol) enrichedCol.style.display = hasEnriched ? '' : 'none';
     const grid = document.getElementById('schedule-inputs-grid');
     if (grid) {
-      const n = (hasLoaf ? 1 : 0) + (hasMuffin ? 1 : 0) + (hasBagel ? 1 : 0) + (hasFocaccia ? 1 : 0);
-      grid.classList.remove('single-col', 'cols-1', 'cols-2', 'cols-3', 'cols-4');
+      const n = (hasLoaf ? 1 : 0) + (hasMuffin ? 1 : 0) + (hasBagel ? 1 : 0) + (hasFocaccia ? 1 : 0) + (hasSimple ? 1 : 0) + (hasEnriched ? 1 : 0);
+      grid.classList.remove('single-col', 'cols-1', 'cols-2', 'cols-3', 'cols-4', 'cols-5', 'cols-6');
       grid.classList.add('cols-' + Math.max(1, n));
     }
   }
@@ -9871,6 +9921,31 @@ ${notesHtml}
     localStorage.setItem(FOCACCIA_BAKETIME_KEY, focacciaBaketimeInput.value);
     renderSchedule();
     renderTotals();
+  });
+  // Simple & enriched deadline / bake-time persistence.
+  [
+    { dl: 'deadline-simple-input', dlKey: SIMPLE_DEADLINE_KEY, bt: 'bake-time-simple-input', btKey: SIMPLE_BAKETIME_KEY },
+    { dl: 'deadline-enriched-input', dlKey: ENRICHED_DEADLINE_KEY, bt: 'bake-time-enriched-input', btKey: ENRICHED_BAKETIME_KEY },
+  ].forEach(cfg => {
+    const dlEl = document.getElementById(cfg.dl);
+    if (dlEl) {
+      dlEl.value = localStorage.getItem(cfg.dlKey) || '';
+      dlEl.addEventListener('input', () => {
+        if (dlEl.value) localStorage.setItem(cfg.dlKey, dlEl.value);
+        else localStorage.removeItem(cfg.dlKey);
+        renderSchedule();
+        renderTotals();
+      });
+    }
+    const btEl = document.getElementById(cfg.bt);
+    if (btEl) {
+      btEl.value = localStorage.getItem(cfg.btKey) || '';
+      btEl.addEventListener('change', () => {
+        localStorage.setItem(cfg.btKey, btEl.value);
+        renderSchedule();
+        renderTotals();
+      });
+    }
   });
   const build1RatioInput = document.getElementById('build1-ratio-input');
   build1RatioInput.value = localStorage.getItem(BUILD1_RATIO_KEY) || '';
