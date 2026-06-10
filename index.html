@@ -3365,6 +3365,7 @@ ${notesHtml}
     }
     _sharedSaleCtx = { custName, custAddr, invNum: invNum != null ? fmtInvNum(invNum) : null };
     bakes = [entry, ...bakes];
+    _soldOverrides = {};
     saveBakesLocally();
     renderHistory();
     if (msg) {
@@ -5312,6 +5313,8 @@ ${notesHtml}
   // Per-recipe static pricing data used by renderFinancials + recalcFinancialsTotals.
   // Stored so recalc doesn't need to re-query recipes.
   let _finData = [];
+  // Persists user-edited sold-unit overrides across re-renders (keyed by recipeId).
+  let _soldOverrides = {};
 
   function renderFinancials() {
     const card = document.getElementById('financials-card');
@@ -5340,7 +5343,7 @@ ${notesHtml}
     const rows = _finData.map(d => {
       const rid = escapeAttr(d.id);
       const profitColor = d.profit != null && d.profit < 0 ? ' style="color:var(--danger)"' : '';
-      const units = d.planUnits;
+      const units = _soldOverrides[d.id] != null ? _soldOverrides[d.id] : d.planUnits;
       const sales   = d.price  != null ? fmt(d.price  * units) : null;
       const tCost   = d.cost   != null ? fmt(d.cost   * units) : null;
       const tProfit = d.profit != null ? fmt(d.profit * units) : null;
@@ -5432,6 +5435,10 @@ ${notesHtml}
       const rid = escapeAttr(d.id);
       const input = document.querySelector(`.fin-units-input[data-recipe-id="${rid}"]`);
       const units = input ? (Number(input.value) || 0) : d.planUnits;
+      if (input) {
+        if (units !== d.planUnits) _soldOverrides[d.id] = units;
+        else delete _soldOverrides[d.id];
+      }
 
       const sales   = d.price  != null ? d.price  * units : null;
       const tCost   = d.cost   != null ? d.cost   * units : null;
