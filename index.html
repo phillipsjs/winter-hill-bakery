@@ -6064,6 +6064,14 @@ ${notesHtml}
     renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredOvenId: prefOvenId });
   }
 
+  function onRecipePanCheck(checkbox) {
+    const row = checkbox.closest('.r-recipe-pan-row');
+    const capInput = row.querySelector('.r-pan-cap-input');
+    const capLabel = row.querySelector('.r-pan-cap-label');
+    capInput.style.display = checkbox.checked ? '' : 'none';
+    capLabel.style.display = checkbox.checked ? '' : 'none';
+  }
+
   function renderRecipeEquipment(processType, prefs) {
     const el = document.getElementById('r-equipment-content');
     if (!el) return;
@@ -6114,10 +6122,21 @@ ${notesHtml}
       if (userPans.length === 0) {
         html += '<span class="muted" style="font-size:0.9rem">No pans added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'pan\')">+ Add to Kitchen</button>';
       } else {
-        html += '<div style="display:flex;flex-direction:column;gap:4px">';
+        html += '<div style="display:flex;flex-direction:column;gap:6px">';
         userPans.forEach(function(p) {
-          var chk = prefPans.indexOf(p.id) >= 0 ? ' checked' : '';
-          html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem"><input type="checkbox" class="r-pref-pan" value="' + escapeAttr(p.id) + '"' + chk + ' />' + escapeHtml(p.name) + ' <span class="muted" style="font-size:0.8rem">(qty ' + p.quantity + ')</span></label>';
+          var caps = p.recipeCapacities || {};
+          var isChecked = prefPans.indexOf(p.id) >= 0 || (editingId && editingId in caps);
+          var cap = (editingId && caps[editingId] != null) ? caps[editingId] : '';
+          var chk = isChecked ? ' checked' : '';
+          var hideStyle = isChecked ? '' : ';display:none';
+          html += '<div class="r-recipe-pan-row" style="display:flex;align-items:center;gap:8px">'
+            + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem;min-width:180px">'
+            + '<input type="checkbox" class="r-pref-pan" value="' + escapeAttr(p.id) + '"' + chk + ' onchange="onRecipePanCheck(this)" />'
+            + escapeHtml(p.name) + ' <span class="muted" style="font-size:0.8rem">(qty ' + p.quantity + ')</span>'
+            + '</label>'
+            + '<input type="number" class="r-pan-cap-input" min="1" step="1" style="width:65px;flex:none' + hideStyle + '" placeholder="1" value="' + escapeAttr(String(cap)) + '" />'
+            + '<span class="muted r-pan-cap-label" style="font-size:0.85rem' + hideStyle + '">per pan</span>'
+            + '</div>';
         });
         html += '</div>';
       }
@@ -6375,15 +6394,40 @@ ${notesHtml}
     const preferredOvenId = prefOvenEl ? (prefOvenEl.value || null) : null;
     const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredOvenId, ...overrides };
 
+    let recipeId;
     if (editingId) {
+      recipeId = editingId;
       const existing = recipes.find(x => x.id === editingId);
       const idx = recipes.findIndex(x => x.id === editingId);
       // Preserve msrp/wholesalePrice — those are set only from the Prices tab
       const pricingFields = existing ? { msrp: existing.msrp, wholesalePrice: existing.wholesalePrice } : {};
       if (idx >= 0) recipes[idx] = { ...recipes[idx], ...base, ...pricingFields };
     } else {
-      recipes.push({ id: uid(), ...base });
+      recipeId = uid();
+      recipes.push({ id: recipeId, ...base });
     }
+
+    // Sync pan capacities: update each pan's recipeCapacities based on recipe editor selections
+    const panRows = document.querySelectorAll('.r-recipe-pan-row');
+    if (panRows.length > 0) {
+      let pansChanged = false;
+      panRows.forEach(function(row) {
+        const cb = row.querySelector('.r-pref-pan');
+        if (!cb) return;
+        const pan = userPans.find(function(p) { return p.id === cb.value; });
+        if (!pan) return;
+        const caps = pan.recipeCapacities || {};
+        if (cb.checked) {
+          const capRaw = parseInt(row.querySelector('.r-pan-cap-input').value, 10);
+          const cap = (Number.isFinite(capRaw) && capRaw > 0) ? capRaw : 1;
+          if (caps[recipeId] !== cap) { caps[recipeId] = cap; pan.recipeCapacities = caps; pansChanged = true; }
+        } else {
+          if (recipeId in caps) { delete caps[recipeId]; pan.recipeCapacities = caps; pansChanged = true; }
+        }
+      });
+      if (pansChanged) savePansLocally();
+    }
+
     saveRecipes();
     cancelEdit();
     renderRecipes();
