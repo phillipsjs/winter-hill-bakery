@@ -2002,7 +2002,7 @@
       bakeTempF: 350,
       mixMin: 15,         // active mixing time (not a bread fold/bulk cycle)
       coolMin: 15,
-      schedulable: false, // Phase 2 will add the builder and flip this true
+      schedulable: true,
     },
     'enriched': {
       label: 'Enriched yeast dough',
@@ -2020,7 +2020,7 @@
       finalProofWarmMin: 60,
       coolMin: 20,
       glazeMin: 5,
-      schedulable: false, // Phase 2 will add the builder and flip this true
+      schedulable: true,
     },
     'levain': {
       label: 'Levain',
@@ -5357,7 +5357,10 @@ ${notesHtml}
     const hasDeadline = !!(
       document.getElementById('deadline-loaf-input').value ||
       document.getElementById('deadline-muffin-input').value ||
-      document.getElementById('deadline-bagel-input').value
+      document.getElementById('deadline-bagel-input').value ||
+      document.getElementById('deadline-focaccia-input').value ||
+      document.getElementById('deadline-simple-input').value ||
+      document.getElementById('deadline-enriched-input').value
     );
     const show = hasPlanItems && hasDeadline;
     const btn = document.getElementById('tab-bakesheet-btn');
@@ -7552,6 +7555,8 @@ ${notesHtml}
       loafColdProofMaxHr = null, muffinColdProofMaxHr = null, bagelColdProofMaxHr = null,
       bagelBatchSize = null,
       focacciaDeadline = null, focacciaBakeTime = null,
+      simpleDeadline = null, simpleBakeTime = null,
+      enrichedDeadline = null, enrichedBakeTime = null,
     } = opts;
     const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf' && (plan[r.id] || 0) > 0);
     const totalLoaves = loafRecipes.reduce((s, r) => s + plan[r.id], 0);
@@ -7561,9 +7566,13 @@ ${notesHtml}
     const totalBagels = bagelRecipes.reduce((s, r) => s + plan[r.id], 0);
     const focacciaRecipes = recipes.filter(r => getProcessType(r) === 'focaccia' && (plan[r.id] || 0) > 0);
     const totalFocaccia = focacciaRecipes.reduce((s, r) => s + plan[r.id], 0);
+    const simpleRecipes = recipes.filter(r => getProcessType(r) === 'simple' && (plan[r.id] || 0) > 0);
+    const totalSimple = simpleRecipes.reduce((s, r) => s + plan[r.id], 0);
+    const enrichedRecipes = recipes.filter(r => getProcessType(r) === 'enriched' && (plan[r.id] || 0) > 0);
+    const totalEnriched = enrichedRecipes.reduce((s, r) => s + plan[r.id], 0);
     const warnings = [];
-    if (totalLoaves === 0 && totalMuffins === 0 && totalBagels === 0 && totalFocaccia === 0)
-      return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia: 0, batches: 0, events: [], warnings };
+    if (totalLoaves === 0 && totalMuffins === 0 && totalBagels === 0 && totalFocaccia === 0 && totalSimple === 0 && totalEnriched === 0)
+      return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia: 0, totalSimple: 0, totalEnriched: 0, batches: 0, events: [], warnings };
 
     const millingFloursForRecipes = (recipeList) => {
       const names = new Set();
@@ -7674,6 +7683,50 @@ ${notesHtml}
     const bagelOvenSpanMin = bagelBatches * bagelCycleMin;
     const batches = breadBatches + muffinBatches + bagelBatches;
 
+    // --- Simple / enriched aggregation (commercial-yeast / chemical leavening) ---
+    const parseHrWindow = (v) => {
+      if (v == null || v === '') return 0;
+      const s = String(v);
+      if (s.includes('-')) { const p = s.split('-').map(Number); return (p[0] + p[1]) / 2; }
+      const n = Number(s); return Number.isFinite(n) ? n : 0;
+    };
+    // Per-round bake capacity from a recipe's preferred pans, else the template default.
+    const bakeCapFor = (r, tmplCap) => {
+      let cap = 0;
+      (r.preferredPanIds || []).forEach(pid => {
+        const pan = userPans.find(p => p.id === pid);
+        if (pan && pan.recipeCapacities && pan.recipeCapacities[r.id] > 0) cap += pan.recipeCapacities[r.id] * (pan.quantity || 1);
+      });
+      return cap > 0 ? cap : tmplCap;
+    };
+    const sideBatchesFor = (list, tmplCap) =>
+      list.reduce((s, r) => s + Math.ceil((plan[r.id] || 0) / Math.max(1, bakeCapFor(r, tmplCap))), 0);
+    const sideShapeMin = (list, tmpl) =>
+      list.reduce((s, r) => s + (plan[r.id] || 0) * (getRecipeSpec(r).shapeMinPerUnit || tmpl.shapeMinPerUnit), 0);
+    const sideTemp = (list, tmpl) =>
+      (list.length && Number.isFinite(Number(list[0].bakeTempF))) ? Number(list[0].bakeTempF) : tmpl.bakeTempF;
+
+    const simpleTmpl = PROCESS_TEMPLATES.simple;
+    const simpleBatches = totalSimple > 0 ? sideBatchesFor(simpleRecipes, simpleTmpl.ovenCapacity) : 0;
+    const simpleBakeTotalMin = simpleBatches > 0 ? simpleBatches * simpleTmpl.bakeMin + Math.max(0, simpleBatches - 1) * SCHED.REHEAT_MIN : 0;
+    const simpleChillHr = simpleRecipes.reduce((m, r) => Math.max(m, parseHrWindow(r.chillWindow)), 0);
+    const simpleShapeMin = sideShapeMin(simpleRecipes, simpleTmpl);
+    const simpleCoolMin = simpleTmpl.coolMin;
+    const simpleTemp = sideTemp(simpleRecipes, simpleTmpl);
+
+    const enrichedTmpl = PROCESS_TEMPLATES.enriched;
+    const enrichedBatches = totalEnriched > 0 ? sideBatchesFor(enrichedRecipes, enrichedTmpl.ovenCapacity) : 0;
+    const enrichedBakeTotalMin = enrichedBatches > 0 ? enrichedBatches * enrichedTmpl.bakeMin + Math.max(0, enrichedBatches - 1) * SCHED.REHEAT_MIN : 0;
+    const enrichedBulkMin = enrichedRecipes.reduce((m, r) => Math.max(m, getRecipeSpec(r).bulkMin || enrichedTmpl.bulkMin), 0) || enrichedTmpl.bulkMin;
+    const enrichedShapeMin = sideShapeMin(enrichedRecipes, enrichedTmpl);
+    const enrichedCold = enrichedRecipes.some(r => r.finalProofMode === 'cold');
+    const enrichedColdHr = enrichedRecipes.filter(r => r.finalProofMode === 'cold').reduce((m, r) => Math.max(m, parseHrWindow(r.finalProofColdWindow || '8-12')), 0) || 10;
+    const enrichedWarmMin = enrichedRecipes.reduce((m, r) => Math.max(m, Number(r.finalProofWarmMin) || enrichedTmpl.finalProofWarmMin), 0) || enrichedTmpl.finalProofWarmMin;
+    const enrichedGlaze = enrichedRecipes.some(r => r.glazeEnabled);
+    const enrichedGlazeMin = enrichedRecipes.filter(r => r.glazeEnabled).reduce((m, r) => Math.max(m, Number(r.glazeMin) || enrichedTmpl.glazeMin), 0) || enrichedTmpl.glazeMin;
+    const enrichedCoolMin = enrichedTmpl.coolMin;
+    const enrichedTemp = sideTemp(enrichedRecipes, enrichedTmpl);
+
     // Muffin deadline + bake time fall back to the loaf values when not set.
     const effMuffinDeadline = muffinDeadline || loafDeadline;
     const effMuffinBakeTime = muffinBakeTime || loafBakeTime;
@@ -7768,6 +7821,33 @@ ${notesHtml}
       focacciaSlot = { firstBakeStart: focFirstBakeStart, lastBakeEnd: focLastBakeEnd, packageReady: focPackageReady };
     }
 
+    // Simple & enriched bake slots. postBakeMin covers cooling (+ glaze for enriched).
+    const computeSideSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind) => {
+      if (!deadline) return null;
+      const D = new Date(deadline);
+      const preset = bakeTimePref ? BAKE_TIME_PRESETS[bakeTimePref] : null;
+      let first, last, ready;
+      if (preset) {
+        const day = new Date(D); day.setHours(0, 0, 0, 0);
+        const tryDay = d => { const t = new Date(d); t.setHours(Math.floor(preset.mid), Math.round((preset.mid % 1) * 60), 0, 0); return t; };
+        let attempt = tryDay(day);
+        if (addMinutes(attempt, bakeTotalMin + postBakeMin) > D) { day.setDate(day.getDate() - 1); attempt = tryDay(day); }
+        first = attempt; last = addMinutes(first, bakeTotalMin); ready = addMinutes(last, postBakeMin);
+        const slackHr = (D - ready) / 3600000;
+        if (slackHr > 0.1) warnings.push({ msg: `${kindLabel} will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind });
+      } else {
+        last = addMinutes(D, -postBakeMin); first = addMinutes(last, -bakeTotalMin); ready = D;
+      }
+      if (isLateNightHour(first.getHours())) warnings.push({ msg: `${kindLabel} bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or bake time.`, issue: 'bake-late', kind });
+      return { firstBakeStart: first, lastBakeEnd: last, packageReady: ready };
+    };
+    const simpleSlot = totalSimple > 0
+      ? computeSideSlot(simpleDeadline || loafDeadline || focacciaDeadline, simpleBakeTime, simpleBakeTotalMin, simpleCoolMin, 'Simple bakes', 'simple')
+      : null;
+    const enrichedSlot = totalEnriched > 0
+      ? computeSideSlot(enrichedDeadline || loafDeadline || focacciaDeadline, enrichedBakeTime, enrichedBakeTotalMin, enrichedCoolMin + (enrichedGlaze ? enrichedGlazeMin : 0), 'Enriched dough', 'enriched')
+      : null;
+
     // Oven assignment & sequencing. Each oven is its own timeline that holds one
     // bake at a time; bakes in different ovens run in parallel. A recipe's preferred
     // oven is honored when set (soft — we fall back and warn if it overflows). Within
@@ -7775,11 +7855,11 @@ ${notesHtml}
     // temp-change buffer. For a single oven this reduces to the prior sequential
     // behavior, with temp-change buffers added between different-temperature bakes.
     {
-      const PROC_DEADLINE = { loaf: loafDeadline, muffin: effMuffinDeadline, bagel: effBagelDeadline, focaccia: focacciaDeadline };
-      const PROC_LABEL    = { loaf: 'Bread', muffin: 'Muffins', bagel: 'Bagels', focaccia: 'Focaccia' };
-      const PROC_COOL_MIN = { loaf: SCHED.COOL_HOURS * 60, muffin: SCHED.COOL_HOURS * 60, bagel: SCHED.COOL_HOURS * 60, focaccia: FOCACCIA_COOL_MIN };
-      const PROC_RECIPES  = { loaf: loafRecipes, muffin: muffinRecipes, bagel: bagelRecipes, focaccia: focacciaRecipes };
-      const PROC_PROCESS  = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia' };
+      const PROC_DEADLINE = { loaf: loafDeadline, muffin: effMuffinDeadline, bagel: effBagelDeadline, focaccia: focacciaDeadline, simple: simpleDeadline || loafDeadline || focacciaDeadline, enriched: enrichedDeadline || loafDeadline || focacciaDeadline };
+      const PROC_LABEL    = { loaf: 'Bread', muffin: 'Muffins', bagel: 'Bagels', focaccia: 'Focaccia', simple: 'Simple bakes', enriched: 'Enriched dough' };
+      const PROC_COOL_MIN = { loaf: SCHED.COOL_HOURS * 60, muffin: SCHED.COOL_HOURS * 60, bagel: SCHED.COOL_HOURS * 60, focaccia: FOCACCIA_COOL_MIN, simple: simpleCoolMin, enriched: enrichedCoolMin + (enrichedGlaze ? enrichedGlazeMin : 0) };
+      const PROC_RECIPES  = { loaf: loafRecipes, muffin: muffinRecipes, bagel: bagelRecipes, focaccia: focacciaRecipes, simple: simpleRecipes, enriched: enrichedRecipes };
+      const PROC_PROCESS  = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia', simple: 'simple', enriched: 'enriched' };
 
       const slotTemp = (kind) => {
         const rs = PROC_RECIPES[kind] || [];
@@ -7802,6 +7882,8 @@ ${notesHtml}
         muffinSlot   ? { s: muffinSlot,   kind: 'muffin'   } : null,
         bagelSlot    ? { s: bagelSlot,    kind: 'bagel'    } : null,
         focacciaSlot ? { s: focacciaSlot, kind: 'focaccia' } : null,
+        simpleSlot   ? { s: simpleSlot,   kind: 'simple'   } : null,
+        enrichedSlot ? { s: enrichedSlot, kind: 'enriched' } : null,
       ].filter(Boolean);
       slots.forEach(it => { it.temp = slotTemp(it.kind); it.preferredOvenId = slotPreferredOven(it.kind); });
 
@@ -8008,8 +8090,10 @@ ${notesHtml}
 
     const hasSourdoughProcess = totalLoaves > 0 || totalMuffins > 0 || totalBagels > 0;
 
-    // Focaccia-only path: commercial yeast, no levain computation needed.
-    if (!hasSourdoughProcess && totalFocaccia > 0) {
+    // Focaccia-only path: commercial yeast, no levain computation needed. Only taken
+    // when focaccia is the sole process — if simple/enriched are also present we fall
+    // through to the main path so they share the oven-assignment layer.
+    if (!hasSourdoughProcess && totalFocaccia > 0 && totalSimple === 0 && totalEnriched === 0) {
       const events = [];
       if (focacciaSlot) {
         const focacciaPanRiseStart = addMinutes(focacciaSlot.firstBakeStart, -focacciaAgg.warmupMin);
@@ -8172,20 +8256,24 @@ ${notesHtml}
     };
     const levainContStr = (cont) => cont ? ` · use ${cont.name}` : '';
 
-    events.push({
-      time: levainBuild1EarliestStart,
-      timeEnd: levainBuild1LatestStart,
-      title: `Levain Build 1 — first refresh${loafLevainSuffix}`,
-      detail: `${build1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1Note}${levainContStr(sharedLevainCont)}`,
-      process: loafLevainProcess,
-    });
-    events.push({
-      time: levainBuild2EarliestStart,
-      timeEnd: levainBuild2LatestStart,
-      title: `Levain Build 2 — final build${loafLevainSuffix}`,
-      detail: `${build2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2Note}${levainContStr(sharedLevainCont)}`,
-      process: loafLevainProcess,
-    });
+    // Shared levain build only applies to sourdough processes. Skip entirely for a
+    // commercial-only plan (focaccia / simple / enriched), which has no valid anchor.
+    if (hasSourdoughProcess) {
+      events.push({
+        time: levainBuild1EarliestStart,
+        timeEnd: levainBuild1LatestStart,
+        title: `Levain Build 1 — first refresh${loafLevainSuffix}`,
+        detail: `${build1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1Note}${levainContStr(sharedLevainCont)}`,
+        process: loafLevainProcess,
+      });
+      events.push({
+        time: levainBuild2EarliestStart,
+        timeEnd: levainBuild2LatestStart,
+        title: `Levain Build 2 — final build${loafLevainSuffix}`,
+        detail: `${build2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2Note}${levainContStr(sharedLevainCont)}`,
+        process: loafLevainProcess,
+      });
+    }
     if (useSeparateLevains && muffinBuild1Opt && muffinBuild2Opt) {
       const mb1Note = muffinBuild1Opt.manual ? ' (manually selected)' : autoNote(muffinBuild1Opt);
       const mb2Note = muffinBuild2Opt.manual ? ' (manually selected)' : autoNote(muffinBuild2Opt);
@@ -8683,6 +8771,50 @@ ${notesHtml}
       warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLateNames(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
     }
 
+    // --- Simple / simple-bake step events (mix → [chill] → shape → bake → cool → ready) ---
+    if (simpleSlot && totalSimple > 0) {
+      const ovenTag = simpleSlot.ovenName ? ` · ${simpleSlot.ovenName}` : '';
+      const shapeStart = addMinutes(simpleSlot.firstBakeStart, -simpleShapeMin);
+      const chillStart = addMinutes(shapeStart, -simpleChillHr * 60);
+      const mixStart = addMinutes(chillStart, -simpleTmpl.mixMin);
+      events.push({ time: addMinutes(mixStart, -SCHED.WEIGH_MIN_PER_RECIPE), title: 'Weigh out simple-bake ingredients', detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'simple' });
+      events.push({ time: mixStart, title: 'Mix simple-bake dough/batter', detail: `${simpleTmpl.mixMin} min active${simpleChillHr > 0 ? ` · then chill ${simpleChillHr} hr` : ''}`, process: 'simple' });
+      if (simpleChillHr > 0) events.push({ time: chillStart, title: 'Chill / rest simple-bake dough', detail: `${simpleChillHr} hr`, process: 'simple' });
+      events.push({ time: shapeStart, title: 'Shape / portion simple bakes', detail: `${Math.round(simpleShapeMin)} min · ${totalSimple} item${totalSimple === 1 ? '' : 's'}`, process: 'simple' });
+      let cum = 0;
+      for (let b = 0; b < simpleBatches; b++) {
+        const bs = addMinutes(simpleSlot.firstBakeStart, cum);
+        events.push({ time: bs, timeEnd: addMinutes(bs, simpleTmpl.bakeMin), title: simpleBatches === 1 ? 'Bake simple bakes' : `Bake simple batch ${b + 1} of ${simpleBatches}`, detail: `${simpleTmpl.bakeMin} min · ${simpleTemp}°F${ovenTag}`, process: 'simple' });
+        cum += simpleTmpl.bakeMin + (b < simpleBatches - 1 ? SCHED.REHEAT_MIN : 0);
+      }
+      events.push({ time: simpleSlot.lastBakeEnd, title: 'Simple bakes out — cool', detail: `${simpleCoolMin} min cool`, process: 'simple' });
+      events.push({ time: simpleSlot.packageReady, title: 'Package & ready for sale', detail: '', process: 'simple' });
+    }
+
+    // --- Enriched step events (mix+knead → bulk → shape → final proof → bake → cool → [glaze] → ready) ---
+    if (enrichedSlot && totalEnriched > 0) {
+      const ovenTag = enrichedSlot.ovenName ? ` · ${enrichedSlot.ovenName}` : '';
+      const proofMin = enrichedCold ? enrichedColdHr * 60 : enrichedWarmMin;
+      const shapeStart = addMinutes(enrichedSlot.firstBakeStart, -proofMin);
+      const bulkEnd = addMinutes(shapeStart, -enrichedShapeMin);
+      const bulkStart = addMinutes(bulkEnd, -enrichedBulkMin);
+      const mixStart = addMinutes(bulkStart, -enrichedTmpl.mixMin);
+      events.push({ time: addMinutes(mixStart, -SCHED.WEIGH_MIN_PER_RECIPE), title: 'Weigh out enriched-dough ingredients', detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'enriched' });
+      events.push({ time: mixStart, title: 'Mix & knead enriched dough', detail: `${enrichedTmpl.mixMin} min active · then ${enrichedBulkMin} min bulk rise`, process: 'enriched' });
+      events.push({ time: bulkStart, title: 'Bulk rise — enriched dough', detail: `${enrichedBulkMin} min warm rise`, process: 'enriched' });
+      events.push({ time: bulkEnd, title: 'Shape enriched dough', detail: `${Math.round(enrichedShapeMin)} min · ${totalEnriched} unit${totalEnriched === 1 ? '' : 's'}`, process: 'enriched' });
+      events.push({ time: shapeStart, title: enrichedCold ? 'Final proof — cold (overnight retard)' : 'Final proof — warm', detail: enrichedCold ? `${enrichedColdHr} hr in the fridge` : `${enrichedWarmMin} min warm`, process: 'enriched' });
+      let cum = 0;
+      for (let b = 0; b < enrichedBatches; b++) {
+        const bs = addMinutes(enrichedSlot.firstBakeStart, cum);
+        events.push({ time: bs, timeEnd: addMinutes(bs, enrichedTmpl.bakeMin), title: enrichedBatches === 1 ? 'Bake enriched dough' : `Bake enriched batch ${b + 1} of ${enrichedBatches}`, detail: `${enrichedTmpl.bakeMin} min · ${enrichedTemp}°F${ovenTag}`, process: 'enriched' });
+        cum += enrichedTmpl.bakeMin + (b < enrichedBatches - 1 ? SCHED.REHEAT_MIN : 0);
+      }
+      events.push({ time: enrichedSlot.lastBakeEnd, title: 'Enriched dough out — cool', detail: `${enrichedCoolMin} min cool`, process: 'enriched' });
+      if (enrichedGlaze) events.push({ time: addMinutes(enrichedSlot.lastBakeEnd, enrichedCoolMin), title: 'Glaze / ice enriched bakes', detail: `${enrichedGlazeMin} min`, process: 'enriched' });
+      events.push({ time: enrichedSlot.packageReady, title: 'Package & ready for sale', detail: '', process: 'enriched' });
+    }
+
     // Surface oven temp-change buffers (set by the oven-assignment layer) as their
     // own timeline steps, placed in the gap right before the bake they precede.
     [
@@ -8690,6 +8822,8 @@ ${notesHtml}
       { s: muffinSlot, kind: 'muffin' },
       { s: bagelSlot, kind: 'bagel' },
       { s: focacciaSlot, kind: 'focaccia' },
+      { s: simpleSlot, kind: 'simple' },
+      { s: enrichedSlot, kind: 'enriched' },
     ].forEach(({ s, kind }) => {
       if (s && s.tempChangeBefore && s.firstBakeStart) {
         const tc = s.tempChangeBefore;
@@ -8706,7 +8840,7 @@ ${notesHtml}
 
     events.sort((a, b) => a.time - b.time);
     return {
-      totalLoaves, totalMuffins, totalBagels, totalFocaccia, batches, events, warnings,
+      totalLoaves, totalMuffins, totalBagels, totalFocaccia, totalSimple, totalEnriched, batches, events, warnings,
       build1Opt, build2Opt,
       muffinBuild1Opt, muffinBuild2Opt,
       useSeparateLevains,
@@ -8752,10 +8886,10 @@ ${notesHtml}
   function getEventStage(ev) {
     const t = ev.title;
     if (/^Levain Build/.test(t)) return 'levain';
-    if (/^(Mill |Weigh out|Start autolyse|Mix in salt|Mix muffin|Mix bagel|Mix focaccia)/.test(t)) return 'mix';
+    if (/^(Mill |Weigh out|Start autolyse|Mix in salt|Mix muffin|Mix bagel|Mix focaccia|Mix simple|Mix & knead)/.test(t)) return 'mix';
     if (/^Stretch & fold/.test(t)) return 'fold';
-    if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels|Shape focaccia)/.test(t)) return 'shape';
-    if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge|Pan rise)/.test(t)) return 'proof';
+    if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels|Shape focaccia|Shape \/ portion|Shape enriched)/.test(t)) return 'shape';
+    if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge|Pan rise|Chill \/ rest|Final proof|Bulk rise)/.test(t)) return 'proof';
     if (/^(Turn on oven|Set .* to \d|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
@@ -8819,7 +8953,9 @@ ${notesHtml}
     const focacciaDeadlineStr = document.getElementById('deadline-focaccia-input').value;
     const effLoafDeadlineStr = loafDeadlineStr || muffinDeadlineStr;
     const effMuffinDeadlineStr = muffinDeadlineStr || loafDeadlineStr;
-    if (!effLoafDeadlineStr && !effMuffinDeadlineStr && !document.getElementById('deadline-bagel-input').value && !focacciaDeadlineStr) {
+    const simpleDeadlineStr0 = document.getElementById('deadline-simple-input').value;
+    const enrichedDeadlineStr0 = document.getElementById('deadline-enriched-input').value;
+    if (!effLoafDeadlineStr && !effMuffinDeadlineStr && !document.getElementById('deadline-bagel-input').value && !focacciaDeadlineStr && !simpleDeadlineStr0 && !enrichedDeadlineStr0) {
       out.innerHTML = '<p class="muted">Set a deadline above to see the schedule.</p>';
       return;
     }
@@ -8863,6 +8999,26 @@ ${notesHtml}
       out.innerHTML = '<p class="muted">Invalid focaccia deadline.</p>';
       return;
     }
+    const hasSimplePlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'simple');
+    const hasEnrichedPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'enriched');
+    const effSimpleDeadlineStr = simpleDeadlineStr0 || effLoafDeadlineStr || effFocacciaDeadlineStr;
+    const effEnrichedDeadlineStr = enrichedDeadlineStr0 || effLoafDeadlineStr || effFocacciaDeadlineStr;
+    if (hasSimplePlan && !effSimpleDeadlineStr) {
+      out.innerHTML = '<p class="muted">Set a deadline for your simple bakes to see the schedule.</p>';
+      return;
+    }
+    if (hasEnrichedPlan && !effEnrichedDeadlineStr) {
+      out.innerHTML = '<p class="muted">Set a deadline for your enriched dough to see the schedule.</p>';
+      return;
+    }
+    const simpleDeadline = effSimpleDeadlineStr ? new Date(effSimpleDeadlineStr) : null;
+    const enrichedDeadline = effEnrichedDeadlineStr ? new Date(effEnrichedDeadlineStr) : null;
+    if ((simpleDeadline && isNaN(simpleDeadline.getTime())) || (enrichedDeadline && isNaN(enrichedDeadline.getTime()))) {
+      out.innerHTML = '<p class="muted">Invalid simple/enriched deadline.</p>';
+      return;
+    }
+    const simpleBakeTime = document.getElementById('bake-time-simple-input').value;
+    const enrichedBakeTime = document.getElementById('bake-time-enriched-input').value;
     const loafBakeTime = document.getElementById('bake-time-loaf-input').value;
     const muffinBakeTime = document.getElementById('bake-time-muffin-input').value;
     const bagelBakeTime = document.getElementById('bake-time-bagel-input').value;
@@ -8949,11 +9105,12 @@ ${notesHtml}
       loafBakeTime, muffinBakeTime, bagelBakeTime, focacciaBakeTime,
       loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr,
       bagelBatchSize,
+      simpleDeadline, simpleBakeTime, enrichedDeadline, enrichedBakeTime,
     });
     _scheduleResult = result;
     const anchors = getAnchors();
     const anchoredTitles = applyAnchorsToEvents(result.events, anchors);
-    if (result.totalLoaves === 0 && (result.totalMuffins || 0) === 0 && (result.totalBagels || 0) === 0 && (result.totalFocaccia || 0) === 0) {
+    if (result.totalLoaves === 0 && (result.totalMuffins || 0) === 0 && (result.totalBagels || 0) === 0 && (result.totalFocaccia || 0) === 0 && (result.totalSimple || 0) === 0 && (result.totalEnriched || 0) === 0) {
       out.innerHTML = '<p class="muted">No schedulable items in the current Bake Plan. Add items to the Bake Plan to see the schedule.</p>';
       return;
     }
