@@ -966,6 +966,11 @@
         </div>
       </details>
 
+      <details id="r-steps-settings" open style="display:none">
+        <summary>Process steps <span class="muted" style="font-size:0.85rem">(optional steps for this recipe)</span></summary>
+        <div id="r-steps-content" class="scheduler-overrides"></div>
+      </details>
+
       <details id="r-oven-settings">
         <summary>Oven settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
         <div class="scheduler-overrides">
@@ -6543,6 +6548,7 @@ ${notesHtml}
     const prefOvenEl = document.getElementById('r-pref-oven');
     const prefOvenId = prefOvenEl ? prefOvenEl.value : '';
     renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredMixerIds: prefMixerIds, preferredOvenId: prefOvenId });
+    renderProcessStepSettings(processType, {});
   }
 
   function onRecipePanCheck(checkbox) {
@@ -6559,6 +6565,67 @@ ${notesHtml}
     const capLabel = row.querySelector('.r-mixer-cap-label');
     capInput.style.display = checkbox.checked ? '' : 'none';
     capLabel.style.display = checkbox.checked ? '' : 'none';
+  }
+
+  function selOpt(value, label, current) {
+    return '<option value="' + escapeAttr(value) + '"' + (String(current) === String(value) ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+  }
+
+  // Render the per-recipe optional process steps for simple/enriched types.
+  function renderProcessStepSettings(processType, recipe) {
+    const wrap = document.getElementById('r-steps-settings');
+    const el = document.getElementById('r-steps-content');
+    if (!wrap || !el) return;
+    if (processCategory(processType) !== 'other') { wrap.style.display = 'none'; el.innerHTML = ''; return; }
+    recipe = recipe || {};
+    let html = '';
+    if (processType === 'simple') {
+      const chill = recipe.chillWindow || '';
+      html += '<div class="row"><label style="width:170px">Chill / rest before baking</label>'
+        + '<select id="r-chill" class="settings-select" style="flex:none;width:auto">'
+        + selOpt('', 'None — bake after shaping', chill)
+        + selOpt('0.5', '30 minutes', chill)
+        + selOpt('1', '1 hour', chill)
+        + selOpt('2', '2 hours', chill)
+        + selOpt('8-12', 'Overnight (8–12 hr)', chill)
+        + '</select></div>';
+    } else if (processType === 'enriched') {
+      const mode = recipe.finalProofMode || 'warm';
+      const warmMin = recipe.finalProofWarmMin != null ? recipe.finalProofWarmMin : '';
+      const coldWin = recipe.finalProofColdWindow || '8-12';
+      html += '<div class="row"><label style="width:170px">Final proof</label>'
+        + '<select id="r-final-proof-mode" class="settings-select" style="flex:none;width:auto" onchange="onFinalProofModeChange()">'
+        + selOpt('warm', 'Warm — same day', mode)
+        + selOpt('cold', 'Cold — overnight retard', mode)
+        + '</select></div>';
+      html += '<div class="row" id="r-final-proof-warm-row"><label style="width:170px">Warm proof time</label><input type="number" id="r-final-proof-warm" min="0" step="5" placeholder="60" value="' + escapeAttr(String(warmMin)) + '" /> <span class="muted">min</span></div>';
+      html += '<div class="row" id="r-final-proof-cold-row"><label style="width:170px">Cold proof window</label><select id="r-final-proof-cold" class="settings-select" style="flex:none;width:auto">'
+        + selOpt('8-12', '8–12 hours', coldWin) + selOpt('10-14', '10–14 hours', coldWin)
+        + selOpt('12-16', '12–16 hours', coldWin) + selOpt('14-18', '14–18 hours', coldWin)
+        + '</select></div>';
+      const glazeOn = !!recipe.glazeEnabled;
+      const glazeMin = recipe.glazeMin != null ? recipe.glazeMin : '';
+      html += '<div class="row"><label style="width:170px">Glaze / ice after baking</label><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="r-glaze-enabled" onchange="onGlazeToggle()"' + (glazeOn ? ' checked' : '') + ' /> add a glazing step</label></div>';
+      html += '<div class="row" id="r-glaze-min-row"><label style="width:170px">Glaze time</label><input type="number" id="r-glaze-min" min="0" step="1" placeholder="5" value="' + escapeAttr(String(glazeMin)) + '" /> <span class="muted">min</span></div>';
+    }
+    el.innerHTML = html;
+    wrap.style.display = '';
+    if (processType === 'enriched') { onFinalProofModeChange(); onGlazeToggle(); }
+  }
+
+  function onFinalProofModeChange() {
+    const mode = document.getElementById('r-final-proof-mode');
+    if (!mode) return;
+    const warmRow = document.getElementById('r-final-proof-warm-row');
+    const coldRow = document.getElementById('r-final-proof-cold-row');
+    if (warmRow) warmRow.style.display = mode.value === 'warm' ? '' : 'none';
+    if (coldRow) coldRow.style.display = mode.value === 'cold' ? '' : 'none';
+  }
+
+  function onGlazeToggle() {
+    const cb = document.getElementById('r-glaze-enabled');
+    const row = document.getElementById('r-glaze-min-row');
+    if (cb && row) row.style.display = cb.checked ? '' : 'none';
   }
 
   function renderRecipeEquipment(processType, prefs) {
@@ -6766,6 +6833,7 @@ ${notesHtml}
     const newEqEl = document.getElementById('r-equipment-settings');
     if (newEqEl) newEqEl.style.display = '';
     renderRecipeEquipment('sourdough-loaf', {});
+    renderProcessStepSettings('sourdough-loaf', {});
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows (default process is sourdough loaf → include levain)
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -6817,6 +6885,7 @@ ${notesHtml}
       preferredMixerIds: r.preferredMixerIds || [],
       preferredOvenId: r.preferredOvenId || null,
     });
+    renderProcessStepSettings(processType, r);
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -6954,7 +7023,23 @@ ${notesHtml}
     const preferredMixerIds = Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(function(e) { return e.value; });
     const prefOvenEl = document.getElementById('r-pref-oven');
     const preferredOvenId = prefOvenEl ? (prefOvenEl.value || null) : null;
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ...overrides };
+
+    // Optional per-recipe process steps (simple / enriched). Fields exist only when rendered.
+    const stepFields = {};
+    const chillEl = document.getElementById('r-chill');
+    if (chillEl) stepFields.chillWindow = chillEl.value || '';
+    const fpModeEl = document.getElementById('r-final-proof-mode');
+    if (fpModeEl) {
+      stepFields.finalProofMode = fpModeEl.value || 'warm';
+      const warmRaw = document.getElementById('r-final-proof-warm').value.trim();
+      stepFields.finalProofWarmMin = warmRaw === '' ? null : Number(warmRaw);
+      stepFields.finalProofColdWindow = document.getElementById('r-final-proof-cold').value || '8-12';
+      stepFields.glazeEnabled = document.getElementById('r-glaze-enabled').checked;
+      const glazeRaw = document.getElementById('r-glaze-min').value.trim();
+      stepFields.glazeMin = glazeRaw === '' ? null : Number(glazeRaw);
+    }
+
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ...stepFields, ...overrides };
 
     let recipeId;
     if (editingId) {
