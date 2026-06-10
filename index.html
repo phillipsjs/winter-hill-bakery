@@ -8639,6 +8639,27 @@ ${notesHtml}
       warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLateNames(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
     }
 
+    // Surface oven temp-change buffers (set by the oven-assignment layer) as their
+    // own timeline steps, placed in the gap right before the bake they precede.
+    [
+      { s: loafSlot, kind: 'loaf' },
+      { s: muffinSlot, kind: 'muffin' },
+      { s: bagelSlot, kind: 'bagel' },
+      { s: focacciaSlot, kind: 'focaccia' },
+    ].forEach(({ s, kind }) => {
+      if (s && s.tempChangeBefore && s.firstBakeStart) {
+        const tc = s.tempChangeBefore;
+        const ovenLabel = s.ovenName || 'the oven';
+        events.push({
+          time: addMinutes(s.firstBakeStart, -tc.min),
+          timeEnd: s.firstBakeStart,
+          title: `Set ${ovenLabel} to ${tc.toTemp}°F`,
+          detail: `${tc.min} min — adjust from ${tc.fromTemp}°F before this bake`,
+          process: kind,
+        });
+      }
+    });
+
     events.sort((a, b) => a.time - b.time);
     return {
       totalLoaves, totalMuffins, totalBagels, totalFocaccia, batches, events, warnings,
@@ -8685,7 +8706,7 @@ ${notesHtml}
     if (/^Stretch & fold/.test(t)) return 'fold';
     if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels|Shape focaccia)/.test(t)) return 'shape';
     if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge|Pan rise)/.test(t)) return 'proof';
-    if (/^(Turn on oven|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
+    if (/^(Turn on oven|Set .* to \d|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
   }
