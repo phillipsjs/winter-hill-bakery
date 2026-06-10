@@ -908,6 +908,7 @@
       <p class="muted" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally.</p>
       <div id="r-ingredients"></div>
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
+      <div id="r-flour-summary" class="muted" style="font-size:0.85rem;margin-top:8px"></div>
 
       <hr class="sep" />
       <details id="r-recipe-settings" open>
@@ -3161,7 +3162,7 @@ ${notesHtml}
     let total = 0, anyLinked = false;
     for (const ing of recipe.ingredients) {
       // Levain ingredient in a non-levain sourdough recipe: cost from the levain recipe
-      if (ing.name.toLowerCase().includes('levain') && recipe.processType !== 'levain' && recipe.leavening !== 'commercial-yeast') {
+      if (isLevainIngredient(ing.name) && recipe.processType !== 'levain' && recipe.leavening !== 'commercial-yeast') {
         const cpg = computeLevainCostPerGram();
         if (cpg != null) {
           total += flourWeight * (Number(ing.pct) / 100) * cpg;
@@ -5575,7 +5576,7 @@ ${notesHtml}
         const key = normalizeIngredientKey(w.name);
         if (!aggregate[key]) aggregate[key] = { name: w.name.trim(), grams: 0 };
         aggregate[key].grams += w.grams;
-        if (key.includes('levain')) levainByProcess[procBucket] += w.grams;
+        if (isLevainIngredient(key)) levainByProcess[procBucket] += w.grams;
       }
       totalDough += r.loafWeight * count;
 
@@ -5635,6 +5636,13 @@ ${notesHtml}
     renderDoughContainerPlan();
     renderBannetonPlan();
     renderPanPlan();
+  }
+
+  // A recipe ingredient counts as the sourdough leaven if it's named "levain" OR "starter"
+  // (home bakers use both). Used for cost linking, build-plan, and flour totals.
+  function isLevainIngredient(name) {
+    const n = (name || '').toLowerCase();
+    return n.includes('levain') || n.includes('starter');
   }
 
   function normalizeIngredientKey(name) {
@@ -6155,7 +6163,7 @@ ${notesHtml}
 
       const levainCpg = computeLevainCostPerGram();
       const ingRows = r.ingredients.map((ing, idx) => {
-        const isLevainIng = r.processType !== 'levain' && ing.name.toLowerCase().includes('levain');
+        const isLevainIng = r.processType !== 'levain' && isLevainIngredient(ing.name);
         let costCell;
         if (isLevainIng) {
           const note = levainCpg != null
@@ -6686,10 +6694,11 @@ ${notesHtml}
     if (newEqEl) newEqEl.style.display = '';
     renderRecipeEquipment('sourdough-loaf', {});
     applyOverridePlaceholders('sourdough-loaf');
-    // start with a couple of common rows
+    // start with a couple of common rows (default process is sourdough loaf → include levain)
     addIngredientRow({ name: 'Bread flour', pct: 100 });
     addIngredientRow({ name: 'Water', pct: 70 });
     addIngredientRow({ name: 'Salt', pct: 2 });
+    addIngredientRow({ name: 'Levain', pct: 20 });
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -6755,6 +6764,7 @@ ${notesHtml}
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
     wrap.appendChild(row);
+    updateFlourSummary();
   }
 
   function toggleRecipeCard(header, event) {
@@ -6800,6 +6810,12 @@ ${notesHtml}
     }
     if (ingredients.length === 0) { alert('Add at least one ingredient.'); return; }
 
+    // Baker's percentages assume flour = 100%. Warn (don't block) if the marked flours don't.
+    const flourPctTotal = ingredients.filter(i => i.flourType).reduce((s, i) => s + i.pct, 0);
+    if (flourPctTotal > 0 && Math.abs(flourPctTotal - 100) > 0.5) {
+      if (!confirm('Your flours add up to ' + (Math.round(flourPctTotal * 10) / 10) + '%, not 100%.\n\nBaker’s percentages assume flour = 100%, so costs and ingredient weights may be off. Save anyway?')) return;
+    }
+
     const overrides = {};
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
       const raw = document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value.trim();
@@ -6834,6 +6850,14 @@ ${notesHtml}
 
     const leavening = processType === 'levain' ? undefined
       : (document.getElementById('r-leavening').value || 'sourdough');
+
+    // Sourdough recipes need an ingredient named "levain" (or "starter") for the build
+    // plan, costing, and flour totals to work. Warn rather than block.
+    if (processType !== 'levain' && leavening === 'sourdough'
+        && !ingredients.some(ing => isLevainIngredient(ing.name))) {
+      if (!confirm('This sourdough recipe has no "levain" (or "starter") ingredient, so the levain build plan, costing, and flour totals won’t include it.\n\nSave anyway?')) return;
+    }
+
     const preferredContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
     const preferredBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
     const preferredPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
@@ -7709,7 +7733,7 @@ ${notesHtml}
         const sumPct = (r.ingredients || []).reduce((s, i) => s + (Number(i.pct) || 0), 0);
         const flourWeight = sumPct > 0 ? (r.loafWeight * count) / (sumPct / 100) : 0;
         for (const i of r.ingredients) {
-          if (i.name.toLowerCase().includes('levain')) {
+          if (isLevainIngredient(i.name)) {
             total += flourWeight * ((Number(i.pct) || 0) / 100);
           }
         }
@@ -8815,7 +8839,7 @@ ${notesHtml}
       const bucket = r.processType === 'sourdough-muffin' ? 'muffin'
         : r.processType === 'bagel' ? 'bagel' : 'loaf';
       r.ingredients.forEach(i => {
-        if (i.name.toLowerCase().includes('levain')) levainByProcess[bucket] += i.grams;
+        if (isLevainIngredient(i.name)) levainByProcess[bucket] += i.grams;
       });
     });
 
@@ -9089,21 +9113,25 @@ ${notesHtml}
     const row = input.closest('.ingredient-edit-row');
     const type = row.querySelector('.ing-flour-type').value;
     if (type === 'specialty') rebalanceAnchors();
+    updateFlourSummary();
   }
 
   function onFlourTypeChange(select) {
     rebalanceAnchors();
+    updateFlourSummary();
   }
 
   function onIngredientNameBlur(input) {
     const row = input.closest('.ingredient-edit-row');
     const select = row.querySelector('.ing-flour-type');
-    if (select.value) return;
-    const detected = detectFlourType(input.value);
-    if (detected) {
-      select.value = detected;
-      rebalanceAnchors();
+    if (!select.value) {
+      const detected = detectFlourType(input.value);
+      if (detected) {
+        select.value = detected;
+        rebalanceAnchors();
+      }
     }
+    updateFlourSummary();
   }
 
   function removeIngredientRow(button) {
@@ -9111,6 +9139,29 @@ ${notesHtml}
     const wasFlour = !!row.querySelector('.ing-flour-type').value;
     row.remove();
     if (wasFlour) rebalanceAnchors();
+    updateFlourSummary();
+  }
+
+  // Live readout under the ingredient list: do the flours sum to 100%, and what's the hydration?
+  function updateFlourSummary() {
+    const el = document.getElementById('r-flour-summary');
+    if (!el) return;
+    const rows = document.querySelectorAll('#r-ingredients .ingredient-edit-row');
+    let flourTotal = 0, liquidTotal = 0;
+    rows.forEach(function(row) {
+      const name = row.querySelector('.ing-name').value.trim().toLowerCase();
+      const type = row.querySelector('.ing-flour-type').value;
+      const pct = Number(row.querySelector('.ing-pct').value) || 0;
+      if (type === 'anchor' || type === 'specialty') flourTotal += pct;
+      if (/water|milk|buttermilk/.test(name)) liquidTotal += pct;
+    });
+    if (flourTotal === 0) { el.innerHTML = ''; return; }
+    const flourRounded = Math.round(flourTotal * 10) / 10;
+    const off = Math.abs(flourTotal - 100) > 0.5;
+    let s = 'Flour total: <strong style="color:' + (off ? 'var(--danger)' : 'var(--ok)') + '">' + flourRounded + '%</strong>';
+    if (off) s += ' <span style="color:var(--danger)">— flours should sum to 100%</span>';
+    if (liquidTotal > 0) s += ' · Hydration: ' + Math.round((liquidTotal / flourTotal) * 100) + '%';
+    el.innerHTML = s;
   }
 
   function rebalanceAnchors() {
