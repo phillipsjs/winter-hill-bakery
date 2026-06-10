@@ -2244,8 +2244,9 @@
       if (landingDivider) landingDivider.style.display = 'none';
     }
     if (logo) {
-      if (headerLogo) { headerLogo.src = logo; headerLogo.style.display = ''; }
-      if (landingLogo) { landingLogo.src = logo; landingLogo.style.display = ''; }
+      const altText = name || 'Blind Bake';
+      if (headerLogo) { headerLogo.src = logo; headerLogo.alt = altText; headerLogo.style.display = ''; }
+      if (landingLogo) { landingLogo.src = logo; landingLogo.alt = altText; landingLogo.style.display = ''; }
       if (landingDivider) landingDivider.style.display = '';
     } else {
       if (headerLogo) headerLogo.style.display = 'none';
@@ -2272,6 +2273,10 @@
   function onBakeryLogoChange() {
     const file = document.getElementById('bakery-logo-file').files[0];
     if (!file) return;
+    const msg = document.getElementById('bakery-info-msg');
+    if (file.size > 1500000) {
+      if (msg) { msg.textContent = 'That image is large (' + Math.round(file.size / 1024) + ' KB) — try one under ~150 KB so it saves and syncs reliably.'; msg.style.color = 'var(--danger)'; }
+    } else if (msg) { msg.textContent = ''; msg.style.color = ''; }
     const reader = new FileReader();
     reader.onload = function(e) {
       const preview = document.getElementById('bakery-logo-preview');
@@ -2287,11 +2292,17 @@
     const fileInput = document.getElementById('bakery-logo-file');
     const msg = document.getElementById('bakery-info-msg');
     function finish(logo) {
-      if (name) localStorage.setItem(BAKERY_NAME_KEY, name);
-      else localStorage.removeItem(BAKERY_NAME_KEY);
-      if (logo) localStorage.setItem(BAKERY_LOGO_KEY, logo);
+      try {
+        if (name) localStorage.setItem(BAKERY_NAME_KEY, name);
+        else localStorage.removeItem(BAKERY_NAME_KEY);
+        if (logo) localStorage.setItem(BAKERY_LOGO_KEY, logo);
+      } catch (err) {
+        if (msg) { msg.textContent = 'Couldn’t save — the logo is too large for browser storage. Try a smaller image.'; msg.style.color = 'var(--danger)'; }
+        return;
+      }
       loadBakeryInfo();
-      if (msg) { msg.textContent = 'Saved.'; setTimeout(function() { if (msg) msg.textContent = ''; }, 2000); }
+      if (getGistConfig()) pushSettingsToGist().catch(function() {});
+      if (msg) { msg.style.color = 'var(--ok)'; msg.textContent = 'Saved.'; setTimeout(function() { if (msg) { msg.textContent = ''; msg.style.color = ''; } }, 2000); }
     }
     if (fileInput.files && fileInput.files[0]) {
       const reader = new FileReader();
@@ -2311,6 +2322,7 @@
     const removeBtn = document.getElementById('bakery-logo-remove-btn');
     if (removeBtn) removeBtn.style.display = 'none';
     loadBakeryInfo();
+    if (getGistConfig()) pushSettingsToGist().catch(function() {});
   }
 
   function dismissLanding() {
@@ -3011,7 +3023,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, containers: userContainers, customCategories: userCategories };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '' };
   }
 
   function applyRemoteSettings(settings) {
@@ -3049,6 +3061,17 @@ ${notesHtml}
     if (Array.isArray(settings.customCategories)) {
       userCategories = settings.customCategories;
       saveCategoriesLocally();
+    }
+    if (typeof settings.bakeryName === 'string') {
+      if (settings.bakeryName) localStorage.setItem(BAKERY_NAME_KEY, settings.bakeryName);
+      else localStorage.removeItem(BAKERY_NAME_KEY);
+    }
+    if (typeof settings.bakeryLogo === 'string') {
+      if (settings.bakeryLogo) localStorage.setItem(BAKERY_LOGO_KEY, settings.bakeryLogo);
+      else localStorage.removeItem(BAKERY_LOGO_KEY);
+    }
+    if (typeof settings.bakeryName === 'string' || typeof settings.bakeryLogo === 'string') {
+      loadBakeryInfo();
     }
   }
 
@@ -4219,10 +4242,25 @@ ${notesHtml}
     document.getElementById('container-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  // Remove a deleted equipment id from every recipe's preferred-equipment references.
+  function pruneEquipmentRefs(field, id) {
+    let changed = false;
+    recipes.forEach(function(r) {
+      if (field === 'preferredOvenId') {
+        if (r.preferredOvenId === id) { r.preferredOvenId = null; changed = true; }
+      } else if (Array.isArray(r[field]) && r[field].indexOf(id) !== -1) {
+        r[field] = r[field].filter(function(x) { return x !== id; });
+        changed = true;
+      }
+    });
+    if (changed) saveRecipes();
+  }
+
   function deleteContainerItem(id) {
     const c = userContainers.find(x => x.id === id);
     if (!c || !confirm(`Delete "${c.name}"?`)) return;
     userContainers = userContainers.filter(x => x.id !== id);
+    pruneEquipmentRefs('preferredContainerIds', id);
     saveContainersLocally();
     renderContainers();
     renderDoughContainerPlan();
@@ -4347,6 +4385,7 @@ ${notesHtml}
   }
   function removeOven(id) {
     userOvens = userOvens.filter(o => o.id !== id);
+    pruneEquipmentRefs('preferredOvenId', id);
     saveOvensLocally();
     renderOvens();
     pushSettingsToGist().catch(() => {});
@@ -4440,6 +4479,7 @@ ${notesHtml}
   }
   function removeBanneton(id) {
     userBannetons = userBannetons.filter(b => b.id !== id);
+    pruneEquipmentRefs('preferredBannetonIds', id);
     saveBannetonsLocally();
     renderBannetons();
     renderBannetonPlan();
@@ -4628,6 +4668,7 @@ ${notesHtml}
   }
   function removePan(id) {
     userPans = userPans.filter(p => p.id !== id);
+    pruneEquipmentRefs('preferredPanIds', id);
     savePansLocally();
     renderPans();
     renderPanPlan();
@@ -4746,6 +4787,7 @@ ${notesHtml}
   }
   function removeMixer(id) {
     userMixers = userMixers.filter(function(m) { return m.id !== id; });
+    pruneEquipmentRefs('preferredMixerIds', id);
     saveMixersLocally();
     renderMixers();
     pushSettingsToGist().catch(function() {});
@@ -5338,6 +5380,11 @@ ${notesHtml}
       const planSaleUnits = saleUnitsFromPlan(r, plan[r.id] || 0);
       if (price == null || cost == null) missing.push(r.name);
       return { id: r.id, name: r.name, planUnits: planSaleUnits, saleUnit: sUnit, price, priceLabel, cost, profit, msrp: r.msrp ?? null };
+    });
+
+    // Drop overrides for recipes no longer in the plan so a stale value can't resurface.
+    Object.keys(_soldOverrides).forEach(function(id) {
+      if (!_finData.some(function(d) { return d.id === id; })) delete _soldOverrides[id];
     });
 
     const rows = _finData.map(d => {
@@ -6418,9 +6465,10 @@ ${notesHtml}
     const prefContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
     const prefBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
     const prefPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
+    const prefMixerIds = Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(function(e) { return e.value; });
     const prefOvenEl = document.getElementById('r-pref-oven');
     const prefOvenId = prefOvenEl ? prefOvenEl.value : '';
-    renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredOvenId: prefOvenId });
+    renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredMixerIds: prefMixerIds, preferredOvenId: prefOvenId });
   }
 
   function onRecipePanCheck(checkbox) {
@@ -6807,47 +6855,44 @@ ${notesHtml}
       recipes.push({ id: recipeId, ...base });
     }
 
-    // Sync pan capacities: update each pan's recipeCapacities based on recipe editor selections
-    const panRows = document.querySelectorAll('.r-recipe-pan-row');
-    if (panRows.length > 0) {
-      let pansChanged = false;
-      panRows.forEach(function(row) {
-        const cb = row.querySelector('.r-pref-pan');
-        if (!cb) return;
-        const pan = userPans.find(function(p) { return p.id === cb.value; });
-        if (!pan) return;
-        const caps = pan.recipeCapacities || {};
-        if (cb.checked) {
-          const capRaw = parseInt(row.querySelector('.r-pan-cap-input').value, 10);
-          const cap = (Number.isFinite(capRaw) && capRaw > 0) ? capRaw : 1;
-          if (caps[recipeId] !== cap) { caps[recipeId] = cap; pan.recipeCapacities = caps; pansChanged = true; }
-        } else {
-          if (recipeId in caps) { delete caps[recipeId]; pan.recipeCapacities = caps; pansChanged = true; }
-        }
-      });
-      if (pansChanged) savePansLocally();
-    }
+    // Sync pan capacities. Collect the checked rows (if the pan section is shown),
+    // then reconcile ALL pans so a recipe switched away from pans clears stale capacities.
+    const checkedPanCaps = {};
+    document.querySelectorAll('.r-recipe-pan-row').forEach(function(row) {
+      const cb = row.querySelector('.r-pref-pan');
+      if (!cb || !cb.checked) return;
+      const capRaw = parseInt(row.querySelector('.r-pan-cap-input').value, 10);
+      checkedPanCaps[cb.value] = (Number.isFinite(capRaw) && capRaw > 0) ? capRaw : 1;
+    });
+    let pansChanged = false;
+    userPans.forEach(function(pan) {
+      const caps = pan.recipeCapacities || {};
+      if (pan.id in checkedPanCaps) {
+        if (caps[recipeId] !== checkedPanCaps[pan.id]) { caps[recipeId] = checkedPanCaps[pan.id]; pan.recipeCapacities = caps; pansChanged = true; }
+      } else if (recipeId in caps) {
+        delete caps[recipeId]; pan.recipeCapacities = caps; pansChanged = true;
+      }
+    });
+    if (pansChanged) savePansLocally();
 
-    // Sync mixer capacities back into userMixers
-    const mixerRows = document.querySelectorAll('.r-recipe-mixer-row');
-    if (mixerRows.length > 0) {
-      let mixersChanged = false;
-      mixerRows.forEach(function(row) {
-        const cb = row.querySelector('.r-pref-mixer');
-        if (!cb) return;
-        const mixer = userMixers.find(function(m) { return m.id === cb.value; });
-        if (!mixer) return;
-        const caps = mixer.recipeCapacities || {};
-        if (cb.checked) {
-          const capRaw = parseInt(row.querySelector('.r-mixer-cap-input').value, 10);
-          const cap = (Number.isFinite(capRaw) && capRaw > 0) ? capRaw : 1;
-          if (caps[recipeId] !== cap) { caps[recipeId] = cap; mixer.recipeCapacities = caps; mixersChanged = true; }
-        } else {
-          if (recipeId in caps) { delete caps[recipeId]; mixer.recipeCapacities = caps; mixersChanged = true; }
-        }
-      });
-      if (mixersChanged) saveMixersLocally();
-    }
+    // Sync mixer capacities the same way.
+    const checkedMixerCaps = {};
+    document.querySelectorAll('.r-recipe-mixer-row').forEach(function(row) {
+      const cb = row.querySelector('.r-pref-mixer');
+      if (!cb || !cb.checked) return;
+      const capRaw = parseInt(row.querySelector('.r-mixer-cap-input').value, 10);
+      checkedMixerCaps[cb.value] = (Number.isFinite(capRaw) && capRaw > 0) ? capRaw : 1;
+    });
+    let mixersChanged = false;
+    userMixers.forEach(function(mixer) {
+      const caps = mixer.recipeCapacities || {};
+      if (mixer.id in checkedMixerCaps) {
+        if (caps[recipeId] !== checkedMixerCaps[mixer.id]) { caps[recipeId] = checkedMixerCaps[mixer.id]; mixer.recipeCapacities = caps; mixersChanged = true; }
+      } else if (recipeId in caps) {
+        delete caps[recipeId]; mixer.recipeCapacities = caps; mixersChanged = true;
+      }
+    });
+    if (mixersChanged) saveMixersLocally();
 
     saveRecipes();
     cancelEdit();
@@ -6871,6 +6916,14 @@ ${notesHtml}
     if (!confirm(`Delete "${r.name}"? This cannot be undone.`)) return;
     recipes = recipes.filter(x => x.id !== id);
     delete plan[id];
+    // Drop this recipe's capacity entries from pans and mixers.
+    let pansChanged = false;
+    userPans.forEach(function(p) { if (p.recipeCapacities && id in p.recipeCapacities) { delete p.recipeCapacities[id]; pansChanged = true; } });
+    if (pansChanged) savePansLocally();
+    let mixersChanged = false;
+    userMixers.forEach(function(m) { if (m.recipeCapacities && id in m.recipeCapacities) { delete m.recipeCapacities[id]; mixersChanged = true; } });
+    if (mixersChanged) saveMixersLocally();
+    if (pansChanged || mixersChanged) pushSettingsToGist().catch(() => {});
     saveRecipes();
     savePlan();
     renderRecipes();
