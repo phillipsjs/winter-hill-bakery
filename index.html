@@ -973,25 +973,25 @@
           <div id="container-list" style="margin-top:4px"></div>
         </div>
 
-        <hr class="sep" style="margin:16px 0">
+      </details>
+    </div>
 
-        <div>
-          <h3 style="margin:0 0 8px;font-size:1rem">Oven</h3>
-          <p class="muted" style="margin:0 0 10px;font-size:0.9rem">Active steps (mixing, folding, shaping) outside your oven windows will be flagged if they fall in your quiet hours. Stored locally on this device.</p>
-          <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
-            <label>Quiet hours</label>
-            <div style="display:flex;align-items:center;gap:8px">
-              <select id="quiet-start-select" class="settings-select" style="width:auto"></select>
-              <span style="color:var(--muted)">to</span>
-              <select id="quiet-end-select" class="settings-select" style="width:auto"></select>
-            </div>
-          </div>
-          <p class="settings-hint">Default: 11 PM to 5 AM. The scheduler avoids placing active steps in this window and warns you if one lands there.</p>
-          <div style="margin-top:12px">
-            <button onclick="saveQuietHours()">Save preferences</button>
-          </div>
-          <div id="quiet-hours-msg" style="margin-top:6px;font-size:0.9rem"></div>
+    <div class="card" style="margin-top:20px">
+      <details class="plan-details" id="kitchen-hours-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Kitchen hours</h2>
+          <span class="muted" style="font-size:0.85rem;font-weight:normal">Times you're not available to work in the kitchen</span>
+        </summary>
+        <p class="muted" style="margin:8px 0 12px;font-size:0.9rem">The scheduler flags any active steps (mixing, folding, shaping) that fall in these windows. Stored locally on this device.</p>
+        <div id="kitchen-windows-list"></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <select id="kw-start-select" class="settings-select" style="width:auto"></select>
+          <span style="color:var(--muted)">to</span>
+          <select id="kw-end-select" class="settings-select" style="width:auto"></select>
+          <button onclick="addKitchenWindow()" class="secondary">+ Add window</button>
         </div>
+        <div id="kitchen-windows-msg" style="margin-top:6px;font-size:0.9rem"></div>
       </details>
     </div>
 
@@ -1582,6 +1582,7 @@
   const FOCACCIA_BAKETIME_KEY = 'cottage-bakery-baketime-focaccia-v1';
   const QUIET_START_KEY = 'cottage-bakery-quiet-start-v1';
   const QUIET_END_KEY = 'cottage-bakery-quiet-end-v1';
+  const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
   const LEVAIN_INTRODUCED_KEY = 'cottage-bakery-levain-introduced-v1';
   const ANCHORS_KEY = 'cottage-bakery-anchors-v1';
@@ -2011,21 +2012,41 @@
     ];
     return labels.map((lbl, i) => `<option value="${i}">${lbl}</option>`).join('');
   }
-  function populateQuietHoursSelects() {
-    const startEl = document.getElementById('quiet-start-select');
-    const endEl = document.getElementById('quiet-end-select');
-    if (!startEl || !endEl) return;
-    const html = buildHourOptions();
-    startEl.innerHTML = html;
-    endEl.innerHTML = html;
-    const { start, end } = getQuietHours();
-    startEl.value = String(start);
-    endEl.value = String(end);
+  function loadKitchenWindows() {
+    const raw = localStorage.getItem(KITCHEN_WINDOWS_KEY);
+    if (raw) { try { const w = JSON.parse(raw); if (Array.isArray(w)) return w; } catch(e) {} }
+    // Migrate from old single-window keys
+    const qs = parseInt(localStorage.getItem(QUIET_START_KEY), 10);
+    const qe = parseInt(localStorage.getItem(QUIET_END_KEY), 10);
+    return [{ start: Number.isFinite(qs) ? qs : 23, end: Number.isFinite(qe) ? qe : 5 }];
   }
-  function saveQuietHours() {
-    const startEl = document.getElementById('quiet-start-select');
-    const endEl = document.getElementById('quiet-end-select');
-    const msg = document.getElementById('quiet-hours-msg');
+  function saveKitchenWindowsLocally(windows) {
+    localStorage.setItem(KITCHEN_WINDOWS_KEY, JSON.stringify(windows));
+    pushSettingsToGist().catch(() => {});
+  }
+  function renderKitchenWindows() {
+    const listEl = document.getElementById('kitchen-windows-list');
+    const startEl = document.getElementById('kw-start-select');
+    const endEl = document.getElementById('kw-end-select');
+    if (!listEl) return;
+    const hourOpts = buildHourOptions();
+    if (startEl && !startEl.options.length) { startEl.innerHTML = hourOpts; startEl.value = '23'; }
+    if (endEl && !endEl.options.length) { endEl.innerHTML = hourOpts; endEl.value = '5'; }
+    const windows = loadKitchenWindows();
+    if (windows.length === 0) {
+      listEl.innerHTML = '<p class="muted" style="margin:0;font-size:0.88rem">No unavailable windows set — all hours are available.</p>';
+      return;
+    }
+    listEl.innerHTML = windows.map((w, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1">${fmtHour12(w.start)} – ${fmtHour12(w.end)}</span>
+        <button class="secondary tiny" onclick="removeKitchenWindow(${i})">Remove</button>
+      </div>`).join('');
+  }
+  function addKitchenWindow() {
+    const startEl = document.getElementById('kw-start-select');
+    const endEl = document.getElementById('kw-end-select');
+    const msg = document.getElementById('kitchen-windows-msg');
     const start = parseInt(startEl.value, 10);
     const end = parseInt(endEl.value, 10);
     if (start === end) {
@@ -2033,12 +2054,19 @@
       msg.style.color = 'var(--danger)';
       return;
     }
-    localStorage.setItem(QUIET_START_KEY, String(start));
-    localStorage.setItem(QUIET_END_KEY, String(end));
-    msg.textContent = 'Saved.';
+    const windows = loadKitchenWindows();
+    windows.push({ start, end });
+    saveKitchenWindowsLocally(windows);
+    renderKitchenWindows();
+    msg.textContent = 'Window added.';
     msg.style.color = 'var(--success, green)';
-    setTimeout(() => { msg.textContent = ''; }, 2500);
-    pushSettingsToGist().catch(() => {});
+    setTimeout(() => { msg.textContent = ''; }, 2000);
+  }
+  function removeKitchenWindow(idx) {
+    const windows = loadKitchenWindows();
+    windows.splice(idx, 1);
+    saveKitchenWindowsLocally(windows);
+    renderKitchenWindows();
   }
 
   function saveGistSettings() {
@@ -2640,13 +2668,17 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, containers: userContainers, customCategories: userCategories };
+    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), containers: userContainers, customCategories: userCategories };
   }
 
   function applyRemoteSettings(settings) {
     if (!settings || typeof settings !== 'object') return;
-    if (Number.isFinite(settings.quietStart)) localStorage.setItem(QUIET_START_KEY, String(settings.quietStart));
-    if (Number.isFinite(settings.quietEnd)) localStorage.setItem(QUIET_END_KEY, String(settings.quietEnd));
+    if (Array.isArray(settings.kitchenWindows)) {
+      localStorage.setItem(KITCHEN_WINDOWS_KEY, JSON.stringify(settings.kitchenWindows));
+    } else {
+      if (Number.isFinite(settings.quietStart)) localStorage.setItem(QUIET_START_KEY, String(settings.quietStart));
+      if (Number.isFinite(settings.quietEnd)) localStorage.setItem(QUIET_END_KEY, String(settings.quietEnd));
+    }
     if (Array.isArray(settings.containers)) {
       userContainers = settings.containers;
       saveContainersLocally();
@@ -4259,7 +4291,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); populateQuietHoursSelects(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderKitchenWindows(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -5743,12 +5775,9 @@ ${notesHtml}
     return new Date(Math.round(date.getTime() / ms) * ms);
   }
   function getQuietHours() {
-    const qs = parseInt(localStorage.getItem(QUIET_START_KEY), 10);
-    const qe = parseInt(localStorage.getItem(QUIET_END_KEY), 10);
-    return {
-      start: Number.isFinite(qs) ? qs : 23,
-      end: Number.isFinite(qe) ? qe : 5,
-    };
+    const windows = loadKitchenWindows();
+    if (windows.length > 0) return { start: windows[0].start, end: windows[0].end };
+    return { start: 23, end: 5 };
   }
   function fmtHour12(h) {
     if (h === 0) return '12 AM';
@@ -5757,13 +5786,15 @@ ${notesHtml}
     return (h - 12) + ' PM';
   }
   function quietHoursLabel() {
-    const { start, end } = getQuietHours();
-    return fmtHour12(start) + ' – ' + fmtHour12(end);
+    const windows = loadKitchenWindows();
+    if (windows.length === 0) return 'unavailable hours';
+    return windows.map(w => fmtHour12(w.start) + '–' + fmtHour12(w.end)).join(', ');
   }
   function isLateNightHour(h) {
-    const { start, end } = getQuietHours();
-    if (start <= end) return h >= start && h < end;
-    return h >= start || h < end;
+    return loadKitchenWindows().some(w => {
+      if (w.start <= w.end) return h >= w.start && h < w.end;
+      return h >= w.start || h < w.end;
+    });
   }
   function isLateNight(date) {
     return isLateNightHour(date.getHours());
