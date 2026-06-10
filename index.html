@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Winter Hill — Bake Planner</title>
+<title>Blind Bake</title>
 <style>
   :root {
     --bg: #f5f1e8;
@@ -33,6 +33,57 @@
     margin: 0 auto 10px;
     max-width: 110px;
     height: auto;
+  }
+  #landing-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+  }
+  #landing-screen.hidden { display: none; }
+  .landing-app-label {
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+  .landing-app-name {
+    font-size: 2.6rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin: 0 0 8px;
+    line-height: 1.1;
+  }
+  .landing-bakery-logo {
+    max-width: 120px;
+    max-height: 120px;
+    object-fit: contain;
+    margin-bottom: 16px;
+  }
+  .landing-bakery-name {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 4px;
+  }
+  .landing-divider {
+    width: 40px;
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 16px auto;
+  }
+  #landing-enter-btn {
+    margin-top: 28px;
+    padding: 12px 32px;
+    font-size: 1rem;
   }
   header h1 {
     margin: 0;
@@ -684,9 +735,18 @@
 </head>
 <body>
 
+<div id="landing-screen">
+  <img id="landing-logo" class="landing-bakery-logo" src="" alt="" style="display:none" />
+  <p id="landing-bakery-name" class="landing-bakery-name" style="display:none"></p>
+  <hr id="landing-divider" class="landing-divider" style="display:none" />
+  <p class="landing-app-label">Bake planner</p>
+  <p class="landing-app-name">Blind Bake</p>
+  <button id="landing-enter-btn" onclick="dismissLanding()">Open planner</button>
+</div>
+
 <header>
-  <img src="logo.png" alt="Winter Hill" class="brand-logo" />
-  <h1>WINTER HILL</h1>
+  <img id="header-logo" src="" alt="" class="brand-logo" style="display:none" />
+  <h1 id="header-bakery-name">Blind Bake</h1>
   <p>Bake planner</p>
   <div id="sync-badge" class="sync-badge" style="display:none"></div>
 </header>
@@ -913,7 +973,7 @@
 
     <div class="card" style="text-align: center">
       <button class="danger" onclick="resetToDefaults()">Reset all recipes to defaults</button>
-      <p class="muted" style="font-size: 0.8rem; margin: 8px 0 0">Replaces your recipes with the built-in Winter Hill defaults and clears the current bake plan.</p>
+      <p class="muted" style="font-size: 0.8rem; margin: 8px 0 0">Replaces your recipes with the built-in Blind Bake defaults and clears the current bake plan.</p>
     </div>
   </section>
 
@@ -1523,6 +1583,33 @@
 
   <section id="tab-settings" class="settings-section" style="display:none">
     <div class="card">
+      <details class="plan-details" open>
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Your bakery</h2>
+        </summary>
+        <p class="muted" style="margin-top:8px;font-size:0.9rem">Your bakery name and logo appear on the Blind Bake landing screen.</p>
+        <div class="row" style="margin-top:12px">
+          <label>Bakery name</label>
+          <input type="text" id="bakery-name-input" placeholder="e.g. My Bakery" />
+        </div>
+        <div class="row" style="margin-top:8px;align-items:flex-start">
+          <label style="padding-top:4px">Logo</label>
+          <div>
+            <input type="file" id="bakery-logo-file" accept="image/*" onchange="onBakeryLogoChange()" />
+            <p class="settings-hint" style="margin-top:4px">Under 150 KB recommended.</p>
+            <div id="bakery-logo-preview"></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="saveBakeryInfo()">Save</button>
+          <button class="secondary" id="bakery-logo-remove-btn" style="display:none" onclick="removeBakeryLogo()">Remove logo</button>
+        </div>
+        <div id="bakery-info-msg" style="margin-top:6px;font-size:0.9rem"></div>
+      </details>
+    </div>
+
+    <div class="card">
       <details class="plan-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
@@ -1577,7 +1664,7 @@
           <h3 style="margin:0 0 12px;font-size:0.95rem">Your company</h3>
           <div class="row">
             <label>Name</label>
-            <input type="text" id="inv-company-name" placeholder="Winter Hill Bakery" />
+            <input type="text" id="inv-company-name" placeholder="e.g. My Bakery" />
           </div>
           <div class="row" style="margin-top:8px">
             <label>Address</label>
@@ -1585,7 +1672,7 @@
           </div>
           <div class="row" style="margin-top:8px">
             <label>Email</label>
-            <input type="email" id="inv-company-email" placeholder="hello@winterhillbakery.com" />
+            <input type="email" id="inv-company-email" placeholder="hello@mybakery.com" />
           </div>
           <div class="row" style="margin-top:8px">
             <label>Phone</label>
@@ -1733,6 +1820,8 @@
   const KITCHEN_OVENS_KEY = 'whb-kitchen-ovens-v1';
   const KITCHEN_BANNETONS_KEY = 'whb-kitchen-bannetons-v1';
   const KITCHEN_PANS_KEY = 'whb-kitchen-pans-v1';
+  const BAKERY_NAME_KEY = 'whb-bakery-name';
+  const BAKERY_LOGO_KEY = 'whb-bakery-logo';
   const PAN_REQUIRED_PROCESSES = ['focaccia', 'sourdough-muffin'];
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
   const LEVAIN_INTRODUCED_KEY = 'cottage-bakery-levain-introduced-v1';
@@ -2094,7 +2183,7 @@
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        description: 'Winter Hill Bakery — recipes',
+        description: 'Blind Bake — recipes',
         public: false,
         files: { [GIST_FILENAME]: { content: JSON.stringify(recipesArr, null, 2) } }
       })
@@ -2135,6 +2224,98 @@
     badge.textContent = labels[syncStatus] || '';
     badge.style.color = colors[syncStatus] || '';
     badge.style.display = '';
+  }
+
+  function loadBakeryInfo() {
+    const name = localStorage.getItem(BAKERY_NAME_KEY) || '';
+    const logo = localStorage.getItem(BAKERY_LOGO_KEY) || '';
+    const headerName = document.getElementById('header-bakery-name');
+    const headerLogo = document.getElementById('header-logo');
+    const landingName = document.getElementById('landing-bakery-name');
+    const landingLogo = document.getElementById('landing-logo');
+    const landingDivider = document.getElementById('landing-divider');
+    if (name) {
+      if (headerName) headerName.textContent = name.toUpperCase();
+      if (landingName) { landingName.textContent = name; landingName.style.display = ''; }
+      if (landingDivider) landingDivider.style.display = '';
+    } else {
+      if (headerName) headerName.textContent = 'Blind Bake';
+      if (landingName) landingName.style.display = 'none';
+      if (landingDivider) landingDivider.style.display = 'none';
+    }
+    if (logo) {
+      if (headerLogo) { headerLogo.src = logo; headerLogo.style.display = ''; }
+      if (landingLogo) { landingLogo.src = logo; landingLogo.style.display = ''; }
+      if (landingDivider) landingDivider.style.display = '';
+    } else {
+      if (headerLogo) headerLogo.style.display = 'none';
+      if (landingLogo) landingLogo.style.display = 'none';
+    }
+  }
+
+  function populateBakerySettingsForm() {
+    const name = localStorage.getItem(BAKERY_NAME_KEY) || '';
+    const logo = localStorage.getItem(BAKERY_LOGO_KEY) || '';
+    const nameInput = document.getElementById('bakery-name-input');
+    if (nameInput) nameInput.value = name;
+    const preview = document.getElementById('bakery-logo-preview');
+    const removeBtn = document.getElementById('bakery-logo-remove-btn');
+    if (logo) {
+      if (preview) preview.innerHTML = '<img src="' + logo + '" style="max-width:120px;max-height:80px;object-fit:contain;margin-top:8px;display:block" />';
+      if (removeBtn) removeBtn.style.display = '';
+    } else {
+      if (preview) preview.innerHTML = '';
+      if (removeBtn) removeBtn.style.display = 'none';
+    }
+  }
+
+  function onBakeryLogoChange() {
+    const file = document.getElementById('bakery-logo-file').files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const preview = document.getElementById('bakery-logo-preview');
+      if (preview) preview.innerHTML = '<img src="' + e.target.result + '" style="max-width:120px;max-height:80px;object-fit:contain;margin-top:8px;display:block" />';
+      const removeBtn = document.getElementById('bakery-logo-remove-btn');
+      if (removeBtn) removeBtn.style.display = '';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function saveBakeryInfo() {
+    const name = (document.getElementById('bakery-name-input').value || '').trim();
+    const fileInput = document.getElementById('bakery-logo-file');
+    const msg = document.getElementById('bakery-info-msg');
+    function finish(logo) {
+      if (name) localStorage.setItem(BAKERY_NAME_KEY, name);
+      else localStorage.removeItem(BAKERY_NAME_KEY);
+      if (logo) localStorage.setItem(BAKERY_LOGO_KEY, logo);
+      loadBakeryInfo();
+      if (msg) { msg.textContent = 'Saved.'; setTimeout(function() { if (msg) msg.textContent = ''; }, 2000); }
+    }
+    if (fileInput.files && fileInput.files[0]) {
+      const reader = new FileReader();
+      reader.onload = function(e) { finish(e.target.result); };
+      reader.readAsDataURL(fileInput.files[0]);
+    } else {
+      finish(localStorage.getItem(BAKERY_LOGO_KEY) || '');
+    }
+  }
+
+  function removeBakeryLogo() {
+    localStorage.removeItem(BAKERY_LOGO_KEY);
+    const fileInput = document.getElementById('bakery-logo-file');
+    if (fileInput) fileInput.value = '';
+    const preview = document.getElementById('bakery-logo-preview');
+    if (preview) preview.innerHTML = '';
+    const removeBtn = document.getElementById('bakery-logo-remove-btn');
+    if (removeBtn) removeBtn.style.display = 'none';
+    loadBakeryInfo();
+  }
+
+  function dismissLanding() {
+    const el = document.getElementById('landing-screen');
+    if (el) el.classList.add('hidden');
   }
 
   function renderSettingsSyncStatus() {
@@ -2358,7 +2539,7 @@
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          description: 'Winter Hill Bakery — invoice settings',
+          description: 'Blind Bake — invoice settings',
           public: false,
           files: { [INVOICE_FILENAME]: { content: JSON.stringify(invoiceSettings, null, 2) } },
         }),
@@ -5016,6 +5197,7 @@ ${notesHtml}
       document.getElementById('settings-gist-id').value = cfg ? cfg.gistId : '';
       document.getElementById('settings-msg').textContent = '';
       renderSettingsSyncStatus();
+      populateBakerySettingsForm();
       populateInvoiceSettingsForm();
       if (!invoiceSettingsLoaded && getInvoiceGistConfig()) {
         fetchInvoiceSettings().then(() => { invoiceSettingsLoaded = true; populateInvoiceSettingsForm(); }).catch(() => {});
@@ -6666,7 +6848,7 @@ ${notesHtml}
   }
 
   function resetToDefaults() {
-    if (!confirm('Replace all recipes with the built-in Winter Hill defaults and clear your bake plan?\n\nThis cannot be undone.')) return;
+    if (!confirm('Replace all recipes with the built-in Blind Bake defaults and clear your bake plan?\n\nThis cannot be undone.')) return;
     recipes = SEED_RECIPES.map(r => ({ ...r, ingredients: r.ingredients.map(i => ({...i})) }));
     plan = {};
     saveRecipes();
@@ -9120,6 +9302,7 @@ ${notesHtml}
   });
   updateFooterNote();
   renderSyncBadge();
+  loadBakeryInfo();
   renderPlan();
   renderPantry();
   renderContainers();
