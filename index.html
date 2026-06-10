@@ -843,6 +843,18 @@
       </details>
     </div>
 
+    <div class="card totals" id="oven-overview-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Oven overview</h2>
+          <span id="oven-overview-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">How this bake maps to your ovens. Set a preferred oven per recipe in the editor; recipes without one are scheduled into any free oven.</p>
+        <div id="oven-overview-output" style="margin-top:8px"></div>
+      </details>
+    </div>
+
     <div id="plan-schedule-cta" style="display:none;margin-top:8px">
       <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
@@ -4401,6 +4413,26 @@ ${notesHtml}
     if (userOvens.length === 0) return 3;
     return userOvens.reduce((s, o) => s + (o.decks || 1), 0);
   }
+  // Flat list of physical decks across all ovens, in order: [{ovenName, localDeck}, ...].
+  // Lets the scheduler label a pooled deck index as "Oven B · Deck 2" instead of "Deck 5".
+  function ovenDeckSlots() {
+    const ovens = userOvens.length ? userOvens : [{ name: 'Oven', decks: 3 }];
+    const slots = [];
+    ovens.forEach(o => {
+      const d = Math.max(1, o.decks || 1);
+      for (let i = 0; i < d; i++) slots.push({ ovenName: o.name, localDeck: i + 1 });
+    });
+    return slots;
+  }
+  // Label for a pooled deck index. Includes the oven name only when >1 oven exists.
+  function deckLabelFor(di) {
+    const slots = ovenDeckSlots();
+    if (di < slots.length) {
+      const sl = slots[di];
+      return userOvens.length > 1 ? `${sl.ovenName} · Deck ${sl.localDeck}` : `Deck ${sl.localDeck}`;
+    }
+    return `Deck ${di + 1}`;
+  }
   function renderOvens() {
     const listEl = document.getElementById('oven-list');
     if (!listEl) return;
@@ -5626,6 +5658,8 @@ ${notesHtml}
       levainCard.style.display = 'none';
       const cc = document.getElementById('container-card');
       if (cc) cc.style.display = 'none';
+      const oc = document.getElementById('oven-overview-card');
+      if (oc) oc.style.display = 'none';
       if (intro) intro.style.display = 'none';
       if (cta) cta.style.display = 'none';
       return;
@@ -5714,6 +5748,85 @@ ${notesHtml}
     renderDoughContainerPlan();
     renderBannetonPlan();
     renderPanPlan();
+    renderOvenOverview();
+  }
+
+  // Bake Plan "Oven overview" card: shows each oven, its decks, and which planned
+  // recipes go in it (by preferred oven), plus flags for shared-oven temp changes.
+  function renderOvenOverview() {
+    const card = document.getElementById('oven-overview-card');
+    const out = document.getElementById('oven-overview-output');
+    const summaryEl = document.getElementById('oven-overview-summary');
+    if (!card || !out) return;
+    const active = recipes.filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) !== 'levain');
+    if (active.length === 0) { card.style.display = 'none'; return; }
+
+    const tempOf = (r) => {
+      const t = Number(r.bakeTempF);
+      if (Number.isFinite(t)) return t;
+      const tmpl = PROCESS_TEMPLATES[getProcessType(r)];
+      return tmpl && tmpl.bakeTempF ? tmpl.bakeTempF : null;
+    };
+    const recipeLine = (r) => {
+      const t = tempOf(r);
+      return escapeHtml(r.name) + (t ? ' <span class="muted" style="font-size:0.8rem">(' + t + '°F)</span>' : '');
+    };
+
+    let html = '';
+    if (userOvens.length === 0) {
+      html += '<p class="muted" style="margin:0 0 8px">No ovens added yet — the scheduler assumes a single 3-deck oven. ';
+      html += '<a href="#" onclick="showTab(\'ingredients\');setTimeout(function(){showOvenAddForm();var f=document.getElementById(\'oven-add-form\');if(f)f.scrollIntoView({behavior:\'smooth\',block:\'start\'});},120);return false">Add your ovens →</a></p>';
+    }
+
+    const ovenList = userOvens.length ? userOvens : [{ id: '_oven', name: 'Oven', decks: 3 }];
+    const multi = userOvens.length > 1;
+
+    // Group active recipes by preferred oven; collect "any oven" recipes separately.
+    const byOven = {}; ovenList.forEach(o => byOven[o.id] = []);
+    const anyOven = [];
+    active.forEach(r => {
+      if (r.preferredOvenId && byOven[r.preferredOvenId]) byOven[r.preferredOvenId].push(r);
+      else anyOven.push(r);
+    });
+
+    ovenList.forEach(o => {
+      const decks = Math.max(1, o.decks || 1);
+      html += '<div style="padding:8px 0;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600">' + escapeHtml(o.name) + ' <span class="muted" style="font-weight:400;font-size:0.85rem">· ' + decks + ' deck' + (decks !== 1 ? 's' : '') + '</span></div>';
+      const rs = byOven[o.id] || [];
+      if (rs.length) {
+        html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">Preferred for: ' + rs.map(recipeLine).join(', ') + '</div>';
+        const temps = [...new Set(rs.map(tempOf).filter(Boolean))];
+        if (temps.length > 1) html += '<div style="font-size:0.82rem;color:var(--danger);margin-top:2px">Mixed temps — sequential bakes here will need temp-change time.</div>';
+      } else {
+        html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">No recipe prefers this oven.</div>';
+      }
+      html += '</div>';
+    });
+
+    if (anyOven.length) {
+      html += '<div style="padding:8px 0;border-top:1px solid var(--border)">';
+      html += '<div style="font-weight:600">Any available oven</div>';
+      html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + anyOven.map(recipeLine).join(', ') + '</div>';
+      html += '</div>';
+    }
+
+    // Single-oven, mixed-temp heads-up across the whole plan.
+    if (!multi) {
+      const allTemps = [...new Set(active.map(tempOf).filter(Boolean))];
+      if (allTemps.length > 1) {
+        html += '<p style="font-size:0.85rem;color:var(--danger);margin:8px 0 0">This bake mixes temps (' + allTemps.sort((a, b) => a - b).join('°, ') + '°F) in one oven — the schedule adds temp-change time between them. A second oven would let them bake in parallel.</p>';
+      }
+    }
+
+    out.innerHTML = html;
+    if (summaryEl) {
+      const totalDecks = ovenList.reduce((s, o) => s + Math.max(1, o.decks || 1), 0);
+      summaryEl.textContent = userOvens.length
+        ? userOvens.length + ' oven' + (userOvens.length !== 1 ? 's' : '') + ' · ' + totalDecks + ' decks'
+        : 'No ovens set';
+    }
+    card.style.display = '';
   }
 
   // A recipe ingredient counts as the sourdough leaven if it's named "levain" OR "starter"
@@ -8250,7 +8363,7 @@ ${notesHtml}
       const kindSuffix = totalMuffins > 0 ? ' — bread into oven' : ' — into oven';
       const planLines = plan_b
         ? '\n' + plan_b
-            .map((deck, di) => `Deck ${di + 1}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
+            .map((deck, di) => `${deckLabelFor(di)}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
             .join('\n')
         : '';
       events.push({
@@ -8270,7 +8383,7 @@ ${notesHtml}
         const plan_b = muffinOvenPlan[b];
         const planLines = plan_b
           ? '\n' + plan_b
-              .map((deck, di) => `Deck ${di + 1}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
+              .map((deck, di) => `${deckLabelFor(di)}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
               .join('\n')
           : '';
         events.push({
