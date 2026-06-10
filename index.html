@@ -973,6 +973,17 @@
           <div id="container-list" style="margin-top:4px"></div>
         </div>
 
+        <hr class="sep" style="margin:16px 0">
+
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <h3 style="margin:0;font-size:1rem">Ovens</h3>
+            <button onclick="showOvenAddForm();event.stopPropagation()" class="secondary tiny">+ Add oven</button>
+          </div>
+          <p class="muted" style="margin:0 0 4px;font-size:0.88rem">Enter your ovens so the scheduler knows how many decks are available per bake.</p>
+          <div id="oven-list" style="margin-top:4px"></div>
+        </div>
+
       </details>
     </div>
 
@@ -1034,6 +1045,21 @@
         <button onclick="saveContainerItem()">Save</button>
       </div>
       <p id="container-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
+    </div>
+
+    <div id="oven-add-form" class="card" style="display:none">
+      <h3 style="margin:0 0 12px" id="oven-add-form-title">Add oven</h3>
+      <div class="row"><label style="width:140px">Name</label><input type="text" id="oven-name" placeholder="e.g. Deck oven" /></div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:140px">Decks</label>
+        <input type="number" id="oven-decks" min="1" max="20" step="1" style="width:80px;flex:none" placeholder="3" />
+        <span class="muted" style="margin-left:6px">decks (shelves)</span>
+      </div>
+      <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="secondary" onclick="hideOvenAddForm()">Cancel</button>
+        <button onclick="saveOven()">Save</button>
+      </div>
+      <p id="oven-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
     </div>
 
   </section>
@@ -1583,6 +1609,7 @@
   const QUIET_START_KEY = 'cottage-bakery-quiet-start-v1';
   const QUIET_END_KEY = 'cottage-bakery-quiet-end-v1';
   const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';
+  const KITCHEN_OVENS_KEY = 'whb-kitchen-ovens-v1';
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
   const LEVAIN_INTRODUCED_KEY = 'cottage-bakery-levain-introduced-v1';
   const ANCHORS_KEY = 'cottage-bakery-anchors-v1';
@@ -2668,7 +2695,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), containers: userContainers, customCategories: userCategories };
+    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), ovens: userOvens, containers: userContainers, customCategories: userCategories };
   }
 
   function applyRemoteSettings(settings) {
@@ -2678,6 +2705,10 @@ ${notesHtml}
     } else {
       if (Number.isFinite(settings.quietStart)) localStorage.setItem(QUIET_START_KEY, String(settings.quietStart));
       if (Number.isFinite(settings.quietEnd)) localStorage.setItem(QUIET_END_KEY, String(settings.quietEnd));
+    }
+    if (Array.isArray(settings.ovens)) {
+      userOvens = settings.ovens;
+      saveOvensLocally();
     }
     if (Array.isArray(settings.containers)) {
       userContainers = settings.containers;
@@ -3909,6 +3940,85 @@ ${notesHtml}
     pushSettingsToGist().catch(() => {});
   }
 
+  // ---- oven CRUD ----
+  let userOvens = loadOvensLocally();
+  function loadOvensLocally() {
+    try { const r = localStorage.getItem(KITCHEN_OVENS_KEY); return r ? JSON.parse(r) : []; } catch(e) { return []; }
+  }
+  function saveOvensLocally() {
+    localStorage.setItem(KITCHEN_OVENS_KEY, JSON.stringify(userOvens));
+  }
+  function getGlobalOvenDecks() {
+    if (userOvens.length === 0) return 3;
+    return userOvens.reduce((s, o) => s + (o.decks || 1), 0);
+  }
+  function renderOvens() {
+    const listEl = document.getElementById('oven-list');
+    if (!listEl) return;
+    if (userOvens.length === 0) {
+      listEl.innerHTML = '<p class="muted" style="margin:4px 0;font-size:0.88rem">No ovens added — scheduler defaults to 3 decks.</p>';
+      return;
+    }
+    listEl.innerHTML = userOvens.map(o => `
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-weight:500">${escapeHtml(o.name)}</span>
+        <span class="muted" style="font-size:0.88rem">${o.decks} deck${o.decks !== 1 ? 's' : ''}</span>
+        <button class="secondary tiny" onclick="showOvenAddForm('${o.id}')">Edit</button>
+        <button class="secondary tiny" onclick="removeOven('${o.id}')">Remove</button>
+      </div>`).join('');
+  }
+  function showOvenAddForm(editId) {
+    const form = document.getElementById('oven-add-form');
+    const titleEl = document.getElementById('oven-add-form-title');
+    document.getElementById('oven-add-msg').textContent = '';
+    if (editId && typeof editId === 'string') {
+      const item = userOvens.find(o => o.id === editId);
+      if (item) {
+        document.getElementById('oven-name').value = item.name;
+        document.getElementById('oven-decks').value = item.decks;
+        titleEl.textContent = 'Edit oven';
+        form.dataset.editId = editId;
+      }
+    } else {
+      document.getElementById('oven-name').value = '';
+      document.getElementById('oven-decks').value = '';
+      titleEl.textContent = 'Add oven';
+      form.dataset.editId = '';
+    }
+    form.style.display = '';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function hideOvenAddForm() {
+    const form = document.getElementById('oven-add-form');
+    form.style.display = 'none';
+    form.dataset.editId = '';
+  }
+  function saveOven() {
+    const name = document.getElementById('oven-name').value.trim();
+    const decks = parseInt(document.getElementById('oven-decks').value, 10);
+    const msgEl = document.getElementById('oven-add-msg');
+    if (!name) { msgEl.textContent = 'Name is required.'; return; }
+    if (!Number.isFinite(decks) || decks < 1) { msgEl.textContent = 'Enter a valid deck count (at least 1).'; return; }
+    const editId = document.getElementById('oven-add-form').dataset.editId;
+    const newItem = { id: editId || ('oven-' + Math.random().toString(36).slice(2, 10)), name, decks };
+    if (editId) {
+      const idx = userOvens.findIndex(o => o.id === editId);
+      if (idx >= 0) userOvens[idx] = newItem; else userOvens.push(newItem);
+    } else {
+      userOvens.push(newItem);
+    }
+    saveOvensLocally();
+    hideOvenAddForm();
+    renderOvens();
+    pushSettingsToGist().catch(() => {});
+  }
+  function removeOven(id) {
+    userOvens = userOvens.filter(o => o.id !== id);
+    saveOvensLocally();
+    renderOvens();
+    pushSettingsToGist().catch(() => {});
+  }
+
   // ---- recipe editor cost display ----
   function updateRecipeEditorCostDisplay() {
     const costEl = document.getElementById('r-cost-display');
@@ -4291,7 +4401,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); renderKitchenWindows(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderKitchenWindows(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -5939,7 +6049,7 @@ ${notesHtml}
       const c = planMap[r.id] || 0;
       if (c > 0) items[r.name] = c;
     }
-    return planBakes(items, deckCapByName, 3);
+    return planBakes(items, deckCapByName, getGlobalOvenDecks());
   }
 
   function planMuffinBakes(muffinRecipes, planMap) {
@@ -5952,7 +6062,7 @@ ${notesHtml}
       const c = planMap[r.id] || 0;
       if (c > 0) items[r.name] = c;
     }
-    return planBakes(items, deckCapByName, 3);
+    return planBakes(items, deckCapByName, getGlobalOvenDecks());
   }
 
   function pickLevainBuild(buildKey, refTime, override) {
@@ -8014,7 +8124,7 @@ ${notesHtml}
   // either field auto-recomputes the other.
   const ovenCapInput = document.getElementById('r-oven-cap');
   const deckCapInput = document.getElementById('r-deck-cap');
-  const OVEN_DECKS = 3;
+  const OVEN_DECKS = getGlobalOvenDecks();
   ovenCapInput.addEventListener('input', () => {
     const n = Number(ovenCapInput.value);
     if (Number.isFinite(n) && n > 0) {
