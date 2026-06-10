@@ -771,6 +771,18 @@
       </details>
     </div>
 
+    <div class="card totals" id="pan-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Pans</h2>
+          <span id="pan-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Focaccia and muffin recipes need pans. Add your pans in the Kitchen tab to check availability.</p>
+        <div id="pan-output" style="margin-top:8px"></div>
+      </details>
+    </div>
+
     <div id="plan-schedule-cta" style="display:none;margin-top:8px">
       <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
@@ -1007,6 +1019,17 @@
           <div id="banneton-list" style="margin-top:4px"></div>
         </div>
 
+        <hr class="sep" style="margin:16px 0">
+
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <h3 style="margin:0;font-size:1rem">Pans</h3>
+            <button onclick="showPanAddForm();event.stopPropagation()" class="secondary tiny">+ Add pan</button>
+          </div>
+          <p class="muted" style="margin:0 0 4px;font-size:0.88rem">Focaccia and muffin recipes need pans. Enter yours so the app can check you have enough for a given bake.</p>
+          <div id="pan-list" style="margin-top:4px"></div>
+        </div>
+
       </details>
     </div>
 
@@ -1102,6 +1125,30 @@
         <button onclick="saveBanneton()">Save</button>
       </div>
       <p id="banneton-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
+    </div>
+
+    <div id="pan-add-form" class="card" style="display:none">
+      <h3 style="margin:0 0 12px" id="pan-add-form-title">Add pan</h3>
+      <div class="row"><label style="width:160px">Name</label><input type="text" id="pan-name" placeholder='e.g. Half-sheet pan' /></div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">Quantity</label>
+        <input type="number" id="pan-qty" min="1" step="1" style="width:80px;flex:none" placeholder="1" />
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">Units per pan</label>
+        <input type="number" id="pan-capacity" min="1" step="1" style="width:80px;flex:none" placeholder="1" />
+        <span class="muted" style="margin-left:6px;font-size:0.88rem">e.g. 1 for focaccia pans, 12 for muffin sheets</span>
+      </div>
+      <div class="row" style="margin-top:8px;align-items:flex-start">
+        <label style="width:160px;padding-top:2px">For recipes</label>
+        <div id="pan-recipe-checks" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <p class="settings-hint" style="margin-left:160px">Leave all unchecked to use with any recipe.</p>
+      <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="secondary" onclick="hidePanAddForm()">Cancel</button>
+        <button onclick="savePan()">Save</button>
+      </div>
+      <p id="pan-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
     </div>
 
   </section>
@@ -1653,6 +1700,8 @@
   const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';
   const KITCHEN_OVENS_KEY = 'whb-kitchen-ovens-v1';
   const KITCHEN_BANNETONS_KEY = 'whb-kitchen-bannetons-v1';
+  const KITCHEN_PANS_KEY = 'whb-kitchen-pans-v1';
+  const PAN_REQUIRED_PROCESSES = ['focaccia', 'sourdough-muffin'];
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
   const LEVAIN_INTRODUCED_KEY = 'cottage-bakery-levain-introduced-v1';
   const ANCHORS_KEY = 'cottage-bakery-anchors-v1';
@@ -2738,7 +2787,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, containers: userContainers, customCategories: userCategories };
+    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, containers: userContainers, customCategories: userCategories };
   }
 
   function applyRemoteSettings(settings) {
@@ -2756,6 +2805,10 @@ ${notesHtml}
     if (Array.isArray(settings.bannetons)) {
       userBannetons = settings.bannetons;
       saveBannetonsLocally();
+    }
+    if (Array.isArray(settings.pans)) {
+      userPans = settings.pans;
+      savePansLocally();
     }
     if (Array.isArray(settings.containers)) {
       userContainers = settings.containers;
@@ -4202,6 +4255,161 @@ ${notesHtml}
     card.style.display = '';
   }
 
+  // ---- pan CRUD ----
+  let userPans = loadPansLocally();
+  function loadPansLocally() {
+    try { const r = localStorage.getItem(KITCHEN_PANS_KEY); return r ? JSON.parse(r) : []; } catch(e) { return []; }
+  }
+  function savePansLocally() {
+    localStorage.setItem(KITCHEN_PANS_KEY, JSON.stringify(userPans));
+  }
+  function renderPans() {
+    const listEl = document.getElementById('pan-list');
+    if (!listEl) return;
+    if (userPans.length === 0) {
+      listEl.innerHTML = '<p class="muted" style="margin:4px 0;font-size:0.88rem">No pans added yet.</p>';
+      return;
+    }
+    const nonLevainRecipes = recipes.filter(r => getProcessType(r) !== 'levain');
+    listEl.innerHTML = userPans.map(p => {
+      const forLabel = p.recipeIds && p.recipeIds.length > 0
+        ? p.recipeIds.map(id => { const r = nonLevainRecipes.find(r => r.id === id); return r ? escapeHtml(r.name) : id; }).join(', ')
+        : 'any recipe';
+      const capacityLabel = p.capacity === 1 ? '1 unit each' : `${p.capacity} units each`;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-weight:500">${escapeHtml(p.name)}</span>
+        <span class="muted" style="font-size:0.88rem">qty ${p.quantity}</span>
+        <span class="muted" style="font-size:0.82rem">${capacityLabel}</span>
+        <span class="muted" style="font-size:0.82rem">${forLabel}</span>
+        <button class="secondary tiny" onclick="showPanAddForm('${p.id}')">Edit</button>
+        <button class="secondary tiny" onclick="removePan('${p.id}')">Remove</button>
+      </div>`;
+    }).join('');
+  }
+  function showPanAddForm(editId) {
+    const form = document.getElementById('pan-add-form');
+    const titleEl = document.getElementById('pan-add-form-title');
+    const checksEl = document.getElementById('pan-recipe-checks');
+    document.getElementById('pan-add-msg').textContent = '';
+    const nonLevainRecipes = recipes.filter(r => getProcessType(r) !== 'levain');
+    let selectedIds = [];
+    if (editId && typeof editId === 'string') {
+      const item = userPans.find(p => p.id === editId);
+      if (item) {
+        document.getElementById('pan-name').value = item.name;
+        document.getElementById('pan-qty').value = item.quantity;
+        document.getElementById('pan-capacity').value = item.capacity;
+        selectedIds = item.recipeIds || [];
+        titleEl.textContent = 'Edit pan';
+        form.dataset.editId = editId;
+      }
+    } else {
+      document.getElementById('pan-name').value = '';
+      document.getElementById('pan-qty').value = '';
+      document.getElementById('pan-capacity').value = '';
+      titleEl.textContent = 'Add pan';
+      form.dataset.editId = '';
+    }
+    checksEl.innerHTML = nonLevainRecipes.length === 0
+      ? '<span class="muted" style="font-size:0.88rem">No recipes yet.</span>'
+      : nonLevainRecipes.map(r => `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem">
+          <input type="checkbox" value="${r.id}" ${selectedIds.includes(r.id) ? 'checked' : ''} />
+          ${escapeHtml(r.name)}
+        </label>`).join('');
+    form.style.display = '';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function hidePanAddForm() {
+    const form = document.getElementById('pan-add-form');
+    form.style.display = 'none';
+    form.dataset.editId = '';
+  }
+  function savePan() {
+    const name = document.getElementById('pan-name').value.trim();
+    const qty = parseInt(document.getElementById('pan-qty').value, 10);
+    const capacity = parseInt(document.getElementById('pan-capacity').value, 10);
+    const msgEl = document.getElementById('pan-add-msg');
+    if (!name) { msgEl.textContent = 'Name is required.'; return; }
+    if (!Number.isFinite(qty) || qty < 1) { msgEl.textContent = 'Enter a valid quantity (at least 1).'; return; }
+    if (!Number.isFinite(capacity) || capacity < 1) { msgEl.textContent = 'Enter a valid units-per-pan count (at least 1).'; return; }
+    const recipeIds = [...document.querySelectorAll('#pan-recipe-checks input[type=checkbox]:checked')].map(el => el.value);
+    const editId = document.getElementById('pan-add-form').dataset.editId;
+    const newItem = { id: editId || ('pan-' + Math.random().toString(36).slice(2, 10)), name, quantity: qty, capacity, recipeIds };
+    if (editId) {
+      const idx = userPans.findIndex(p => p.id === editId);
+      if (idx >= 0) userPans[idx] = newItem; else userPans.push(newItem);
+    } else {
+      userPans.push(newItem);
+    }
+    savePansLocally();
+    hidePanAddForm();
+    renderPans();
+    renderPanPlan();
+    pushSettingsToGist().catch(() => {});
+  }
+  function removePan(id) {
+    userPans = userPans.filter(p => p.id !== id);
+    savePansLocally();
+    renderPans();
+    renderPanPlan();
+    pushSettingsToGist().catch(() => {});
+  }
+  function renderPanPlan() {
+    const card = document.getElementById('pan-card');
+    const out = document.getElementById('pan-output');
+    const summaryEl = document.getElementById('pan-summary');
+    if (!card || !out) return;
+    const recipesNeedingPans = recipes.filter(r => {
+      if ((plan[r.id] || 0) === 0) return false;
+      const pt = getProcessType(r);
+      const hasPanAssigned = userPans.some(p => !p.recipeIds || p.recipeIds.length === 0 || p.recipeIds.includes(r.id));
+      return PAN_REQUIRED_PROCESSES.includes(pt) || hasPanAssigned;
+    });
+    if (recipesNeedingPans.length === 0) { card.style.display = 'none'; return; }
+    let shortfalls = 0;
+    let rowsHtml = recipesNeedingPans.map(r => {
+      const needed = plan[r.id] || 0;
+      const compatiblePans = userPans.filter(p => !p.recipeIds || p.recipeIds.length === 0 || p.recipeIds.includes(r.id));
+      const totalCapacity = compatiblePans.reduce((s, p) => s + p.quantity * p.capacity, 0);
+      const ok = compatiblePans.length === 0 || totalCapacity >= needed;
+      if (compatiblePans.length > 0 && !ok) shortfalls++;
+      let statusHtml;
+      if (compatiblePans.length === 0) {
+        statusHtml = '<span class="muted" style="font-size:0.85rem">no pans configured</span>';
+      } else if (ok) {
+        const detail = compatiblePans.length === 1 && compatiblePans[0].capacity > 1
+          ? `${compatiblePans[0].quantity} × ${compatiblePans[0].capacity} = ${totalCapacity}`
+          : `${totalCapacity}`;
+        statusHtml = `<span class="muted" style="font-size:0.85rem">${detail} capacity</span>`;
+      } else {
+        statusHtml = `<span style="color:var(--danger);font-size:0.85rem">&#9888; need ${needed}, have ${totalCapacity} capacity</span>`;
+      }
+      return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1">${escapeHtml(r.name)}</span>
+        <span class="muted" style="font-size:0.85rem">${needed} needed</span>
+        ${statusHtml}
+      </div>`;
+    }).join('');
+    const anyUnconfigured = recipesNeedingPans.some(r =>
+      !userPans.some(p => !p.recipeIds || p.recipeIds.length === 0 || p.recipeIds.includes(r.id))
+    );
+    if (anyUnconfigured) {
+      rowsHtml += `<div style="margin-top:10px;padding:8px 12px;background:var(--accent-light,#e8f4e8);border-radius:6px;font-size:0.875rem">
+        Some recipes have no pans configured.
+        <a href="#" onclick="showTab('ingredients');setTimeout(function(){showPanAddForm();document.getElementById('pan-add-form').scrollIntoView({behavior:'smooth',block:'start'});},120);return false" style="margin-left:4px">Add your pans →</a>
+      </div>`;
+    }
+    if (shortfalls > 0) {
+      summaryEl.textContent = `⚠ ${shortfalls} shortfall${shortfalls > 1 ? 's' : ''}`;
+      summaryEl.style.color = 'var(--danger)';
+    } else {
+      summaryEl.textContent = anyUnconfigured ? 'pans not fully configured' : 'all covered';
+      summaryEl.style.color = '';
+    }
+    out.innerHTML = rowsHtml;
+    card.style.display = '';
+  }
+
   // ---- recipe editor cost display ----
   function updateRecipeEditorCostDisplay() {
     const costEl = document.getElementById('r-cost-display');
@@ -4584,7 +4792,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderKitchenWindows(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderKitchenWindows(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -4977,6 +5185,7 @@ ${notesHtml}
     renderLevainPlan(aggregate, levainByProcess);
     renderDoughContainerPlan();
     renderBannetonPlan();
+    renderPanPlan();
   }
 
   function normalizeIngredientKey(name) {
