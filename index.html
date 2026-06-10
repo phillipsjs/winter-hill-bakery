@@ -1136,16 +1136,9 @@
       </div>
       <div class="row" style="margin-top:8px;align-items:flex-start">
         <label style="width:160px;padding-top:2px">For recipes</label>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <div id="pan-recipe-checks"></div>
-          <div id="pan-any-capacity-row" style="display:none;align-items:center;gap:8px">
-            <span style="font-size:0.9rem;color:var(--muted);min-width:160px">Any recipe</span>
-            <input type="number" id="pan-any-capacity" min="1" step="1" style="width:65px;flex:none" placeholder="1" />
-            <span class="muted" style="font-size:0.85rem">per pan</span>
-          </div>
-        </div>
+        <div id="pan-recipe-checks" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
-      <p class="settings-hint" style="margin-left:160px">Tick recipes to set a per-recipe capacity. Leave all unchecked for a generic pan.</p>
+      <p class="settings-hint" style="margin-left:160px">Tick the recipes this pan is used for and enter how many units fit. Pans with no recipes assigned won't be included in availability checks.</p>
       <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">
         <button class="secondary" onclick="hidePanAddForm()">Cancel</button>
         <button onclick="savePan()">Save</button>
@@ -4280,13 +4273,11 @@ ${notesHtml}
   }
   function panCoversRecipe(pan, recipeId) {
     const caps = pan.recipeCapacities || {};
-    return Object.keys(caps).length === 0 || recipeId in caps;
+    return recipeId in caps;
   }
   function getPanCapacityForRecipe(pan, recipeId) {
     const caps = pan.recipeCapacities || {};
-    if (caps[recipeId] != null) return caps[recipeId];
-    if (pan.anyCapacity) return pan.anyCapacity;
-    return pan.capacity || 1;
+    return caps[recipeId] || 1;
   }
   function renderPans() {
     const listEl = document.getElementById('pan-list');
@@ -4301,8 +4292,7 @@ ${notesHtml}
       const entries = Object.entries(caps);
       let capacityDesc;
       if (entries.length === 0) {
-        const c = p.anyCapacity || 1;
-        capacityDesc = `${c} per pan`;
+        capacityDesc = 'not assigned';
       } else {
         capacityDesc = entries.map(([id, c]) => {
           const rec = nonLevainRecipes.find(r => r.id === id);
@@ -4324,26 +4314,20 @@ ${notesHtml}
     const capLabel = row.querySelector('.pan-cap-label');
     capInput.style.display = checkbox.checked ? '' : 'none';
     capLabel.style.display = checkbox.checked ? '' : 'none';
-    const anyChecked = document.querySelectorAll('#pan-recipe-checks input[type=checkbox]:checked').length > 0;
-    const anyRow = document.getElementById('pan-any-capacity-row');
-    if (anyRow) anyRow.style.display = anyChecked ? 'none' : 'flex';
   }
   function showPanAddForm(editId) {
     const form = document.getElementById('pan-add-form');
     const titleEl = document.getElementById('pan-add-form-title');
     const checksEl = document.getElementById('pan-recipe-checks');
-    const anyRow = document.getElementById('pan-any-capacity-row');
-    const anyCapInput = document.getElementById('pan-any-capacity');
     document.getElementById('pan-add-msg').textContent = '';
     const nonLevainRecipes = recipes.filter(r => getProcessType(r) !== 'levain');
-    let recipeCapacities = {}, anyCapacity = '';
+    let recipeCapacities = {};
     if (editId && typeof editId === 'string') {
       const item = userPans.find(p => p.id === editId);
       if (item) {
         document.getElementById('pan-name').value = item.name;
         document.getElementById('pan-qty').value = item.quantity;
         recipeCapacities = item.recipeCapacities || {};
-        anyCapacity = item.anyCapacity != null ? item.anyCapacity : '';
         titleEl.textContent = 'Edit pan';
         form.dataset.editId = editId;
       }
@@ -4353,7 +4337,6 @@ ${notesHtml}
       titleEl.textContent = 'Add pan';
       form.dataset.editId = '';
     }
-    const hasSelectedRecipes = Object.keys(recipeCapacities).length > 0;
     checksEl.innerHTML = nonLevainRecipes.length === 0
       ? '<span class="muted" style="font-size:0.88rem">No recipes yet.</span>'
       : nonLevainRecipes.map(r => {
@@ -4368,8 +4351,6 @@ ${notesHtml}
             <span class="muted pan-cap-label" style="font-size:0.85rem${isSelected ? '' : ';display:none'}">per pan</span>
           </div>`;
         }).join('');
-    if (anyRow) anyRow.style.display = hasSelectedRecipes ? 'none' : 'flex';
-    if (anyCapInput) anyCapInput.value = anyCapacity;
     form.style.display = '';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -4393,13 +4374,8 @@ ${notesHtml}
       recipeCapacities[cb.value] = cap;
     });
     if (capError) { msgEl.textContent = 'Enter a valid capacity for each selected recipe (at least 1).'; return; }
-    let anyCapacity = null;
-    if (Object.keys(recipeCapacities).length === 0) {
-      anyCapacity = parseInt(document.getElementById('pan-any-capacity').value, 10);
-      if (!Number.isFinite(anyCapacity) || anyCapacity < 1) { msgEl.textContent = 'Enter a valid units-per-pan count (at least 1).'; return; }
-    }
     const editId = document.getElementById('pan-add-form').dataset.editId;
-    const newItem = { id: editId || ('pan-' + Math.random().toString(36).slice(2, 10)), name, quantity: qty, recipeCapacities, anyCapacity };
+    const newItem = { id: editId || ('pan-' + Math.random().toString(36).slice(2, 10)), name, quantity: qty, recipeCapacities };
     if (editId) {
       const idx = userPans.findIndex(p => p.id === editId);
       if (idx >= 0) userPans[idx] = newItem; else userPans.push(newItem);
