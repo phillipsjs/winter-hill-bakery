@@ -1048,10 +1048,11 @@
         <p class="muted" style="margin:8px 0 12px;font-size:0.9rem">The scheduler avoids placing active steps outside these hours. Add multiple windows if your kitchen has a midday break or irregular hours.</p>
         <div id="kitchen-windows-list"></div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <span style="color:var(--muted)">Open from</span>
           <select id="kw-start-select" class="settings-select" style="width:auto"></select>
           <span style="color:var(--muted)">to</span>
           <select id="kw-end-select" class="settings-select" style="width:auto"></select>
-          <button onclick="addKitchenWindow()" class="secondary">+ Add window</button>
+          <button onclick="addKitchenWindow()" class="secondary">+ Add hours</button>
         </div>
         <div id="kitchen-windows-msg" style="margin-top:6px;font-size:0.9rem"></div>
       </details>
@@ -1697,7 +1698,8 @@
   const FOCACCIA_BAKETIME_KEY = 'cottage-bakery-baketime-focaccia-v1';
   const QUIET_START_KEY = 'cottage-bakery-quiet-start-v1';
   const QUIET_END_KEY = 'cottage-bakery-quiet-end-v1';
-  const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';
+  const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';       // legacy: stored closed/quiet windows
+  const KITCHEN_OPEN_WINDOWS_KEY = 'whb-kitchen-open-windows-v1'; // current: stores open/operating windows
   const KITCHEN_OVENS_KEY = 'whb-kitchen-ovens-v1';
   const KITCHEN_BANNETONS_KEY = 'whb-kitchen-bannetons-v1';
   const KITCHEN_PANS_KEY = 'whb-kitchen-pans-v1';
@@ -2132,15 +2134,26 @@
     return labels.map((lbl, i) => `<option value="${i}">${lbl}</option>`).join('');
   }
   function loadKitchenWindows() {
-    const raw = localStorage.getItem(KITCHEN_WINDOWS_KEY);
-    if (raw) { try { const w = JSON.parse(raw); if (Array.isArray(w)) return w; } catch(e) {} }
-    // Migrate from old single-window keys
+    // Try new open-windows key first
+    const raw = localStorage.getItem(KITCHEN_OPEN_WINDOWS_KEY);
+    if (raw) { try { const w = JSON.parse(raw); if (Array.isArray(w) && w.length > 0) return w; } catch(e) {} }
+    // Migrate from old closed-windows key (single window: invert start↔end to get open window)
+    const oldRaw = localStorage.getItem(KITCHEN_WINDOWS_KEY);
+    if (oldRaw) {
+      try {
+        const oldW = JSON.parse(oldRaw);
+        if (Array.isArray(oldW) && oldW.length === 1) return [{ start: oldW[0].end, end: oldW[0].start }];
+      } catch(e) {}
+    }
+    // Migrate from legacy quiet-hours keys (closed [qs,qe] → open [qe,qs])
     const qs = parseInt(localStorage.getItem(QUIET_START_KEY), 10);
     const qe = parseInt(localStorage.getItem(QUIET_END_KEY), 10);
-    return [{ start: Number.isFinite(qs) ? qs : 23, end: Number.isFinite(qe) ? qe : 5 }];
+    if (Number.isFinite(qs) && Number.isFinite(qe)) return [{ start: qe, end: qs }];
+    // Default: 6 AM – 10 PM
+    return [{ start: 6, end: 22 }];
   }
   function saveKitchenWindowsLocally(windows) {
-    localStorage.setItem(KITCHEN_WINDOWS_KEY, JSON.stringify(windows));
+    localStorage.setItem(KITCHEN_OPEN_WINDOWS_KEY, JSON.stringify(windows));
     pushSettingsToGist().catch(() => {});
   }
   function renderKitchenWindows() {
@@ -2149,11 +2162,11 @@
     const endEl = document.getElementById('kw-end-select');
     if (!listEl) return;
     const hourOpts = buildHourOptions();
-    if (startEl && !startEl.options.length) { startEl.innerHTML = hourOpts; startEl.value = '23'; }
-    if (endEl && !endEl.options.length) { endEl.innerHTML = hourOpts; endEl.value = '5'; }
+    if (startEl && !startEl.options.length) { startEl.innerHTML = hourOpts; startEl.value = '6'; }
+    if (endEl && !endEl.options.length) { endEl.innerHTML = hourOpts; endEl.value = '22'; }
     const windows = loadKitchenWindows();
     if (windows.length === 0) {
-      listEl.innerHTML = '<p class="muted" style="margin:0;font-size:0.88rem">No unavailable windows set — all hours are available.</p>';
+      listEl.innerHTML = '<p class="muted" style="margin:0;font-size:0.88rem">No hours set — add your kitchen\'s operating hours below.</p>';
       return;
     }
     listEl.innerHTML = windows.map((w, i) => `
@@ -2177,7 +2190,7 @@
     windows.push({ start, end });
     saveKitchenWindowsLocally(windows);
     renderKitchenWindows();
-    msg.textContent = 'Window added.';
+    msg.textContent = 'Hours added.';
     msg.style.color = 'var(--success, green)';
     setTimeout(() => { msg.textContent = ''; }, 2000);
   }
@@ -2787,13 +2800,17 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, containers: userContainers, customCategories: userCategories };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, containers: userContainers, customCategories: userCategories };
   }
 
   function applyRemoteSettings(settings) {
     if (!settings || typeof settings !== 'object') return;
-    if (Array.isArray(settings.kitchenWindows)) {
-      localStorage.setItem(KITCHEN_WINDOWS_KEY, JSON.stringify(settings.kitchenWindows));
+    if (Array.isArray(settings.kitchenOpenWindows)) {
+      localStorage.setItem(KITCHEN_OPEN_WINDOWS_KEY, JSON.stringify(settings.kitchenOpenWindows));
+    } else if (Array.isArray(settings.kitchenWindows) && settings.kitchenWindows.length === 1) {
+      // Migrate old closed-window from Gist: invert to open window
+      const cw = settings.kitchenWindows[0];
+      localStorage.setItem(KITCHEN_OPEN_WINDOWS_KEY, JSON.stringify([{ start: cw.end, end: cw.start }]));
     } else {
       if (Number.isFinite(settings.quietStart)) localStorage.setItem(QUIET_START_KEY, String(settings.quietStart));
       if (Number.isFinite(settings.quietEnd)) localStorage.setItem(QUIET_END_KEY, String(settings.quietEnd));
@@ -6483,13 +6500,16 @@ ${notesHtml}
   }
   function quietHoursLabel() {
     const windows = loadKitchenWindows();
-    if (windows.length === 0) return 'unavailable hours';
-    return windows.map(w => fmtHour12(w.start) + '–' + fmtHour12(w.end)).join(', ');
+    if (windows.length === 0) return 'kitchen hours';
+    return 'kitchen hours (' + windows.map(w => fmtHour12(w.start) + '–' + fmtHour12(w.end)).join(', ') + ')';
   }
   function isLateNightHour(h) {
-    return loadKitchenWindows().some(w => {
-      if (w.start <= w.end) return h >= w.start && h < w.end;
-      return h >= w.start || h < w.end;
+    const windows = loadKitchenWindows();
+    if (windows.length === 0) return false; // no hours defined = always open
+    return !windows.some(w => {
+      if (w.start < w.end) return h >= w.start && h < w.end;
+      if (w.start > w.end) return h >= w.start || h < w.end; // overnight open window
+      return false;
     });
   }
   function isLateNight(date) {
@@ -6842,7 +6862,7 @@ ${notesHtml}
       }
       const bakeHour = firstBakeStart.getHours();
       if (isLateNightHour(bakeHour)) {
-        warnings.push({ msg: `${kindLabel} bake starts in the ${quietHoursLabel()} window. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind });
+        warnings.push({ msg: `${kindLabel} bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind });
       }
       return { firstBakeStart, lastBakeEnd, packageReady };
     };
@@ -6892,7 +6912,7 @@ ${notesHtml}
       }
       const focBakeHour = focFirstBakeStart.getHours();
       if (isLateNightHour(focBakeHour)) {
-        warnings.push({ msg: `Focaccia bake starts in the ${quietHoursLabel()} window. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind: 'focaccia' });
+        warnings.push({ msg: `Focaccia bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind: 'focaccia' });
       }
       focacciaSlot = { firstBakeStart: focFirstBakeStart, lastBakeEnd: focLastBakeEnd, packageReady: focPackageReady };
     }
@@ -7125,7 +7145,7 @@ ${notesHtml}
       const lateFocaccia = lateNightActiveSteps(events, 'focaccia');
       if (lateFocaccia.length > 0) {
         const fmtLate = (steps) => [...new Set(steps.map(e => e.title.replace(/\s+\d+ of \d+.*$/, '')))].slice(0, 4).join(', ');
-        warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLate(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
+        warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLate(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
       }
       events.sort((a, b) => a.time - b.time);
       return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia, batches: focacciaBatches, mixBatches: 1, events, warnings };
@@ -7752,18 +7772,18 @@ ${notesHtml}
       return unique.slice(0, 4).join(', ') + (unique.length > 4 ? '…' : '');
     };
     if (lateLoaf.length > 0) {
-      warnings.push({ msg: `${lateLoaf.length} active loaf step${lateLoaf.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateLoaf)}). Try a different loaf cold proof or bake time.`, issue: 'late-night', kind: 'loaf' });
+      warnings.push({ msg: `${lateLoaf.length} active loaf step${lateLoaf.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLateNames(lateLoaf)}). Try a different loaf cold proof or bake time.`, issue: 'late-night', kind: 'loaf' });
     }
     if (lateMuffin.length > 0) {
-      warnings.push({ msg: `${lateMuffin.length} active muffin step${lateMuffin.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateMuffin)}). Try a different muffin cold proof or bake time.`, issue: 'late-night', kind: 'muffin' });
+      warnings.push({ msg: `${lateMuffin.length} active muffin step${lateMuffin.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLateNames(lateMuffin)}). Try a different muffin cold proof or bake time.`, issue: 'late-night', kind: 'muffin' });
     }
     const lateBagel = totalBagels > 0 ? lateNightActiveSteps(events, 'bagel') : [];
     if (lateBagel.length > 0) {
-      warnings.push({ msg: `${lateBagel.length} active bagel step${lateBagel.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateBagel)}). Try a different bagel cold proof or bake time.`, issue: 'late-night', kind: 'bagel' });
+      warnings.push({ msg: `${lateBagel.length} active bagel step${lateBagel.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLateNames(lateBagel)}). Try a different bagel cold proof or bake time.`, issue: 'late-night', kind: 'bagel' });
     }
     const lateFocaccia = totalFocaccia > 0 ? lateNightActiveSteps(events, 'focaccia') : [];
     if (lateFocaccia.length > 0) {
-      warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall in the ${quietHoursLabel()} window (${fmtLateNames(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
+      warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLateNames(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
     }
 
     events.sort((a, b) => a.time - b.time);
