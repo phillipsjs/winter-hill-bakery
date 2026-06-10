@@ -882,6 +882,8 @@
           <option value="sourdough-muffin">Sourdough muffin</option>
           <option value="focaccia">Focaccia / pan bread</option>
           <option value="bagel">Bagel</option>
+          <option value="simple">Other / simple bake (no ferment)</option>
+          <option value="enriched">Enriched yeast dough</option>
           <option value="levain">Levain</option>
         </select>
         <span class="muted" id="r-process-note" style="font-size:0.8rem"></span>
@@ -1925,6 +1927,40 @@
       bakeTempF: 450,
       schedulable: true,
     },
+    'simple': {
+      label: 'Other / simple bake',
+      unit: 'item',
+      bakeMin: 14,
+      ovenCapacity: 18,   // fallback when no preferred pan capacity is set
+      coldProofHr: 0,
+      warmupMin: 0,
+      autolyseMin: 0,
+      bulkMin: 0,
+      shapeMinPerUnit: 0.7,
+      foldsCount: 0,
+      bakeTempF: 350,
+      mixMin: 15,         // active mixing time (not a bread fold/bulk cycle)
+      coolMin: 15,
+      schedulable: false, // Phase 2 will add the builder and flip this true
+    },
+    'enriched': {
+      label: 'Enriched yeast dough',
+      unit: 'roll',
+      bakeMin: 25,
+      ovenCapacity: 8,    // fallback when no preferred pan capacity is set
+      coldProofHr: 0,     // warm final proof by default; cold is a per-recipe option
+      warmupMin: 0,
+      autolyseMin: 0,
+      bulkMin: 90,        // warm bulk rise
+      shapeMinPerUnit: 2, // roll out, fill, cut
+      foldsCount: 0,
+      bakeTempF: 350,
+      mixMin: 20,         // mix + knead
+      finalProofWarmMin: 60,
+      coolMin: 20,
+      glazeMin: 5,
+      schedulable: false, // Phase 2 will add the builder and flip this true
+    },
     'levain': {
       label: 'Levain',
       unit: 'batch',
@@ -1943,6 +1979,15 @@
     }
     if (recipe && recipe.unit === 'muffin') return 'sourdough-muffin';
     return 'sourdough-loaf';
+  }
+
+  // Group process types into the families that share editor + scheduling behavior.
+  // 'bread' = the four sourdough/yeast bread processes, 'other' = simple bake / enriched,
+  // 'levain' = the leaven build.
+  function processCategory(pt) {
+    if (pt === 'levain') return 'levain';
+    if (pt === 'simple' || pt === 'enriched') return 'other';
+    return 'bread';
   }
 
   function getRecipeSpec(recipe) {
@@ -3174,8 +3219,10 @@ ${notesHtml}
     const flourWeight = recipe.loafWeight / (sumPct / 100);
     let total = 0, anyLinked = false;
     for (const ing of recipe.ingredients) {
-      // Levain ingredient in a non-levain sourdough recipe: cost from the levain recipe
-      if (isLevainIngredient(ing.name) && recipe.processType !== 'levain' && recipe.leavening !== 'commercial-yeast') {
+      // Levain ingredient in a bread sourdough recipe: cost from the levain recipe.
+      // Restricted to the bread family so a "starter" ingredient in a simple/enriched
+      // recipe isn't mistaken for the sourdough leaven.
+      if (isLevainIngredient(ing.name) && processCategory(getProcessType(recipe)) === 'bread' && recipe.leavening !== 'commercial-yeast') {
         const cpg = computeLevainCostPerGram();
         if (cpg != null) {
           total += flourWeight * (Number(ing.pct) / 100) * cpg;
@@ -6469,9 +6516,12 @@ ${notesHtml}
     const sel = document.getElementById('r-process-type');
     const processType = sel.value;
     const isLevain = processType === 'levain';
-    document.getElementById('r-recipe-settings').style.display = isLevain ? 'none' : '';
+    const category = processCategory(processType);
+    // Bread ferment controls (autolyse/bulk/folds/cold-proof/shape) only apply to bread.
+    document.getElementById('r-recipe-settings').style.display = category === 'bread' ? '' : 'none';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
-    document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
+    // Sourdough-vs-yeast choice only matters for the bread processes.
+    document.getElementById('r-leavening-row').style.display = category === 'bread' ? '' : 'none';
     const weightLabel = document.getElementById('r-weight-label');
     if (weightLabel) weightLabel.innerHTML = isLevain
       ? 'Typical yield'
@@ -6521,7 +6571,11 @@ ${notesHtml}
     const prefOven = (prefs && prefs.preferredOvenId) || '';
     const isLoaf = processType === 'sourdough-loaf';
     const isLevain = processType === 'levain';
-    const needsPan = processType === 'sourdough-muffin' || processType === 'focaccia';
+    const category = processCategory(processType);
+    // Simple bakes & enriched doughs pan up too; bread muffins/focaccia already do.
+    const needsPan = processType === 'sourdough-muffin' || processType === 'focaccia' || category === 'other';
+    // Proofing containers are a sourdough/bread concept — skip them for simple/enriched.
+    const showContainers = category !== 'other';
     const relevantContainers = userContainers.filter(c =>
       isLoaf ? (c.processTag === 'any' || c.processTag === 'loaf')
       : isLevain ? (c.processTag === 'any' || c.processTag === 'levain')
@@ -6529,6 +6583,7 @@ ${notesHtml}
     );
     let html = '';
 
+    if (showContainers) {
     html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Proofing containers</div>';
     if (relevantContainers.length === 0) {
       html += '<span class="muted" style="font-size:0.9rem">No containers added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'container\')">+ Add to Kitchen</button>';
@@ -6541,6 +6596,7 @@ ${notesHtml}
       html += '</div>';
     }
     html += '</div>';
+    }
 
     if (isLoaf) {
       html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Bannetons</div>';
@@ -6730,8 +6786,10 @@ ${notesHtml}
     const processType = getProcessType(r);
     document.getElementById('r-process-type').value = processType;
     const isLevain = processType === 'levain';
-    document.getElementById('r-recipe-settings').style.display = isLevain ? 'none' : '';
+    const category = processCategory(processType);
+    document.getElementById('r-recipe-settings').style.display = category === 'bread' ? '' : 'none';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
+    document.getElementById('r-leavening-row').style.display = category === 'bread' ? '' : 'none';
     const wl = document.getElementById('r-weight-label');
     const tmplUnit = PROCESS_TEMPLATES[processType] ? PROCESS_TEMPLATES[processType].unit : 'unit';
     const unit = r.unit || tmplUnit;
@@ -6879,6 +6937,8 @@ ${notesHtml}
     const costPerItem = computeRecipeCostPerItem(tmpRecipe);
 
     const leavening = processType === 'levain' ? undefined
+      : processType === 'enriched' ? 'commercial-yeast'
+      : processType === 'simple' ? 'none'
       : (document.getElementById('r-leavening').value || 'sourdough');
 
     // Sourdough recipes need an ingredient named "levain" (or "starter") for the build
