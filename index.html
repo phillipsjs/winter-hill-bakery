@@ -5751,8 +5751,8 @@ ${notesHtml}
     renderOvenOverview();
   }
 
-  // Bake Plan "Oven overview" card: shows each oven, its decks, and which planned
-  // recipes go in it (by preferred oven), plus flags for shared-oven temp changes.
+  // Bake Plan "Oven overview" card: shows what's actually baking in each oven,
+  // using the same deck planner the scheduler uses (decks map to ovens in order).
   function renderOvenOverview() {
     const card = document.getElementById('oven-overview-card');
     const out = document.getElementById('oven-overview-output');
@@ -5767,10 +5767,36 @@ ${notesHtml}
       const tmpl = PROCESS_TEMPLATES[getProcessType(r)];
       return tmpl && tmpl.bakeTempF ? tmpl.bakeTempF : null;
     };
-    const recipeLine = (r) => {
-      const t = tempOf(r);
-      return escapeHtml(r.name) + (t ? ' <span class="muted" style="font-size:0.8rem">(' + t + '°F)</span>' : '');
+
+    const ovenList = userOvens.length ? userOvens : [{ id: '_oven', name: 'Oven', decks: 3 }];
+    const multi = userOvens.length > 1;
+    const slots = ovenDeckSlots();
+    const ovenNameOf = (id) => { const o = ovenList.find(x => x.id === id); return o ? o.name : 'Oven'; };
+
+    // Aggregate deck-planned bakes (loaf, muffin) into actual per-oven contents.
+    // perOven[name] = { items: {recipeName: count}, rounds: n }
+    const perOven = {}; ovenList.forEach(o => perOven[o.name] = { items: {}, rounds: 0 });
+    const addDeckPlan = (batches) => {
+      (batches || []).forEach(decks => {
+        const used = new Set();
+        decks.forEach((deck, di) => {
+          const on = di < slots.length ? slots[di].ovenName : ovenList[0].name;
+          if (!perOven[on]) perOven[on] = { items: {}, rounds: 0 };
+          used.add(on);
+          deck.items.forEach(it => { perOven[on].items[it.name] = (perOven[on].items[it.name] || 0) + it.count; });
+        });
+        used.forEach(on => { perOven[on].rounds += 1; });
+      });
     };
+    const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf' && (plan[r.id] || 0) > 0);
+    const muffinRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-muffin' && (plan[r.id] || 0) > 0);
+    if (loafRecipes.length) addDeckPlan(planOvenLoads(loafRecipes, plan));
+    if (muffinRecipes.length) addDeckPlan(planMuffinBakes(muffinRecipes, plan));
+
+    // Other bakes that aren't deck-allocated (focaccia/bagel are pan/batch based;
+    // simple/enriched aren't scheduled yet). Listed with their preferred oven.
+    const otherTypes = ['focaccia', 'bagel', 'simple', 'enriched'];
+    const other = active.filter(r => otherTypes.includes(getProcessType(r)));
 
     let html = '';
     if (userOvens.length === 0) {
@@ -5778,37 +5804,37 @@ ${notesHtml}
       html += '<a href="#" onclick="showTab(\'ingredients\');setTimeout(function(){showOvenAddForm();var f=document.getElementById(\'oven-add-form\');if(f)f.scrollIntoView({behavior:\'smooth\',block:\'start\'});},120);return false">Add your ovens →</a></p>';
     }
 
-    const ovenList = userOvens.length ? userOvens : [{ id: '_oven', name: 'Oven', decks: 3 }];
-    const multi = userOvens.length > 1;
-
-    // Group active recipes by preferred oven; collect "any oven" recipes separately.
-    const byOven = {}; ovenList.forEach(o => byOven[o.id] = []);
-    const anyOven = [];
-    active.forEach(r => {
-      if (r.preferredOvenId && byOven[r.preferredOvenId]) byOven[r.preferredOvenId].push(r);
-      else anyOven.push(r);
-    });
-
     ovenList.forEach(o => {
       const decks = Math.max(1, o.decks || 1);
+      const data = perOven[o.name] || { items: {}, rounds: 0 };
+      const names = Object.keys(data.items);
       html += '<div style="padding:8px 0;border-top:1px solid var(--border)">';
       html += '<div style="font-weight:600">' + escapeHtml(o.name) + ' <span class="muted" style="font-weight:400;font-size:0.85rem">· ' + decks + ' deck' + (decks !== 1 ? 's' : '') + '</span></div>';
-      const rs = byOven[o.id] || [];
-      if (rs.length) {
-        html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">Preferred for: ' + rs.map(recipeLine).join(', ') + '</div>';
-        const temps = [...new Set(rs.map(tempOf).filter(Boolean))];
-        if (temps.length > 1) html += '<div style="font-size:0.82rem;color:var(--danger);margin-top:2px">Mixed temps — sequential bakes here will need temp-change time.</div>';
+      if (names.length) {
+        const roundNote = data.rounds > 1 ? ' <span class="muted" style="font-size:0.8rem">(' + data.rounds + ' bake rounds)</span>' : '';
+        html += '<div style="font-size:0.9rem;margin-top:2px">Baking: ' + names.map(n => data.items[n] + ' × ' + escapeHtml(n)).join(', ') + roundNote + '</div>';
       } else {
-        html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">No recipe prefers this oven.</div>';
+        // Nothing deck-allocated here — is a pan/other bake assigned to it?
+        const prefHere = other.filter(r => r.preferredOvenId === o.id);
+        if (prefHere.length) {
+          html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + prefHere.map(r => { const t = tempOf(r); return escapeHtml(r.name) + (t ? ' (' + t + '°F)' : ''); }).join(', ') + '</div>';
+        } else {
+          html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">Idle / available</div>';
+        }
       }
       html += '</div>';
     });
 
-    if (anyOven.length) {
+    if (other.length) {
       html += '<div style="padding:8px 0;border-top:1px solid var(--border)">';
-      html += '<div style="font-weight:600">Any available oven</div>';
-      html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + anyOven.map(recipeLine).join(', ') + '</div>';
-      html += '</div>';
+      html += '<div style="font-weight:600">Other bakes <span class="muted" style="font-weight:400;font-size:0.8rem">(not deck-allocated)</span></div>';
+      html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + other.map(r => {
+        const pt = getProcessType(r);
+        const t = tempOf(r);
+        const where = (pt === 'simple' || pt === 'enriched') ? 'not yet scheduled'
+          : (r.preferredOvenId ? ovenNameOf(r.preferredOvenId) : 'any oven');
+        return escapeHtml(r.name) + (t ? ' (' + t + '°F)' : '') + ' → ' + where;
+      }).join('; ') + '</div></div>';
     }
 
     // Single-oven, mixed-temp heads-up across the whole plan.
