@@ -1458,7 +1458,27 @@
       </div>
       <div id="financials-output" style="display:none"></div>
     </div>
-    <div class="card">
+    <div id="bake-chart-card" class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <h3 style="margin:0" id="bake-chart-title">Items baked over time</h3>
+        <div class="row" style="gap:4px">
+          <button id="chart-mode-count" class="secondary tiny active" onclick="setChartMode('count')">Items</button>
+          <button id="chart-mode-revenue" class="secondary tiny" onclick="setChartMode('revenue')">Sales</button>
+          <button id="chart-mode-profit" class="secondary tiny" onclick="setChartMode('profit')">Profit</button>
+          <button id="chart-mode-flours" class="secondary tiny" onclick="setChartMode('flours')">Flours</button>
+        </div>
+      </div>
+      <div class="row" style="gap:4px;margin-bottom:10px;flex-wrap:wrap">
+        <button id="chart-tf-month" class="secondary tiny" onclick="setChartTimeframe('month')">Past month</button>
+        <button id="chart-tf-6months" class="secondary tiny" onclick="setChartTimeframe('6months')">Past 6 months</button>
+        <button id="chart-tf-year" class="secondary tiny" onclick="setChartTimeframe('year')">Past year</button>
+        <button id="chart-tf-all" class="secondary tiny active" onclick="setChartTimeframe('all')">All time</button>
+      </div>
+      <div id="chart-recipe-toggles" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-bottom:10px;font-size:0.82rem"></div>
+      <canvas id="bake-chart"></canvas>
+      <div id="bake-chart-summary" style="margin-top:16px"></div>
+    </div>
+    <div class="card" style="margin-top:12px">
       <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <h2 style="margin:0">Bake history</h2>
         <div class="row" style="gap:10px;flex-wrap:wrap">
@@ -1466,7 +1486,7 @@
           <button class="secondary" onclick="toggleManualBakeForm()">Manually add a bake</button>
         </div>
       </div>
-      <p class="muted" style="margin:6px 0 0;font-size:0.9rem">Saves from the Bake Plan tab capture the current plan. You can also log past bakes manually below.</p>
+      <p class="muted" style="margin:6px 0 0;font-size:0.9rem">All previously saved bakes appear here. Click <strong>Manually add a bake</strong> to log a bake that wasn't captured from the Bake Plan tab.</p>
 
       <div id="manual-bake-form" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
         <div class="row">
@@ -1497,28 +1517,8 @@
         </div>
         <div id="manual-bake-msg" style="font-size:0.85rem;margin-top:6px"></div>
       </div>
+      <div id="history-list" style="margin-top:12px"></div>
     </div>
-    <div id="bake-chart-card" class="card" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-        <h3 style="margin:0" id="bake-chart-title">Items baked over time</h3>
-        <div class="row" style="gap:4px">
-          <button id="chart-mode-count" class="secondary tiny active" onclick="setChartMode('count')">Items</button>
-          <button id="chart-mode-revenue" class="secondary tiny" onclick="setChartMode('revenue')">Sales</button>
-          <button id="chart-mode-profit" class="secondary tiny" onclick="setChartMode('profit')">Profit</button>
-          <button id="chart-mode-flours" class="secondary tiny" onclick="setChartMode('flours')">Flours</button>
-        </div>
-      </div>
-      <div class="row" style="gap:4px;margin-bottom:10px;flex-wrap:wrap">
-        <button id="chart-tf-month" class="secondary tiny" onclick="setChartTimeframe('month')">Past month</button>
-        <button id="chart-tf-6months" class="secondary tiny" onclick="setChartTimeframe('6months')">Past 6 months</button>
-        <button id="chart-tf-year" class="secondary tiny" onclick="setChartTimeframe('year')">Past year</button>
-        <button id="chart-tf-all" class="secondary tiny active" onclick="setChartTimeframe('all')">All time</button>
-      </div>
-      <div id="chart-recipe-toggles" style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-bottom:10px;font-size:0.82rem"></div>
-      <canvas id="bake-chart"></canvas>
-      <div id="bake-chart-summary" style="margin-top:16px"></div>
-    </div>
-    <div id="history-list"></div>
   </section>
 
   <section id="tab-settings" class="settings-section" style="display:none">
