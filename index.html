@@ -6042,8 +6042,6 @@ ${notesHtml}
     document.getElementById('r-recipe-settings').style.display = isLevain ? 'none' : '';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
     document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
-    const eqEl = document.getElementById('r-equipment-settings');
-    if (eqEl) eqEl.style.display = isLevain ? 'none' : '';
     const weightLabel = document.getElementById('r-weight-label');
     if (weightLabel) weightLabel.innerHTML = isLevain
       ? 'Typical yield'
@@ -6063,7 +6061,7 @@ ${notesHtml}
     const prefPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
     const prefOvenEl = document.getElementById('r-pref-oven');
     const prefOvenId = prefOvenEl ? prefOvenEl.value : '';
-    if (!isLevain) renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredOvenId: prefOvenId });
+    renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredOvenId: prefOvenId });
   }
 
   function renderRecipeEquipment(processType, prefs) {
@@ -6074,9 +6072,12 @@ ${notesHtml}
     const prefPans = (prefs && prefs.preferredPanIds) || [];
     const prefOven = (prefs && prefs.preferredOvenId) || '';
     const isLoaf = processType === 'sourdough-loaf';
+    const isLevain = processType === 'levain';
     const needsPan = processType === 'sourdough-muffin' || processType === 'focaccia';
     const relevantContainers = userContainers.filter(c =>
-      isLoaf ? (c.processTag === 'any' || c.processTag === 'loaf') : c.processTag === 'any'
+      isLoaf ? (c.processTag === 'any' || c.processTag === 'loaf')
+      : isLevain ? (c.processTag === 'any' || c.processTag === 'levain')
+      : c.processTag === 'any'
     );
     let html = '';
 
@@ -6108,7 +6109,7 @@ ${notesHtml}
       html += '</div>';
     }
 
-    if (needsPan) {
+    if (needsPan && !isLevain) {
       html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Pans</div>';
       if (userPans.length === 0) {
         html += '<span class="muted" style="font-size:0.9rem">No pans added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'pan\')">+ Add to Kitchen</button>';
@@ -6123,18 +6124,20 @@ ${notesHtml}
       html += '</div>';
     }
 
-    html += '<div><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Oven</div>';
-    if (userOvens.length === 0) {
-      html += '<span class="muted" style="font-size:0.9rem">No ovens added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'oven\')">+ Add to Kitchen</button>';
-    } else {
-      html += '<select id="r-pref-oven" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>';
-      userOvens.forEach(function(o) {
-        var sel = o.id === prefOven ? ' selected' : '';
-        html += '<option value="' + escapeAttr(o.id) + '"' + sel + '>' + escapeHtml(o.name) + '</option>';
-      });
-      html += '</select>';
+    if (!isLevain) {
+      html += '<div><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Oven</div>';
+      if (userOvens.length === 0) {
+        html += '<span class="muted" style="font-size:0.9rem">No ovens added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'oven\')">+ Add to Kitchen</button>';
+      } else {
+        html += '<select id="r-pref-oven" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>';
+        userOvens.forEach(function(o) {
+          var sel = o.id === prefOven ? ' selected' : '';
+          html += '<option value="' + escapeAttr(o.id) + '"' + sel + '>' + escapeHtml(o.name) + '</option>';
+        });
+        html += '</select>';
+      }
+      html += '</div>';
     }
-    html += '</div>';
 
     el.innerHTML = html;
   }
@@ -6257,9 +6260,7 @@ ${notesHtml}
       (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
     document.getElementById('r-leavening').value = r.leavening || 'sourdough';
     document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
-    const editEqEl = document.getElementById('r-equipment-settings');
-    if (editEqEl) editEqEl.style.display = isLevain ? 'none' : '';
-    if (!isLevain) renderRecipeEquipment(processType, {
+    renderRecipeEquipment(processType, {
       preferredContainerIds: r.preferredContainerIds || [],
       preferredBannetonIds: r.preferredBannetonIds || [],
       preferredPanIds: r.preferredPanIds || [],
