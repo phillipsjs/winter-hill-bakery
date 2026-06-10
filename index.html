@@ -759,6 +759,18 @@
       </details>
     </div>
 
+    <div class="card totals" id="banneton-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Bannetons</h2>
+          <span id="banneton-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Each sourdough loaf needs one banneton for cold proofing. Add your bannetons in the Kitchen tab to check availability.</p>
+        <div id="banneton-output" style="margin-top:8px"></div>
+      </details>
+    </div>
+
     <div id="plan-schedule-cta" style="display:none;margin-top:8px">
       <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
@@ -984,6 +996,17 @@
           <div id="oven-list" style="margin-top:4px"></div>
         </div>
 
+        <hr class="sep" style="margin:16px 0">
+
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <h3 style="margin:0;font-size:1rem">Bannetons</h3>
+            <button onclick="showBannetonAddForm();event.stopPropagation()" class="secondary tiny">+ Add banneton</button>
+          </div>
+          <p class="muted" style="margin:0 0 4px;font-size:0.88rem">Each sourdough loaf needs one banneton for cold proofing. The app warns you if a bake plan exceeds what you have of the right type.</p>
+          <div id="banneton-list" style="margin-top:4px"></div>
+        </div>
+
       </details>
     </div>
 
@@ -1060,6 +1083,25 @@
         <button onclick="saveOven()">Save</button>
       </div>
       <p id="oven-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
+    </div>
+
+    <div id="banneton-add-form" class="card" style="display:none">
+      <h3 style="margin:0 0 12px" id="banneton-add-form-title">Add banneton</h3>
+      <div class="row"><label style="width:160px">Name</label><input type="text" id="banneton-name" placeholder='e.g. 9" round' /></div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:160px">Quantity</label>
+        <input type="number" id="banneton-qty" min="1" step="1" style="width:80px;flex:none" placeholder="1" />
+      </div>
+      <div class="row" style="margin-top:8px;align-items:flex-start">
+        <label style="width:160px;padding-top:2px">For loaf recipes</label>
+        <div id="banneton-recipe-checks" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <p class="settings-hint" style="margin-left:160px">Leave all unchecked to allow use with any sourdough loaf.</p>
+      <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="secondary" onclick="hideBannetonAddForm()">Cancel</button>
+        <button onclick="saveBanneton()">Save</button>
+      </div>
+      <p id="banneton-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
     </div>
 
   </section>
@@ -1610,6 +1652,7 @@
   const QUIET_END_KEY = 'cottage-bakery-quiet-end-v1';
   const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';
   const KITCHEN_OVENS_KEY = 'whb-kitchen-ovens-v1';
+  const KITCHEN_BANNETONS_KEY = 'whb-kitchen-bannetons-v1';
   const BAGEL_INTRODUCED_KEY = 'cottage-bakery-bagel-introduced-v1';
   const LEVAIN_INTRODUCED_KEY = 'cottage-bakery-levain-introduced-v1';
   const ANCHORS_KEY = 'cottage-bakery-anchors-v1';
@@ -2695,7 +2738,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), ovens: userOvens, containers: userContainers, customCategories: userCategories };
+    return { quietStart: start, quietEnd: end, kitchenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, containers: userContainers, customCategories: userCategories };
   }
 
   function applyRemoteSettings(settings) {
@@ -2709,6 +2752,10 @@ ${notesHtml}
     if (Array.isArray(settings.ovens)) {
       userOvens = settings.ovens;
       saveOvensLocally();
+    }
+    if (Array.isArray(settings.bannetons)) {
+      userBannetons = settings.bannetons;
+      saveBannetonsLocally();
     }
     if (Array.isArray(settings.containers)) {
       userContainers = settings.containers;
@@ -4019,6 +4066,142 @@ ${notesHtml}
     pushSettingsToGist().catch(() => {});
   }
 
+  // ---- banneton CRUD ----
+  let userBannetons = loadBannetonsLocally();
+  function loadBannetonsLocally() {
+    try { const r = localStorage.getItem(KITCHEN_BANNETONS_KEY); return r ? JSON.parse(r) : []; } catch(e) { return []; }
+  }
+  function saveBannetonsLocally() {
+    localStorage.setItem(KITCHEN_BANNETONS_KEY, JSON.stringify(userBannetons));
+  }
+  function renderBannetons() {
+    const listEl = document.getElementById('banneton-list');
+    if (!listEl) return;
+    if (userBannetons.length === 0) {
+      listEl.innerHTML = '<p class="muted" style="margin:4px 0;font-size:0.88rem">No bannetons added yet.</p>';
+      return;
+    }
+    const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf');
+    listEl.innerHTML = userBannetons.map(b => {
+      const forLabel = b.recipeIds && b.recipeIds.length > 0
+        ? b.recipeIds.map(id => { const r = loafRecipes.find(r => r.id === id); return r ? escapeHtml(r.name) : id; }).join(', ')
+        : 'any sourdough loaf';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-weight:500">${escapeHtml(b.name)}</span>
+        <span class="muted" style="font-size:0.88rem">qty ${b.quantity}</span>
+        <span class="muted" style="font-size:0.82rem">${forLabel}</span>
+        <button class="secondary tiny" onclick="showBannetonAddForm('${b.id}')">Edit</button>
+        <button class="secondary tiny" onclick="removeBanneton('${b.id}')">Remove</button>
+      </div>`;
+    }).join('');
+  }
+  function showBannetonAddForm(editId) {
+    const form = document.getElementById('banneton-add-form');
+    const titleEl = document.getElementById('banneton-add-form-title');
+    const checksEl = document.getElementById('banneton-recipe-checks');
+    document.getElementById('banneton-add-msg').textContent = '';
+    const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf');
+    let selectedIds = [];
+    if (editId && typeof editId === 'string') {
+      const item = userBannetons.find(b => b.id === editId);
+      if (item) {
+        document.getElementById('banneton-name').value = item.name;
+        document.getElementById('banneton-qty').value = item.qty != null ? item.qty : item.quantity;
+        selectedIds = item.recipeIds || [];
+        titleEl.textContent = 'Edit banneton';
+        form.dataset.editId = editId;
+      }
+    } else {
+      document.getElementById('banneton-name').value = '';
+      document.getElementById('banneton-qty').value = '';
+      titleEl.textContent = 'Add banneton';
+      form.dataset.editId = '';
+    }
+    checksEl.innerHTML = loafRecipes.length === 0
+      ? '<span class="muted" style="font-size:0.88rem">No sourdough loaf recipes yet.</span>'
+      : loafRecipes.map(r => `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem">
+          <input type="checkbox" value="${r.id}" ${selectedIds.includes(r.id) ? 'checked' : ''} />
+          ${escapeHtml(r.name)}
+        </label>`).join('');
+    form.style.display = '';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function hideBannetonAddForm() {
+    const form = document.getElementById('banneton-add-form');
+    form.style.display = 'none';
+    form.dataset.editId = '';
+  }
+  function saveBanneton() {
+    const name = document.getElementById('banneton-name').value.trim();
+    const qty = parseInt(document.getElementById('banneton-qty').value, 10);
+    const msgEl = document.getElementById('banneton-add-msg');
+    if (!name) { msgEl.textContent = 'Name is required.'; return; }
+    if (!Number.isFinite(qty) || qty < 1) { msgEl.textContent = 'Enter a valid quantity (at least 1).'; return; }
+    const recipeIds = [...document.querySelectorAll('#banneton-recipe-checks input[type=checkbox]:checked')].map(el => el.value);
+    const editId = document.getElementById('banneton-add-form').dataset.editId;
+    const newItem = { id: editId || ('ban-' + Math.random().toString(36).slice(2, 10)), name, quantity: qty, recipeIds };
+    if (editId) {
+      const idx = userBannetons.findIndex(b => b.id === editId);
+      if (idx >= 0) userBannetons[idx] = newItem; else userBannetons.push(newItem);
+    } else {
+      userBannetons.push(newItem);
+    }
+    saveBannetonsLocally();
+    hideBannetonAddForm();
+    renderBannetons();
+    renderBannetonPlan();
+    pushSettingsToGist().catch(() => {});
+  }
+  function removeBanneton(id) {
+    userBannetons = userBannetons.filter(b => b.id !== id);
+    saveBannetonsLocally();
+    renderBannetons();
+    renderBannetonPlan();
+    pushSettingsToGist().catch(() => {});
+  }
+  function renderBannetonPlan() {
+    const card = document.getElementById('banneton-card');
+    const out = document.getElementById('banneton-output');
+    const summaryEl = document.getElementById('banneton-summary');
+    if (!card || !out) return;
+    const loafRecipesInPlan = recipes.filter(r => getProcessType(r) === 'sourdough-loaf' && (plan[r.id] || 0) > 0);
+    if (loafRecipesInPlan.length === 0) { card.style.display = 'none'; return; }
+    let shortfalls = 0;
+    let rowsHtml = loafRecipesInPlan.map(r => {
+      const needed = plan[r.id] || 0;
+      const avail = userBannetons
+        .filter(b => !b.recipeIds || b.recipeIds.length === 0 || b.recipeIds.includes(r.id))
+        .reduce((s, b) => s + (b.quantity || 0), 0);
+      const ok = userBannetons.length === 0 || avail >= needed;
+      if (userBannetons.length > 0 && !ok) shortfalls++;
+      const statusHtml = userBannetons.length === 0
+        ? '<span class="muted" style="font-size:0.85rem">—</span>'
+        : ok
+          ? `<span class="muted" style="font-size:0.85rem">${avail} available</span>`
+          : `<span style="color:var(--danger);font-size:0.85rem">&#9888; need ${needed}, have ${avail}</span>`;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1">${escapeHtml(r.name)}</span>
+        <span class="muted" style="font-size:0.85rem">${needed} needed</span>
+        ${statusHtml}
+      </div>`;
+    }).join('');
+    if (userBannetons.length === 0) {
+      rowsHtml += `<div style="margin-top:10px;padding:8px 12px;background:var(--accent-light,#e8f4e8);border-radius:6px;font-size:0.875rem">
+        No bannetons configured — counts shown above but availability can't be checked.
+        <a href="#" onclick="showTab('ingredients');setTimeout(function(){showBannetonAddForm();document.getElementById('banneton-add-form').scrollIntoView({behavior:'smooth',block:'start'});},120);return false" style="margin-left:4px">Add your bannetons →</a>
+      </div>`;
+      summaryEl.textContent = `${loafRecipesInPlan.reduce((s,r)=>s+(plan[r.id]||0),0)} needed`;
+    } else if (shortfalls > 0) {
+      summaryEl.textContent = `⚠ ${shortfalls} shortfall${shortfalls > 1 ? 's' : ''}`;
+      summaryEl.style.color = 'var(--danger)';
+    } else {
+      summaryEl.textContent = 'all covered';
+      summaryEl.style.color = '';
+    }
+    out.innerHTML = rowsHtml;
+    card.style.display = '';
+  }
+
   // ---- recipe editor cost display ----
   function updateRecipeEditorCostDisplay() {
     const costEl = document.getElementById('r-cost-display');
@@ -4401,7 +4584,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderKitchenWindows(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderKitchenWindows(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -4793,6 +4976,7 @@ ${notesHtml}
 
     renderLevainPlan(aggregate, levainByProcess);
     renderDoughContainerPlan();
+    renderBannetonPlan();
   }
 
   function normalizeIngredientKey(name) {
