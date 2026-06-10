@@ -702,7 +702,7 @@
   </nav>
   <div id="hamburger-menu" style="display:none">
     <button id="tab-recipes-btn" onclick="showTab('recipes')">Recipes</button>
-    <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Pantry</button>
+    <button id="tab-ingredients-btn" onclick="showTab('ingredients')">Kitchen</button>
     <button id="tab-prices-btn" onclick="showTab('prices')">Prices</button>
     <button id="tab-history-btn" onclick="showTab('history')">Sales</button>
     <button id="tab-settings-btn" onclick="showTab('settings')">Account</button>
@@ -754,7 +754,7 @@
           <h2>Proofing containers</h2>
           <span id="container-summary" class="muted" style="font-size:0.85rem"></span>
         </summary>
-        <p class="muted" style="margin:8px 0 0">Recipes share a container only if their ingredient ratios are identical. Add your containers in the Pantry tab to get accurate assignments.</p>
+        <p class="muted" style="margin:8px 0 0">Recipes share a container only if their ingredient ratios are identical. Add your containers in the Kitchen tab to get accurate assignments.</p>
         <div id="container-output"></div>
       </details>
     </div>
@@ -957,15 +957,41 @@
     </div>
 
     <div class="card" style="margin-top:20px">
-      <details class="plan-details" id="containers-details">
+      <details class="plan-details" id="kitchen-equipment-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
-          <h2>Proofing containers</h2>
-          <span class="muted" style="font-size:0.85rem;font-weight:normal">Enter your containers so the app can assign the right one to each bake</span>
-          <button onclick="showContainerAddForm();event.stopPropagation()" class="secondary tiny" style="margin-left:auto;flex-shrink:0">+ Add container</button>
+          <h2>Kitchen equipment</h2>
+          <span class="muted" style="font-size:0.85rem;font-weight:normal">Containers and oven configuration</span>
         </summary>
-        <p class="muted" style="margin:8px 0 0">Enter the containers you use for bulk fermentation. The app picks the smallest appropriate container for each dough batch.</p>
-        <div id="container-list" style="margin-top:4px"></div>
+
+        <div style="margin-top:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <h3 style="margin:0;font-size:1rem">Proofing containers</h3>
+            <button onclick="showContainerAddForm();event.stopPropagation()" class="secondary tiny">+ Add container</button>
+          </div>
+          <p class="muted" style="margin:0 0 4px;font-size:0.88rem">Enter the containers you use for bulk fermentation. The app picks the smallest appropriate container for each dough batch.</p>
+          <div id="container-list" style="margin-top:4px"></div>
+        </div>
+
+        <hr class="sep" style="margin:16px 0">
+
+        <div>
+          <h3 style="margin:0 0 8px;font-size:1rem">Oven</h3>
+          <p class="muted" style="margin:0 0 10px;font-size:0.9rem">Active steps (mixing, folding, shaping) outside your oven windows will be flagged if they fall in your quiet hours. Stored locally on this device.</p>
+          <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+            <label>Quiet hours</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select id="quiet-start-select" class="settings-select" style="width:auto"></select>
+              <span style="color:var(--muted)">to</span>
+              <select id="quiet-end-select" class="settings-select" style="width:auto"></select>
+            </div>
+          </div>
+          <p class="settings-hint">Default: 11 PM to 5 AM. The scheduler avoids placing active steps in this window and warns you if one lands there.</p>
+          <div style="margin-top:12px">
+            <button onclick="saveQuietHours()">Save preferences</button>
+          </div>
+          <div id="quiet-hours-msg" style="margin-top:6px;font-size:0.9rem"></div>
+        </div>
       </details>
     </div>
 
@@ -1378,29 +1404,6 @@
         </div>
         <div id="settings-msg" style="margin-top:10px;font-size:0.9rem"></div>
         <p class="muted" style="font-size:0.85rem;margin:16px 0 0;text-align:center">Recipes sync automatically a few seconds after each change. Settings and the bake plan stay local to this device.</p>
-      </details>
-    </div>
-
-    <div class="card">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Schedule preferences</h2>
-        </summary>
-        <p class="muted" style="margin-top:8px;font-size:0.9rem">Active steps (mixing, folding, shaping) outside your oven windows will be flagged if they fall in your quiet hours. Stored locally on this device.</p>
-        <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
-          <label>Quiet hours</label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <select id="quiet-start-select" class="settings-select" style="width:auto"></select>
-            <span style="color:var(--muted)">to</span>
-            <select id="quiet-end-select" class="settings-select" style="width:auto"></select>
-          </div>
-        </div>
-        <p class="settings-hint">Default: 11 PM to 5 AM. The scheduler avoids placing active steps in this window and warns you if one lands there.</p>
-        <div style="margin-top:12px">
-          <button onclick="saveQuietHours()">Save preferences</button>
-        </div>
-        <div id="quiet-hours-msg" style="margin-top:6px;font-size:0.9rem"></div>
       </details>
     </div>
 
@@ -4256,7 +4259,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); populateQuietHoursSelects(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') renderSchedule();
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -4267,7 +4270,6 @@ ${notesHtml}
       document.getElementById('settings-gist-id').value = cfg ? cfg.gistId : '';
       document.getElementById('settings-msg').textContent = '';
       renderSettingsSyncStatus();
-      populateQuietHoursSelects();
       populateInvoiceSettingsForm();
       if (!invoiceSettingsLoaded && getInvoiceGistConfig()) {
         fetchInvoiceSettings().then(() => { invoiceSettingsLoaded = true; populateInvoiceSettingsForm(); }).catch(() => {});
