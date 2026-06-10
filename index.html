@@ -2087,6 +2087,18 @@
     BAGEL_KETTLE_HEATUP_MIN: 15, // bring the kettle to a boil before batch 1
   };
 
+  // Minutes to change a (shared) oven from one bake temp to the next. Heating is
+  // faster than cooling; both get a small settle allowance. Returns 0 if same temp.
+  const OVEN_HEAT_RATE_F_PER_MIN = 18;
+  const OVEN_COOL_RATE_F_PER_MIN = 10;
+  const OVEN_TEMP_SETTLE_MIN = 3;
+  function ovenTempChangeMin(fromTemp, toTemp) {
+    const a = Number(fromTemp), b = Number(toTemp);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) return 0;
+    const rate = b > a ? OVEN_HEAT_RATE_F_PER_MIN : OVEN_COOL_RATE_F_PER_MIN;
+    return Math.ceil(Math.abs(b - a) / rate) + OVEN_TEMP_SETTLE_MIN;
+  }
+
   const SEED_RECIPES = [
     {
       id: 'seed-levain',
@@ -7573,45 +7585,91 @@ ${notesHtml}
       focacciaSlot = { firstBakeStart: focFirstBakeStart, lastBakeEnd: focLastBakeEnd, packageReady: focPackageReady };
     }
 
-    // Oven sequencing: all processes share one oven. Sort their bake slots
-    // by preferred start time and push any slot that would overlap the previous
-    // one so it starts right after the previous ends. If shifting causes a
-    // process to miss its deadline, emit a warning suggesting a fix.
+    // Oven assignment & sequencing. Each oven is its own timeline that holds one
+    // bake at a time; bakes in different ovens run in parallel. A recipe's preferred
+    // oven is honored when set (soft — we fall back and warn if it overflows). Within
+    // an oven, a later bake is pushed to start after the previous one ends plus any
+    // temp-change buffer. For a single oven this reduces to the prior sequential
+    // behavior, with temp-change buffers added between different-temperature bakes.
     {
       const PROC_DEADLINE = { loaf: loafDeadline, muffin: effMuffinDeadline, bagel: effBagelDeadline, focaccia: focacciaDeadline };
       const PROC_LABEL    = { loaf: 'Bread', muffin: 'Muffins', bagel: 'Bagels', focaccia: 'Focaccia' };
       const PROC_COOL_MIN = { loaf: SCHED.COOL_HOURS * 60, muffin: SCHED.COOL_HOURS * 60, bagel: SCHED.COOL_HOURS * 60, focaccia: FOCACCIA_COOL_MIN };
-      const seq = [
+      const PROC_RECIPES  = { loaf: loafRecipes, muffin: muffinRecipes, bagel: bagelRecipes, focaccia: focacciaRecipes };
+      const PROC_PROCESS  = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia' };
+
+      const slotTemp = (kind) => {
+        const rs = PROC_RECIPES[kind] || [];
+        if (rs.length && Number.isFinite(Number(rs[0].bakeTempF))) return Number(rs[0].bakeTempF);
+        return PROCESS_TEMPLATES[PROC_PROCESS[kind]].bakeTempF;
+      };
+      // A slot has a preferred oven only if every in-plan recipe of that type agrees on one.
+      const slotPreferredOven = (kind) => {
+        const all = PROC_RECIPES[kind] || [];
+        if (all.length > 0 && all.every(r => r.preferredOvenId && r.preferredOvenId === all[0].preferredOvenId)) return all[0].preferredOvenId;
+        return null;
+      };
+
+      const ovenDefs = userOvens.length ? userOvens.map(o => ({ id: o.id, name: o.name })) : [{ id: '_oven', name: 'Oven' }];
+      const multiOven = ovenDefs.length > 1;
+      const ovenName = (id) => { const o = ovenDefs.find(x => x.id === id); return o ? o.name : 'Oven'; };
+
+      const slots = [
         loafSlot     ? { s: loafSlot,     kind: 'loaf'     } : null,
         muffinSlot   ? { s: muffinSlot,   kind: 'muffin'   } : null,
         bagelSlot    ? { s: bagelSlot,    kind: 'bagel'    } : null,
         focacciaSlot ? { s: focacciaSlot, kind: 'focaccia' } : null,
-      ].filter(Boolean).sort((a, b) => a.s.firstBakeStart - b.s.firstBakeStart);
+      ].filter(Boolean);
+      slots.forEach(it => { it.temp = slotTemp(it.kind); it.preferredOvenId = slotPreferredOven(it.kind); });
 
-      for (let i = 1; i < seq.length; i++) {
-        const prev = seq[i - 1];
-        const curr = seq[i];
-        if (curr.s.firstBakeStart < prev.s.lastBakeEnd) {
-          const durationMs = curr.s.lastBakeEnd - curr.s.firstBakeStart;
-          const newStart   = new Date(prev.s.lastBakeEnd.getTime());
-          curr.s.firstBakeStart = newStart;
-          curr.s.lastBakeEnd    = new Date(newStart.getTime() + durationMs);
-          curr.s.packageReady   = addMinutes(curr.s.lastBakeEnd, PROC_COOL_MIN[curr.kind]);
-          const deadline = PROC_DEADLINE[curr.kind];
-          if (deadline && curr.s.packageReady > deadline) {
-            const overMin = Math.round((curr.s.packageReady - deadline) / 60000);
-            warnings.push({
-              msg: `Oven conflict resolved: ${PROC_LABEL[curr.kind]} bake starts after ${PROC_LABEL[prev.kind]} finishes, but now ends ${overMin} min past its deadline.`,
-              issue: 'oven-overlap-late', kind: curr.kind, type: 'info',
-            });
-          } else {
-            warnings.push({
-              msg: `Oven conflict resolved: ${PROC_LABEL[curr.kind]} bake starts after ${PROC_LABEL[prev.kind]} finishes (they share one oven).`,
-              issue: 'oven-shifted', kind: curr.kind, type: 'info',
-            });
+      // Assign slots to ovens: preferred first, then remaining longest-bake-first into
+      // the least-loaded oven so big bakes get the emptiest ovens (parallelism).
+      const assigned = {}; ovenDefs.forEach(o => assigned[o.id] = []);
+      const bakeMs = (it) => (it.s.lastBakeEnd - it.s.firstBakeStart);
+      const loadOf = (id) => assigned[id].reduce((s, it) => s + bakeMs(it), 0);
+      const validPref = (it) => it.preferredOvenId && assigned[it.preferredOvenId];
+      slots.filter(validPref).forEach(it => { assigned[it.preferredOvenId].push(it); });
+      slots.filter(it => !validPref(it)).sort((a, b) => bakeMs(b) - bakeMs(a)).forEach(it => {
+        const target = ovenDefs.slice().sort((a, b) => loadOf(a.id) - loadOf(b.id))[0].id;
+        assigned[target].push(it);
+        it.assignedOvenId = target;
+      });
+
+      // Per-oven sequencing with temp-change buffers.
+      ovenDefs.forEach(o => {
+        const list = assigned[o.id].sort((a, b) => a.s.firstBakeStart - b.s.firstBakeStart);
+        for (let i = 1; i < list.length; i++) {
+          const prev = list[i - 1];
+          const curr = list[i];
+          const bufMin = ovenTempChangeMin(prev.temp, curr.temp);
+          const earliest = new Date(prev.s.lastBakeEnd.getTime() + bufMin * 60000);
+          if (curr.s.firstBakeStart < earliest) {
+            const durationMs = curr.s.lastBakeEnd - curr.s.firstBakeStart;
+            curr.s.firstBakeStart = earliest;
+            curr.s.lastBakeEnd    = new Date(earliest.getTime() + durationMs);
+            curr.s.packageReady   = addMinutes(curr.s.lastBakeEnd, PROC_COOL_MIN[curr.kind]);
+            if (bufMin > 0) curr.s.tempChangeBefore = { min: bufMin, fromTemp: prev.temp, toTemp: curr.temp };
+            const ovenTag = multiOven ? ` in ${ovenName(o.id)}` : '';
+            const deadline = PROC_DEADLINE[curr.kind];
+            if (deadline && curr.s.packageReady > deadline) {
+              const overMin = Math.round((curr.s.packageReady - deadline) / 60000);
+              warnings.push({
+                msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}, but now ends ${overMin} min past its deadline.`,
+                issue: 'oven-overlap-late', kind: curr.kind, type: 'info',
+              });
+            } else {
+              warnings.push({
+                msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}${bufMin > 0 ? ` (incl. ${bufMin} min temp change to ${curr.temp}°F)` : ''}.`,
+                issue: 'oven-shifted', kind: curr.kind, type: 'info',
+              });
+            }
+          } else if (bufMin > 0) {
+            curr.s.tempChangeBefore = { min: bufMin, fromTemp: prev.temp, toTemp: curr.temp };
           }
         }
-      }
+        // Record the oven name on each slot for display (null when there's only one oven).
+        list.forEach(it => { it.s.ovenName = multiOven ? ovenName(o.id) : null; });
+      });
     }
 
     // Loaf backbone. Only computed when there are loaves to anchor it — a
