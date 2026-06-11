@@ -6032,6 +6032,12 @@ ${notesHtml}
     if (s.includes('-')) { const p = s.split('-').map(Number); return (p[0] + p[1]) / 2; }
     const n = Number(s); return Number.isFinite(n) ? n : 0;
   }
+  // A recipe's bake temp: its override only when actually set (null/'' would otherwise
+  // coerce to 0, which is a valid-looking but wrong temperature) — else the template's.
+  function recipeBakeTempF(r, tmplTemp) {
+    const v = r ? r.bakeTempF : null;
+    return (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))) ? Number(v) : tmplTemp;
+  }
   function mixerForRecipeG(r) {
     return userMixers.find(m =>
       (m.recipeCapacities && (r.id in m.recipeCapacities)) ||
@@ -6080,7 +6086,7 @@ ${notesHtml}
     const numBatches = Math.max(1, Math.ceil(count / Math.max(1, batchSize)));
     const spec = getRecipeSpec(r);
     const bakeMin = spec.bakeMin || tmpl.bakeMin;
-    const bakeTempF = Number.isFinite(Number(r.bakeTempF)) ? Number(r.bakeTempF) : tmpl.bakeTempF;
+    const bakeTempF = recipeBakeTempF(r, tmpl.bakeTempF);
     return {
       recipe: r, count, batchSize, numBatches, perBatch: splitEvenly(count, numBatches),
       chillHr, cold, containerName: needsContainer ? chillContainerNameG(r) : '',
@@ -7805,8 +7811,7 @@ ${notesHtml}
     const minOr = (arr, fallback) => arr.length ? Math.min(...arr) : fallback;
     // Bake temp for a bread process: the first in-plan recipe's override, else the
     // template default (bread of one type bakes together at a single oven temp).
-    const breadBakeTempF = (list, proc) => (list[0] && Number.isFinite(Number(list[0].bakeTempF)))
-      ? Number(list[0].bakeTempF) : PROCESS_TEMPLATES[proc].bakeTempF;
+    const breadBakeTempF = (list, proc) => recipeBakeTempF(list[0], PROCESS_TEMPLATES[proc].bakeTempF);
     const loafAgg = {
       bakeMin:      maxOr(loafSpecs.map(s => s.bakeMin), SCHED.BAKE_MIN),
       bakeTempF:    breadBakeTempF(loafRecipes, 'sourdough-loaf'),
@@ -7922,7 +7927,7 @@ ${notesHtml}
     // Hottest bake temp across a set of side recipes (each falling back to the template
     // when it has no override). Used to preheat the shared oven high enough for all.
     const sideMaxTemp = (list, tmpl) =>
-      list.length ? Math.max(...list.map(r => Number.isFinite(Number(r.bakeTempF)) ? Number(r.bakeTempF) : tmpl.bakeTempF)) : tmpl.bakeTempF;
+      list.length ? Math.max(...list.map(r => recipeBakeTempF(r, tmpl.bakeTempF))) : tmpl.bakeTempF;
     // Mixing batches: a recipe that uses a mixer can only mix its per-batch capacity
     // at a time, so M units need ceil(M / (capacity × mixer count)) mix steps.
     const mixerForRecipe = (r) => userMixers.find(m =>
@@ -8214,8 +8219,7 @@ ${notesHtml}
       const slotTemp = (kind) => {
         if (sideGroupByKey[kind]) return sideGroupByKey[kind].temp;
         const rs = PROC_RECIPES[kind] || [];
-        if (rs.length && Number.isFinite(Number(rs[0].bakeTempF))) return Number(rs[0].bakeTempF);
-        return PROCESS_TEMPLATES[PROC_PROCESS[kind]].bakeTempF;
+        return recipeBakeTempF(rs[0], PROCESS_TEMPLATES[PROC_PROCESS[kind]].bakeTempF);
       };
       // A slot has a preferred oven only if every in-plan recipe of that type agrees on one.
       const slotPreferredOven = (kind) => {
