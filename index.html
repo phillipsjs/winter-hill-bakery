@@ -1229,6 +1229,22 @@
         <input type="number" id="oven-decks" min="1" max="20" step="1" style="width:80px;flex:none" placeholder="3" />
         <span class="muted" style="margin-left:6px">decks (shelves)</span>
       </div>
+      <p class="settings-hint" style="margin:12px 0 4px">Preheat times (optional) — how many minutes to reach each temperature from cold. We fit a line to estimate preheat for any bake temp, so the schedule turns the oven on at the right moment.</p>
+      <div class="row" style="margin-top:4px">
+        <label style="width:140px">Preheat to 350°F</label>
+        <input type="number" id="oven-preheat-350" min="0" step="1" style="width:80px;flex:none" placeholder="—" />
+        <span class="muted" style="margin-left:6px">min</span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:140px">Preheat to 425°F</label>
+        <input type="number" id="oven-preheat-425" min="0" step="1" style="width:80px;flex:none" placeholder="—" />
+        <span class="muted" style="margin-left:6px">min</span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label style="width:140px">Preheat to 500°F</label>
+        <input type="number" id="oven-preheat-500" min="0" step="1" style="width:80px;flex:none" placeholder="—" />
+        <span class="muted" style="margin-left:6px">min</span>
+      </div>
       <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">
         <button class="secondary" onclick="hideOvenAddForm()">Cancel</button>
         <button onclick="saveOven()">Save</button>
@@ -4484,6 +4500,29 @@ ${notesHtml}
     });
     return slots;
   }
+  // Estimated minutes to preheat an oven to targetTemp from cold, from the user's
+  // per-temp data points fit to a line. Returns null when the oven has no data.
+  function ovenPreheatMin(oven, targetTemp) {
+    if (!oven) return null;
+    const pts = [];
+    if (oven.preheat350 != null) pts.push([350, oven.preheat350]);
+    if (oven.preheat425 != null) pts.push([425, oven.preheat425]);
+    if (oven.preheat500 != null) pts.push([500, oven.preheat500]);
+    if (pts.length === 0) return null;
+    let m, b;
+    if (pts.length === 1) {
+      // Single point: assume preheat scales with (temp − ~70°F room temp).
+      const T = pts[0][0], t = pts[0][1];
+      m = t / Math.max(1, T - 70); b = -m * 70;
+    } else {
+      const n = pts.length;
+      const sx = pts.reduce((s, p) => s + p[0], 0), sy = pts.reduce((s, p) => s + p[1], 0);
+      const sxx = pts.reduce((s, p) => s + p[0] * p[0], 0), sxy = pts.reduce((s, p) => s + p[0] * p[1], 0);
+      const denom = n * sxx - sx * sx;
+      if (denom === 0) { m = 0; b = sy / n; } else { m = (n * sxy - sx * sy) / denom; b = (sy - m * sx) / n; }
+    }
+    return Math.max(1, Math.round(m * targetTemp + b));
+  }
   // Label for a pooled deck index. Includes the oven name only when >1 oven exists.
   function deckLabelFor(di) {
     const slots = ovenDeckSlots();
@@ -4517,12 +4556,18 @@ ${notesHtml}
       if (item) {
         document.getElementById('oven-name').value = item.name;
         document.getElementById('oven-decks').value = item.decks;
+        document.getElementById('oven-preheat-350').value = item.preheat350 != null ? item.preheat350 : '';
+        document.getElementById('oven-preheat-425').value = item.preheat425 != null ? item.preheat425 : '';
+        document.getElementById('oven-preheat-500').value = item.preheat500 != null ? item.preheat500 : '';
         titleEl.textContent = 'Edit oven';
         form.dataset.editId = editId;
       }
     } else {
       document.getElementById('oven-name').value = '';
       document.getElementById('oven-decks').value = '';
+      document.getElementById('oven-preheat-350').value = '';
+      document.getElementById('oven-preheat-425').value = '';
+      document.getElementById('oven-preheat-500').value = '';
       titleEl.textContent = 'Add oven';
       form.dataset.editId = '';
     }
@@ -4541,7 +4586,9 @@ ${notesHtml}
     if (!name) { msgEl.textContent = 'Name is required.'; return; }
     if (!Number.isFinite(decks) || decks < 1) { msgEl.textContent = 'Enter a valid deck count (at least 1).'; return; }
     const editId = document.getElementById('oven-add-form').dataset.editId;
-    const newItem = { id: editId || ('oven-' + Math.random().toString(36).slice(2, 10)), name, decks };
+    const readPreheat = (id) => { const n = parseInt(document.getElementById(id).value, 10); return Number.isFinite(n) && n >= 0 ? n : undefined; };
+    const newItem = { id: editId || ('oven-' + Math.random().toString(36).slice(2, 10)), name, decks,
+      preheat350: readPreheat('oven-preheat-350'), preheat425: readPreheat('oven-preheat-425'), preheat500: readPreheat('oven-preheat-500') };
     if (editId) {
       const idx = userOvens.findIndex(o => o.id === editId);
       if (idx >= 0) userOvens[idx] = newItem; else userOvens.push(newItem);
@@ -8047,6 +8094,7 @@ ${notesHtml}
           curr.s.packageReady = addMinutes(curr.s.lastBakeEnd, curr.coolMin);
           curr.s.tempChangeBefore = tc;
           curr.s.ovenName = multiOven ? ovenName(ovenId) : null;
+          curr.s.ovenId = ovenId;
           curr.ovenId = ovenId;
           curr.prevKind = i > 0 ? list[i - 1].kind : null;
         }
@@ -8643,28 +8691,37 @@ ${notesHtml}
       : null;
 
     // --- Oven preheat (per process; share if muffin bake follows loaf closely) ---
-    const preheatHrStr = (SCHED.OVEN_PREHEAT_MIN / 60).toFixed(SCHED.OVEN_PREHEAT_MIN % 60 === 0 ? 0 : 1);
-    const preheatDetail = `${preheatHrStr} hr preheat to bake temp`;
+    // Preheat time comes from the assigned oven's measured curve when available,
+    // else the default. The bake is anchored, so this only moves the "turn on" step.
+    const procPreheat = (slot, recipeList, proc) => {
+      const oven = (slot && slot.ovenId) ? userOvens.find(o => o.id === slot.ovenId) : null;
+      const temp = (recipeList[0] && Number(recipeList[0].bakeTempF)) || PROCESS_TEMPLATES[proc].bakeTempF;
+      return ovenPreheatMin(oven, temp) != null ? ovenPreheatMin(oven, temp) : SCHED.OVEN_PREHEAT_MIN;
+    };
+    const loafPreheat = procPreheat(loafSlot, loafRecipes, 'sourdough-loaf');
+    const muffinPreheat = procPreheat(muffinSlot, muffinRecipes, 'sourdough-muffin');
+    const bagelPreheat = procPreheat(bagelSlot, bagelRecipes, 'bagel');
+    const fmtPreheat = (min) => `~${min} min preheat to bake temp`;
     const showsSeparatePreheats = (() => {
       if (!muffinSlot || breadBatches === 0) return false;
       const gapMs = muffinSlot.firstBakeStart - lastBakeEnd;
       // Treat as continuous if the muffin bake starts within ~1 hr of the loaf
       // bake ending (oven is still hot — no separate preheat needed).
-      return gapMs > 60 * 60 * 1000 || gapMs < -SCHED.OVEN_PREHEAT_MIN * 60 * 1000;
+      return gapMs > 60 * 60 * 1000 || gapMs < -loafPreheat * 60 * 1000;
     })();
     if (breadBatches > 0) {
       events.push({
-        time: addMinutes(firstBakeStart, -SCHED.OVEN_PREHEAT_MIN),
+        time: addMinutes(firstBakeStart, -loafPreheat),
         title: muffinSlot && !showsSeparatePreheats ? 'Turn on oven' : 'Turn on oven (bread)',
-        detail: preheatDetail,
+        detail: fmtPreheat(loafPreheat),
         process: muffinSlot && !showsSeparatePreheats ? 'shared' : 'loaf',
       });
     }
     if (muffinSlot && showsSeparatePreheats) {
       events.push({
-        time: addMinutes(muffinSlot.firstBakeStart, -SCHED.OVEN_PREHEAT_MIN),
+        time: addMinutes(muffinSlot.firstBakeStart, -muffinPreheat),
         title: 'Turn on oven (muffins)',
-        detail: preheatDetail,
+        detail: fmtPreheat(muffinPreheat),
         process: 'muffin',
       });
     }
@@ -8674,9 +8731,9 @@ ${notesHtml}
     if (bagelSlot) {
       const firstBagelBake = addMinutes(bagelSlot.firstBakeStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
       events.push({
-        time: addMinutes(firstBagelBake, -SCHED.OVEN_PREHEAT_MIN),
+        time: addMinutes(firstBagelBake, -bagelPreheat),
         title: 'Turn on oven (bagels)',
-        detail: preheatDetail,
+        detail: fmtPreheat(bagelPreheat),
         process: 'bagel',
       });
     }
@@ -9005,7 +9062,8 @@ ${notesHtml}
         }
       });
       events.push({ time: shapeStart, title: `Shape / portion ${simpleNames}`, detail: `${Math.round(simpleShapeMin)} min · ${totalSimple} item${totalSimple === 1 ? '' : 's'}${chilling ? ' (chilled)' : ''}`, process: 'simple', stage: 'shape', activeStep: true });
-      events.push({ time: addMinutes(simpleSlot.firstBakeStart, -SIDE_PREHEAT_MIN), title: `Turn on oven to ${simpleTemp}°F`, detail: `~${SIDE_PREHEAT_MIN} min preheat${ovenTag}`, process: 'simple', stage: 'bake', activeStep: false });
+      const simplePreheat = ovenPreheatMin(userOvens.find(o => o.id === simpleSlot.ovenId), simpleTemp) ?? SIDE_PREHEAT_MIN;
+      events.push({ time: addMinutes(simpleSlot.firstBakeStart, -simplePreheat), title: `Turn on oven to ${simpleTemp}°F`, detail: `~${simplePreheat} min preheat${ovenTag}`, process: 'simple', stage: 'bake', activeStep: false });
       // Items per bake round: from preferred-pan capacity (one recipe) or an even split.
       const simplePerBatch = simpleRecipes.length === 1 ? bakeCapFor(simpleRecipes[0], simpleTmpl.ovenCapacity) : Math.ceil(totalSimple / Math.max(1, simpleBatches));
       let cum = 0;
@@ -9061,7 +9119,8 @@ ${notesHtml}
       events.push({ time: bulkStart, title: `Bulk rise — ${enrichedNames}`, detail: `${enrichedBulkMin} min warm rise`, process: 'enriched', stage: 'proof', activeStep: false });
       events.push({ time: bulkEnd, title: `Shape ${enrichedNames}`, detail: `${Math.round(enrichedShapeMin)} min · ${totalEnriched} unit${totalEnriched === 1 ? '' : 's'}`, process: 'enriched', stage: 'shape', activeStep: true });
       events.push({ time: shapeStart, title: enrichedCold ? `Final proof — cold (overnight retard) — ${enrichedNames}` : `Final proof — warm — ${enrichedNames}`, detail: enrichedCold ? `${enrichedColdHr} hr in the fridge` : `${enrichedWarmMin} min warm`, process: 'enriched', stage: 'proof', activeStep: false });
-      events.push({ time: addMinutes(enrichedSlot.firstBakeStart, -SIDE_PREHEAT_MIN), title: `Turn on oven to ${enrichedTemp}°F`, detail: `~${SIDE_PREHEAT_MIN} min preheat${ovenTag}`, process: 'enriched', stage: 'bake', activeStep: false });
+      const enrichedPreheat = ovenPreheatMin(userOvens.find(o => o.id === enrichedSlot.ovenId), enrichedTemp) ?? SIDE_PREHEAT_MIN;
+      events.push({ time: addMinutes(enrichedSlot.firstBakeStart, -enrichedPreheat), title: `Turn on oven to ${enrichedTemp}°F`, detail: `~${enrichedPreheat} min preheat${ovenTag}`, process: 'enriched', stage: 'bake', activeStep: false });
       const enrichedPerBatch = enrichedRecipes.length === 1 ? bakeCapFor(enrichedRecipes[0], enrichedTmpl.ovenCapacity) : Math.ceil(totalEnriched / Math.max(1, enrichedBatches));
       let cum = 0;
       for (let b = 0; b < enrichedBatches; b++) {
