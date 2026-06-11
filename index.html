@@ -8783,7 +8783,6 @@ ${notesHtml}
         millEvent.colDetails = {};
         involvedCols.forEach(ck => { millEvent.colDetails[ck] = [...millByCol[ck]].join('\n'); });
       }
-      console.log('[MILL DEBUG]', { loafColumns: loafColumns.map(c => c.key), involvedCols, millByCol: Object.fromEntries(Object.entries(millByCol).map(([k, v]) => [k, [...v]])), columnKey: millEvent.columnKey, recipeKeys: loafRecipes.map(r => [r.name, loafRecipeColKey.get(r.name)]) });
       events.push(millEvent);
     }
     // Weigh out flours and salt: 5 min per loaf recipe, finishing just in
