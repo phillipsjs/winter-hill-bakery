@@ -5834,15 +5834,18 @@ ${notesHtml}
       .map(a => `<tr><td>${escapeHtml(a.name)}</td><td class="num">${formatGrams(a.grams)}</td></tr>`)
       .join('');
 
+    // The per-recipe breakdown is only useful when more than one recipe is planned —
+    // with a single recipe the aggregate table already is that recipe's totals.
+    const perRecipeSection = activeRecipes.length > 1
+      ? `<hr class="sep" /><h2 style="font-size:0.95rem; margin: 4px 0 6px">Per recipe</h2>${perRecipeHtml}`
+      : '';
     out.innerHTML = `
       <p class="muted" style="margin-top:0">Total dough: <strong>${formatGrams(totalDough)}</strong> across ${activeRecipes.length} recipe${activeRecipes.length>1?'s':''}.</p>
       <table class="ingredients">
         <thead><tr><th>Ingredient</th><th class="num">Total grams</th></tr></thead>
         <tbody>${aggRows}</tbody>
       </table>
-      <hr class="sep" />
-      <h2 style="font-size:0.95rem; margin: 4px 0 6px">Per recipe</h2>
-      ${perRecipeHtml}
+      ${perRecipeSection}
     `;
     const totalsSummaryEl = document.getElementById('totals-summary');
     if (totalsSummaryEl) totalsSummaryEl.textContent = `${formatGrams(totalDough)} total · ${activeRecipes.length} recipe${activeRecipes.length > 1 ? 's' : ''}`;
@@ -6029,16 +6032,22 @@ ${notesHtml}
     return Array.from(groups.values()).map(items => {
       const totalDough = items.reduce((s, i) => s + i.dough, 0);
 
+      // Honor a recipe's preferred container(s) if set; otherwise consider all eligible.
+      const groupPrefIds = new Set();
+      items.forEach(it => (it.recipe.preferredContainerIds || []).forEach(id => groupPrefIds.add(id)));
+      const preferredEligible = eligible.filter(c => groupPrefIds.has(c.id));
+      const searchList = preferredEligible.length > 0 ? preferredEligible : eligible;
+
       // Pick the best container type: smallest that fits all dough across N units
       let effectiveCapacity = capacity;
       let containerName = null;
       let quantityWarning = null;
 
-      if (eligible.length > 0) {
+      if (searchList.length > 0) {
         let found = false;
         for (let n = 1; n <= 20; n++) {
           const perContainer = totalDough / n;
-          const fit = eligible.find(c => c.maxDoughGrams >= perContainer);
+          const fit = searchList.find(c => c.maxDoughGrams >= perContainer);
           if (!fit) continue;
           if (n <= fit.quantity) {
             effectiveCapacity = fit.maxDoughGrams;
@@ -6049,7 +6058,7 @@ ${notesHtml}
         }
         if (!found) {
           // Fallback: use largest available, warn if quantity insufficient
-          const largest = eligible[eligible.length - 1];
+          const largest = searchList[searchList.length - 1];
           effectiveCapacity = largest.maxDoughGrams;
           containerName = largest.name;
           const needed = Math.ceil(totalDough / largest.maxDoughGrams);
@@ -6907,11 +6916,14 @@ ${notesHtml}
     const prefOven = (prefs && prefs.preferredOvenId) || '';
     const isLoaf = processType === 'sourdough-loaf';
     const isLevain = processType === 'levain';
+    const isSimple = processType === 'simple';
     const category = processCategory(processType);
     // Simple bakes & enriched doughs pan up too; bread muffins/focaccia already do.
     const needsPan = processType === 'sourdough-muffin' || processType === 'focaccia' || category === 'other';
-    // Proofing containers are a sourdough/bread concept — skip them for simple/enriched.
-    const showContainers = category !== 'other';
+    // Proofing containers for sourdough/bread; simple bakes get a chilling container
+    // (so a chilled dough fits in the fridge). Enriched skips this.
+    const showContainers = category !== 'other' || isSimple;
+    const containerHeader = isSimple ? 'Chilling container' : 'Proofing containers';
     const relevantContainers = userContainers.filter(c =>
       isLoaf ? (c.processTag === 'any' || c.processTag === 'loaf')
       : isLevain ? (c.processTag === 'any' || c.processTag === 'levain')
@@ -6920,7 +6932,7 @@ ${notesHtml}
     let html = '';
 
     if (showContainers) {
-    html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Proofing containers</div>';
+    html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">' + containerHeader + '</div>';
     if (relevantContainers.length === 0) {
       html += '<span class="muted" style="font-size:0.9rem">No containers added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'container\')">+ Add to Kitchen</button>';
     } else {
