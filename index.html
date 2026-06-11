@@ -1008,8 +1008,8 @@
       <details id="r-oven-settings">
         <summary>Oven settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
         <div class="scheduler-overrides">
-          <div class="row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
-          <div class="row"><label style="width:160px">Deck capacity</label><input type="number" id="r-deck-cap" min="0" step="1" /> <span class="muted">per deck — kept in sync</span></div>
+          <div class="row" id="r-oven-cap-row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
+          <div class="row" id="r-deck-cap-row"><label style="width:160px">Deck capacity</label><input type="number" id="r-deck-cap" min="0" step="1" /> <span class="muted">per deck — kept in sync</span></div>
           <div class="row"><label style="width:160px">Bake temp</label><input type="number" id="r-bake-temp" min="0" step="5" /> <span class="muted">°F</span></div>
           <div class="row"><label style="width:160px">Bake time</label><input type="number" id="r-bake-min" min="0" step="1" /> <span class="muted">min</span></div>
         </div>
@@ -6953,6 +6953,12 @@ ${notesHtml}
     // Bread ferment controls (autolyse/bulk/folds/cold-proof/shape) only apply to bread.
     document.getElementById('r-recipe-settings').style.display = category === 'bread' ? '' : 'none';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
+    // Oven/deck capacity only apply to deck-oven bread bakes; simple/enriched bake by
+    // pan capacity, so hide those rows for them (leaving Bake temp + Bake time).
+    ['r-oven-cap-row', 'r-deck-cap-row'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = category === 'bread' ? '' : 'none';
+    });
     // Sourdough-vs-yeast choice only matters for the bread processes.
     document.getElementById('r-leavening-row').style.display = category === 'bread' ? '' : 'none';
     const weightLabel = document.getElementById('r-weight-label');
@@ -7297,6 +7303,12 @@ ${notesHtml}
     const category = processCategory(processType);
     document.getElementById('r-recipe-settings').style.display = category === 'bread' ? '' : 'none';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
+    // Oven/deck capacity only apply to deck-oven bread bakes; simple/enriched bake by
+    // pan capacity, so hide those rows for them (leaving Bake temp + Bake time).
+    ['r-oven-cap-row', 'r-deck-cap-row'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = category === 'bread' ? '' : 'none';
+    });
     document.getElementById('r-leavening-row').style.display = category === 'bread' ? '' : 'none';
     const wl = document.getElementById('r-weight-label');
     const tmplUnit = PROCESS_TEMPLATES[processType] ? PROCESS_TEMPLATES[processType].unit : 'unit';
