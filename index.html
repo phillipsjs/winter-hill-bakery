@@ -8351,6 +8351,11 @@ ${notesHtml}
     let containerInfo = [];
     let containerShape = [];
     let containerFirstBakeIdx = [];
+    // Phase 3: per-dough loaf columns. When the plan has MORE THAN ONE loaf dough
+    // (distinct ratio signatures), each becomes its own column and the per-container
+    // shape / into-fridge steps are tagged to it. A single loaf dough keeps the plain
+    // 'loaf' column (unchanged), and the aggregated mix/fold/bake stay shared.
+    let loafColumns = [];
     let shapePhaseStart = null, lastFoldTime = null, firstFoldTime = null, mixTime = null, autolyseStart = null;
 
     const PRESHAPE_RATIO = SCHED.PRESHAPE_MIN_PER_LOAF /
@@ -8377,11 +8382,17 @@ ${notesHtml}
 
       fridgeIn = addHours(firstBakeStart, -loafColdProofHours);
       const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
-      for (const group of containerGroups) {
-        for (const c of group.containers) {
-          containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves, containerName: c.containerName });
+      const multiDough = containerGroups.length > 1;
+      containerGroups.forEach((group, gi) => {
+        const colKey = multiDough ? `loaf#${gi}` : 'loaf';
+        if (multiDough) {
+          const names = [...new Set((group.items || []).map(it => it.recipe.name))];
+          loafColumns.push({ key: colKey, label: names.join(', ') });
         }
-      }
+        for (const c of group.containers) {
+          containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves, containerName: c.containerName, colKey });
+        }
+      });
       containerShape = containerInfo.map(c => {
         let preshapeMin = 0;
         let finalShapeMin = 0;
@@ -8822,21 +8833,21 @@ ${notesHtml}
         detail: shape.benchRest === 0
           ? `${preshapeBaseDetail} · first loaves rest naturally while you finish (no separate bench rest needed)`
           : preshapeBaseDetail,
-        process: 'loaf',
+        process: 'loaf', columnKey: c.colKey,
       });
       if (shape.benchRest > 0) {
         events.push({
           time: benchRestStartT,
           title: `Bench rest${suffix}`,
           detail: `${shape.benchRest} min rest (loaf 1 already rested ~${shape.naturalRest} min during preshape)`,
-          process: 'loaf',
+          process: 'loaf', columnKey: c.colKey,
         });
       }
       events.push({
         time: finalShapeStartT,
         title: `Final shape${suffix}`,
         detail: `${shapeBreakdown(c, 'final')} = ${shape.finalShapeMin} min total`,
-        process: 'loaf',
+        process: 'loaf', columnKey: c.colKey,
       });
 
       cursorTime = containerEndT;
@@ -8871,7 +8882,7 @@ ${notesHtml}
           time: fridgeTime,
           title: `Into fridge${suffix}`,
           detail: `${fmtColdProof(cpMs)} cold proof`,
-          process: 'loaf',
+          process: 'loaf', columnKey: c.colKey,
         });
       }
     }
@@ -9381,7 +9392,7 @@ ${notesHtml}
     events.sort((a, b) => a.time - b.time);
     return {
       totalLoaves, totalMuffins, totalBagels, totalFocaccia, totalSimple, totalEnriched, batches, events, warnings,
-      sideColumns,
+      sideColumns, loafColumns,
       build1Opt, build2Opt,
       muffinBuild1Opt, muffinBuild2Opt,
       useSeparateLevains,
@@ -9822,7 +9833,14 @@ ${notesHtml}
       return names.length ? names.join(', ') : PROC_LABELS[proc];
     };
     const columns = [];
-    if (hasLoaves) columns.push({ key: 'loaf', label: breadColLabel('loaf') });
+    // Phase 3: loaves split into per-dough columns when the plan has more than one loaf
+    // dough (result.loafColumns); a single dough keeps the one 'loaf' column. Aggregated
+    // loaf steps (mix/fold/bake) carry no columnKey, so they render shared full-width.
+    const loafCols = result.loafColumns || [];
+    if (hasLoaves) {
+      if (loafCols.length > 1) loafCols.forEach(c => columns.push({ key: c.key, label: c.label }));
+      else columns.push({ key: 'loaf', label: breadColLabel('loaf') });
+    }
     if (hasMuffins) columns.push({ key: 'muffin', label: breadColLabel('muffin') });
     if (hasBagels) columns.push({ key: 'bagel', label: breadColLabel('bagel') });
     if (hasFocacciaResult) columns.push({ key: 'focaccia', label: breadColLabel('focaccia') });
