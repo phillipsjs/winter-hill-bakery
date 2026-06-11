@@ -6940,6 +6940,10 @@ ${notesHtml}
       const glazeMin = recipe.glazeMin != null ? recipe.glazeMin : '';
       html += '<div class="row"><label style="width:170px">Glaze / ice after baking</label><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="r-glaze-enabled" onchange="onGlazeToggle()"' + (glazeOn ? ' checked' : '') + ' /> add a glazing step</label></div>';
       html += '<div class="row" id="r-glaze-min-row"><label style="width:170px">Glaze time</label><input type="number" id="r-glaze-min" min="0" step="1" placeholder="5" value="' + escapeAttr(String(glazeMin)) + '" /> <span class="muted">min</span></div>';
+      const bsoE = recipe.batchSizeOverride != null ? recipe.batchSizeOverride : '';
+      html += '<div class="row"><label style="width:170px">Batch size</label>'
+        + '<input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" value="' + escapeAttr(String(bsoE)) + '" style="width:80px;flex:none" /> '
+        + '<span class="muted" style="font-size:0.8rem">units/batch — blank auto-fits to your mixer, container & oven</span></div>';
     }
     el.innerHTML = html;
     wrap.style.display = '';
@@ -6972,13 +6976,14 @@ ${notesHtml}
     const isLoaf = processType === 'sourdough-loaf';
     const isLevain = processType === 'levain';
     const isSimple = processType === 'simple';
+    const isEnriched = processType === 'enriched';
     const category = processCategory(processType);
     // Simple bakes & enriched doughs pan up too; bread muffins/focaccia already do.
     const needsPan = processType === 'sourdough-muffin' || processType === 'focaccia' || category === 'other';
-    // Proofing containers for sourdough/bread; simple bakes get a chilling container
-    // (so a chilled dough fits in the fridge). Enriched skips this.
-    const showContainers = category !== 'other' || isSimple;
-    const containerHeader = isSimple ? 'Chilling container' : 'Proofing containers';
+    // Proofing containers for sourdough/bread; simple bakes get a chilling container and
+    // enriched doughs a cold-proof container (so chilled/retarded dough fits in the fridge).
+    const showContainers = category !== 'other' || isSimple || isEnriched;
+    const containerHeader = isSimple ? 'Chilling container' : isEnriched ? 'Cold-proof container' : 'Proofing containers';
     const relevantContainers = userContainers.filter(c =>
       isLoaf ? (c.processTag === 'any' || c.processTag === 'loaf')
       : isLevain ? (c.processTag === 'any' || c.processTag === 'levain')
@@ -7934,8 +7939,31 @@ ${notesHtml}
     const simpleTemp = sideTemp(simpleRecipes, simpleTmpl);
 
     const enrichedTmpl = PROCESS_TEMPLATES.enriched;
-    const enrichedMixBatches = totalEnriched > 0 ? sideMixBatches(enrichedRecipes) : 0;
-    const enrichedBatches = totalEnriched > 0 ? sideBatchesFor(enrichedRecipes, enrichedTmpl.ovenCapacity) : 0;
+    // Unified per-recipe batching (mirrors simple): batch size = smallest of mixer /
+    // pan-oven / cold-proof-container capacity, divided evenly, or a per-recipe override.
+    const enrichedBatchPlan = enrichedRecipes.map(r => {
+      const count = plan[r.id] || 0;
+      const mx = mixerForRecipe(r);
+      const mixerCap = (mx && mx.recipeCapacities && mx.recipeCapacities[r.id] > 0) ? mx.recipeCapacities[r.id] * (mx.quantity || 1) : Infinity;
+      const panCap = bakeCapFor(r, enrichedTmpl.ovenCapacity);
+      const cold = r.finalProofMode === 'cold';
+      const containerCap = cold ? chillContainerUnitsFor(r) : Infinity;
+      const autoBatchSize = Math.max(1, Math.min(count || 1, mixerCap, panCap, containerCap));
+      const override = Number(r.batchSizeOverride);
+      let batchSize = autoBatchSize;
+      if (Number.isFinite(override) && override > 0) {
+        batchSize = Math.max(1, Math.min(count || 1, override));
+        const probs = [];
+        if (override > mixerCap) probs.push(`the mixer (${mixerCap}/batch)`);
+        if (override > containerCap) probs.push(`one cold-proof container (${containerCap})`);
+        if (override > panCap) probs.push(`one oven load (${panCap})`);
+        if (probs.length) warnings.push({ msg: `${r.name}: a batch size of ${override} is bigger than ${probs.join(', ')} — that batch won't fit in a single load. Lower the batch size or split it.`, issue: 'batch-size', kind: 'enriched', type: 'info' });
+      }
+      const numBatches = Math.max(1, Math.ceil(count / Math.max(1, batchSize)));
+      return { recipe: r, count, cold, numBatches, perBatch: splitEvenly(count, numBatches), containerName: cold ? chillContainerNameFor(r) : '', shapePerUnit: getRecipeSpec(r).shapeMinPerUnit || enrichedTmpl.shapeMinPerUnit };
+    });
+    const enrichedBatches = enrichedBatchPlan.reduce((s, p) => s + p.numBatches, 0);
+    const enrichedMixBatches = enrichedBatches;
     const enrichedBakeTotalMin = enrichedBatches > 0 ? enrichedBatches * enrichedTmpl.bakeMin + Math.max(0, enrichedBatches - 1) * SCHED.REHEAT_MIN : 0;
     const enrichedBulkMin = enrichedRecipes.reduce((m, r) => Math.max(m, getRecipeSpec(r).bulkMin || enrichedTmpl.bulkMin), 0) || enrichedTmpl.bulkMin;
     const enrichedShapeMin = sideShapeMin(enrichedRecipes, enrichedTmpl);
@@ -9123,54 +9151,41 @@ ${notesHtml}
     if (enrichedSlot && totalEnriched > 0) {
       const ovenTag = enrichedSlot.ovenName ? ` · ${enrichedSlot.ovenName}` : '';
       const enrichedNames = enrichedRecipes.map(r => r.name).join(', ');
-      const proofMin = enrichedCold ? enrichedColdHr * 60 : enrichedWarmMin;
-      const shapeStart = addMinutes(enrichedSlot.firstBakeStart, -proofMin);
-      const bulkEnd = addMinutes(shapeStart, -enrichedShapeMin);
-      const bulkStart = addMinutes(bulkEnd, -enrichedBulkMin);
       const WEIGH = SCHED.WEIGH_MIN_PER_RECIPE;
-      const perBatchPrep = WEIGH + enrichedTmpl.mixMin;
-      const prepStart = addMinutes(bulkStart, -enrichedMixBatches * perBatchPrep);
-      let enrichedMixIdx = 0;
-      enrichedRecipes.forEach(r => {
-        const mx = mixerForRecipe(r);
-        const cap = (mx && mx.recipeCapacities && mx.recipeCapacities[r.id]) || 0;
-        const count = plan[r.id] || 0;
-        const perBatch = (mx && cap > 0) ? cap * (mx.quantity || 1) : count;
-        const rBatches = Math.max(1, Math.ceil(count / Math.max(1, perBatch)));
-        for (let b = 0; b < rBatches; b++) {
-          const batchUnits = Math.max(0, Math.min(perBatch, count - b * perBatch));
-          const lastMix = enrichedMixIdx === enrichedMixBatches - 1;
-          const batchSuffix = enrichedMixBatches > 1 ? ` — batch ${b + 1} of ${rBatches}` : '';
-          const unit = r.unit || 'unit';
-          const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
-          const t0 = addMinutes(prepStart, enrichedMixIdx * perBatchPrep);
-          events.push({
-            time: t0, title: `Weigh out ${r.name}${batchSuffix} ingredients`,
-            detail: `${unitsLabel} · ${WEIGH} min`,
-            process: 'enriched', stage: 'prep', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits),
-          });
-          const mt = addMinutes(t0, WEIGH);
-          events.push({
-            time: mt, title: `Mix & knead ${r.name}${batchSuffix}`,
-            detail: `${unitsLabel} · ${enrichedTmpl.mixMin} min active${lastMix ? ` · then ${enrichedBulkMin} min bulk rise` : ''}`,
-            process: 'enriched', stage: 'mix', activeStep: true,
-          });
-          enrichedMixIdx++;
-        }
-      });
-      events.push({ time: bulkStart, title: `Bulk rise — ${enrichedNames}`, detail: `${enrichedBulkMin} min warm rise`, process: 'enriched', stage: 'proof', activeStep: false });
-      events.push({ time: bulkEnd, title: `Shape ${enrichedNames}`, detail: `${Math.round(enrichedShapeMin)} min · ${totalEnriched} unit${totalEnriched === 1 ? '' : 's'}`, process: 'enriched', stage: 'shape', activeStep: true });
-      events.push({ time: shapeStart, title: enrichedCold ? `Final proof — cold (overnight retard) — ${enrichedNames}` : `Final proof — warm — ${enrichedNames}`, detail: enrichedCold ? `${enrichedColdHr} hr in the fridge` : `${enrichedWarmMin} min warm`, process: 'enriched', stage: 'proof', activeStep: false });
+      const proofMin = enrichedCold ? enrichedColdHr * 60 : enrichedWarmMin;
       const enrichedPreheat = ovenPreheatMin(userOvens.find(o => o.id === enrichedSlot.ovenId), enrichedTemp) ?? SIDE_PREHEAT_MIN;
       events.push({ time: addMinutes(enrichedSlot.firstBakeStart, -enrichedPreheat), title: `Turn on oven to ${enrichedTemp}°F`, detail: `~${enrichedPreheat} min preheat${ovenTag}`, process: 'enriched', stage: 'bake', activeStep: false });
-      const enrichedPerBatch = enrichedRecipes.length === 1 ? bakeCapFor(enrichedRecipes[0], enrichedTmpl.ovenCapacity) : Math.ceil(totalEnriched / Math.max(1, enrichedBatches));
-      let cum = 0;
-      for (let b = 0; b < enrichedBatches; b++) {
-        const bs = addMinutes(enrichedSlot.firstBakeStart, cum);
-        const countThis = Math.max(0, Math.min(enrichedPerBatch, totalEnriched - b * enrichedPerBatch));
-        events.push({ time: bs, timeEnd: addMinutes(bs, enrichedTmpl.bakeMin), title: enrichedBatches === 1 ? `Bake ${enrichedNames}` : `Bake ${enrichedNames} — batch ${b + 1} of ${enrichedBatches}`, detail: `${countThis} unit${countThis === 1 ? '' : 's'} · ${enrichedTmpl.bakeMin} min · ${enrichedTemp}°F${ovenTag}`, process: 'enriched', stage: 'bake', activeStep: false });
-        cum += enrichedTmpl.bakeMin + (b < enrichedBatches - 1 ? SCHED.REHEAT_MIN : 0);
-      }
+      // Pipeline: bakes run sequentially; each batch's full chain (weigh → mix → bulk →
+      // shape → final proof) backs up from its OWN bake, so every batch bulks/proofs the
+      // same time (no over-fermenting) and each goes into its own cold-proof container.
+      let cum = 0, bakeIdx = 0;
+      enrichedBatchPlan.forEach(p => {
+        const r = p.recipe;
+        const unit = r.unit || 'unit';
+        p.perBatch.forEach((batchUnits, b) => {
+          const suffix = p.numBatches > 1 ? ` — batch ${b + 1} of ${p.numBatches}` : '';
+          const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
+          const bakeStart = addMinutes(enrichedSlot.firstBakeStart, cum);
+          const shapeMin = Math.max(1, Math.round(batchUnits * p.shapePerUnit));
+          const proofStart = addMinutes(bakeStart, -proofMin);
+          const shapeStart = addMinutes(proofStart, -shapeMin);
+          const bulkStart = addMinutes(shapeStart, -enrichedBulkMin);
+          const mixStart = addMinutes(bulkStart, -enrichedTmpl.mixMin);
+          events.push({ time: addMinutes(mixStart, -WEIGH), title: `Weigh out ${r.name}${suffix} ingredients`, detail: `${unitsLabel} · ${WEIGH} min`, process: 'enriched', stage: 'prep', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits) });
+          events.push({ time: mixStart, title: `Mix & knead ${r.name}${suffix}`, detail: `${unitsLabel} · ${enrichedTmpl.mixMin} min active · then ${enrichedBulkMin} min bulk`, process: 'enriched', stage: 'mix', activeStep: true });
+          events.push({ time: bulkStart, title: `Bulk rise — ${r.name}${suffix}`, detail: `${enrichedBulkMin} min warm rise`, process: 'enriched', stage: 'proof', activeStep: false });
+          events.push({ time: shapeStart, title: `Shape ${r.name}${suffix}`, detail: `${shapeMin} min · ${unitsLabel}`, process: 'enriched', stage: 'shape', activeStep: true });
+          if (p.cold) {
+            const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
+            events.push({ time: proofStart, title: `Final proof — cold (overnight) — ${r.name}${suffix}`, detail: `${unitsLabel} · ${enrichedColdHr} hr in the fridge · use ${contLabel}`, process: 'enriched', stage: 'proof', activeStep: false, container: contLabel });
+          } else {
+            events.push({ time: proofStart, title: `Final proof — warm — ${r.name}${suffix}`, detail: `${unitsLabel} · ${enrichedWarmMin} min warm`, process: 'enriched', stage: 'proof', activeStep: false });
+          }
+          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, enrichedTmpl.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${enrichedTmpl.bakeMin} min · ${enrichedTemp}°F${ovenTag}`, process: 'enriched', stage: 'bake', activeStep: false });
+          cum += enrichedTmpl.bakeMin + (bakeIdx < enrichedBatches - 1 ? SCHED.REHEAT_MIN : 0);
+          bakeIdx++;
+        });
+      });
       events.push({ time: enrichedSlot.lastBakeEnd, title: `${enrichedNames} out — cool`, detail: `${enrichedCoolMin} min cool`, process: 'enriched', stage: 'done', activeStep: false });
       if (enrichedGlaze) events.push({ time: addMinutes(enrichedSlot.lastBakeEnd, enrichedCoolMin), title: `Glaze / ice ${enrichedNames}`, detail: `${enrichedGlazeMin} min`, process: 'enriched', stage: 'done', activeStep: true });
       events.push({ time: enrichedSlot.packageReady, title: 'Package & ready for sale', detail: '', process: 'enriched', stage: 'done', activeStep: false });
