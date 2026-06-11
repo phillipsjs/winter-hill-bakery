@@ -6079,6 +6079,11 @@ ${notesHtml}
     return Array.from(groups.values()).map(items => {
       const totalDough = items.reduce((s, i) => s + i.dough, 0);
 
+      // Chilled dough doesn't rise, so a chilling container can be filled to its full
+      // volume — undo the proofing fill-factor headroom baked into maxDoughGrams.
+      const isChilling = items.every(i => getProcessType(i.recipe) === 'simple');
+      const capOf = (c) => isChilling ? Math.round(c.maxDoughGrams / CONTAINER_FILL_FACTOR) : c.maxDoughGrams;
+
       // Honor a recipe's preferred container(s) if set; otherwise consider all eligible.
       const groupPrefIds = new Set();
       items.forEach(it => (it.recipe.preferredContainerIds || []).forEach(id => groupPrefIds.add(id)));
@@ -6094,10 +6099,10 @@ ${notesHtml}
         let found = false;
         for (let n = 1; n <= 20; n++) {
           const perContainer = totalDough / n;
-          const fit = searchList.find(c => c.maxDoughGrams >= perContainer);
+          const fit = searchList.find(c => capOf(c) >= perContainer);
           if (!fit) continue;
           if (n <= fit.quantity) {
-            effectiveCapacity = fit.maxDoughGrams;
+            effectiveCapacity = capOf(fit);
             containerName = fit.name;
             found = true;
             break;
@@ -6106,9 +6111,9 @@ ${notesHtml}
         if (!found) {
           // Fallback: use largest available, warn if quantity insufficient
           const largest = searchList[searchList.length - 1];
-          effectiveCapacity = largest.maxDoughGrams;
+          effectiveCapacity = capOf(largest);
           containerName = largest.name;
-          const needed = Math.ceil(totalDough / largest.maxDoughGrams);
+          const needed = Math.ceil(totalDough / capOf(largest));
           if (needed > largest.quantity) {
             quantityWarning = `Need ${needed}× ${largest.name} but only ${largest.quantity} available`;
           }
@@ -6186,7 +6191,6 @@ ${notesHtml}
         });
       }
 
-      const isChilling = items.every(i => getProcessType(i.recipe) === 'simple');
       return { items, totalDough, containers, containerName, quantityWarning, isChilling };
     });
   }
