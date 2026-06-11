@@ -10033,7 +10033,6 @@ ${notesHtml}
           }
           const bucket = hourBuckets.get(key);
           const proc = colKeyOf(ev);
-          if (ev.title === 'Mill flour') console.log('[MILL RENDER]', { columnKey: ev.columnKey, process: ev.process, proc, presentCols, hasByProc: !!bucket.byProc[proc], routedTo: (proc === 'shared' || !bucket.byProc[proc]) ? 'SHARED' : proc, splitView });
           if (proc === 'shared' || !bucket.byProc[proc]) bucket.shared.push(ev);
           else bucket.byProc[proc].push(ev);
         }
@@ -10088,6 +10087,7 @@ ${notesHtml}
                 }
                 cellHtml += `</div>`;
               }
+              if (cellHtml.includes('Mill flour')) console.log('[MILL HTML]', { sharedCount: bucket.shared.length, byProc: Object.fromEntries(presentCols.map(p => [p, bucket.byProc[p].map(e => e.title)])), cellHtml });
               html += `<div style="grid-row: ${rowIdx}; grid-column: 2;">${cellHtml}</div>`;
             }
           }
