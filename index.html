@@ -654,6 +654,7 @@
   .schedule-row[data-stage="fold"]::before,   .schedule-event[data-stage="fold"]::before,   .stage-group[data-stage="fold"]::before   { background: #7c3aed; }
   .schedule-row[data-stage="shape"]::before,  .schedule-event[data-stage="shape"]::before,  .stage-group[data-stage="shape"]::before  { background: #be185d; }
   .schedule-row[data-stage="proof"]::before,  .schedule-event[data-stage="proof"]::before,  .stage-group[data-stage="proof"]::before  { background: #1d4ed8; }
+  .schedule-row[data-stage="chill"]::before,  .schedule-event[data-stage="chill"]::before,  .stage-group[data-stage="chill"]::before  { background: #0891b2; }
   .schedule-row[data-stage="bake"]::before,   .schedule-event[data-stage="bake"]::before,   .stage-group[data-stage="bake"]::before   { background: #c2410c; }
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #16a34a; }
   button.schedule-highlight-btn {
@@ -815,10 +816,10 @@
       <details class="plan-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
-          <h2>Proofing containers</h2>
+          <h2 id="container-card-title">Proofing containers</h2>
           <span id="container-summary" class="muted" style="font-size:0.85rem"></span>
         </summary>
-        <p class="muted" style="margin:8px 0 0">Recipes share a container only if their ingredient ratios are identical. Add your containers in the Kitchen tab to get accurate assignments.</p>
+        <p class="muted" style="margin:8px 0 0">Containers for proofing sourdough or chilling cookie/scone dough. Recipes share a container only if their ingredient ratios are identical. Add your containers in the Kitchen tab to get accurate assignments.</p>
         <div id="container-output"></div>
       </details>
     </div>
@@ -1507,28 +1508,30 @@
         </div>
       </div>
 
-      <hr class="sep" />
+      <div id="levain-ratios-section">
+        <hr class="sep" />
 
-      <p class="muted" style="margin: 0 0 8px;">Levain build ratios — override the scheduler's auto-pick if you prefer a specific timing.</p>
+        <p class="muted" style="margin: 0 0 8px;">Levain build ratios — override the scheduler's auto-pick if you prefer a specific timing.</p>
 
-      <div class="row" style="align-items: center; gap: 10px; margin-bottom: 10px;">
-        <label style="font-size: 0.95rem;">Build 1 ratio:</label>
-        <select id="build1-ratio-input" class="settings-select">
-          <option value="">— auto (avoid late-night) —</option>
-          <option value="fast">Fast 1:1:1 (6–9 hr)</option>
-          <option value="medium">Medium 1:3:3 (10–14 hr)</option>
-          <option value="slow">Slow 1:5:5 (15–20 hr)</option>
-        </select>
-      </div>
+        <div class="row" style="align-items: center; gap: 10px; margin-bottom: 10px;">
+          <label style="font-size: 0.95rem;">Build 1 ratio:</label>
+          <select id="build1-ratio-input" class="settings-select">
+            <option value="">— auto (avoid late-night) —</option>
+            <option value="fast">Fast 1:1:1 (6–9 hr)</option>
+            <option value="medium">Medium 1:3:3 (10–14 hr)</option>
+            <option value="slow">Slow 1:5:5 (15–20 hr)</option>
+          </select>
+        </div>
 
-      <div class="row" style="align-items: center; gap: 10px;">
-        <label style="font-size: 0.95rem;">Build 2 ratio:</label>
-        <select id="build2-ratio-input" class="settings-select">
-          <option value="">— auto (avoid late-night) —</option>
-          <option value="fast">Fast 1:1:1 (4–6 hr)</option>
-          <option value="medium">Medium 1:3:3 (7–11 hr)</option>
-          <option value="slow">Slow 1:5:5 (12–16 hr)</option>
-        </select>
+        <div class="row" style="align-items: center; gap: 10px;">
+          <label style="font-size: 0.95rem;">Build 2 ratio:</label>
+          <select id="build2-ratio-input" class="settings-select">
+            <option value="">— auto (avoid late-night) —</option>
+            <option value="fast">Fast 1:1:1 (4–6 hr)</option>
+            <option value="medium">Medium 1:3:3 (7–11 hr)</option>
+            <option value="slow">Slow 1:5:5 (12–16 hr)</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -6003,10 +6006,11 @@ ${notesHtml}
   }
 
   function planDoughContainers(loafRecipes, planMap, capacity, userCont) {
+    // Simple bakes don't bulk-ferment, but a chilled simple dough (cookies/scones with
+    // a chill window) still needs a container in the fridge.
+    const simpleChills = r => getProcessType(r) === 'simple' && r.chillWindow && r.chillWindow !== '';
     const active = loafRecipes
-      // Simple bakes (cookies, scones, quick breads) don't bulk-ferment, so they
-      // never need a proofing container.
-      .filter(r => (planMap[r.id] || 0) > 0 && getProcessType(r) !== 'simple')
+      .filter(r => (planMap[r.id] || 0) > 0 && (getProcessType(r) !== 'simple' || simpleChills(r)))
       .map(r => ({ recipe: r, count: planMap[r.id], dough: r.loafWeight * planMap[r.id] }));
     if (active.length === 0) return [];
     const groups = new Map();
@@ -6125,7 +6129,8 @@ ${notesHtml}
         });
       }
 
-      return { items, totalDough, containers, containerName, quantityWarning };
+      const isChilling = items.every(i => getProcessType(i.recipe) === 'simple');
+      return { items, totalDough, containers, containerName, quantityWarning, isChilling };
     });
   }
 
@@ -6175,12 +6180,13 @@ ${notesHtml}
         return `${label}: <strong>${formatGrams(c.totalDough)}</strong> — ${loafList}`;
       }).join('<br>');
       const sharedNote = g.items.length > 1 ? ' <span class="muted" style="font-size:0.8rem">(identical ratios)</span>' : '';
+      const actionNote = ` <span class="muted" style="font-size:0.8rem">— for ${g.isChilling ? 'chilling' : 'proofing'}</span>`;
       const topStyle = gi > 0 ? 'border-top:1px solid var(--border);padding-top:12px;' : '';
       const warnHtml = g.quantityWarning
         ? `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px">&#9888; ${escapeHtml(g.quantityWarning)}</div>`
         : '';
       html += `<div style="margin-top:12px;${topStyle}">
-        <div><strong>${escapeHtml(recipeNames)}</strong>${sharedNote}</div>
+        <div><strong>${escapeHtml(recipeNames)}</strong>${sharedNote}${actionNote}</div>
         <div class="muted" style="font-size:0.85rem;margin-top:2px">${escapeHtml(recipeDetails)}</div>
         <div style="margin-top:6px">${containerLines}</div>
         ${warnHtml}
@@ -6189,6 +6195,13 @@ ${notesHtml}
     out.innerHTML = html;
     const containerSummaryEl = document.getElementById('container-summary');
     if (containerSummaryEl) containerSummaryEl.textContent = `${totalContainers} container${totalContainers > 1 ? 's' : ''} · ${formatGrams(totalDough)} dough`;
+    const titleEl = document.getElementById('container-card-title');
+    if (titleEl) {
+      const anyChill = groups.some(g => g.isChilling);
+      const anyProof = groups.some(g => !g.isChilling);
+      titleEl.textContent = anyChill && anyProof ? 'Proofing & chilling containers'
+        : anyChill ? 'Chilling containers' : 'Proofing containers';
+    }
     card.style.display = '';
   }
 
@@ -8948,7 +8961,16 @@ ${notesHtml}
           simpleMixIdx++;
         }
       });
-      if (simpleChillHr > 0) events.push({ time: chillStart, title: 'Chill / rest simple-bake dough', detail: `${simpleChillHr} hr`, process: 'simple' });
+      if (simpleChillHr > 0) {
+        // Container(s) the chilled dough goes into (same assignment logic as proofing).
+        const chillRecipes = simpleRecipes.filter(r => r.chillWindow && r.chillWindow !== '');
+        const cNames = [];
+        planDoughContainers(chillRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers).forEach(g => {
+          g.containers.forEach((c, i) => cNames.push(c.containerName ? (g.containers.length > 1 ? `${c.containerName} ${i + 1}` : c.containerName) : 'a container'));
+        });
+        const cLabel = cNames.length ? cNames.join(', ') : '';
+        events.push({ time: chillStart, title: 'Chill / rest simple-bake dough', detail: `${simpleChillHr} hr in the fridge${cLabel ? ` · use ${cLabel}` : ''}`, process: 'simple', container: cLabel || undefined });
+      }
       events.push({ time: shapeStart, title: 'Shape / portion simple bakes', detail: `${Math.round(simpleShapeMin)} min · ${totalSimple} item${totalSimple === 1 ? '' : 's'}`, process: 'simple' });
       events.push({ time: addMinutes(simpleSlot.firstBakeStart, -SIDE_PREHEAT_MIN), title: `Turn on oven to ${simpleTemp}°F`, detail: `~${SIDE_PREHEAT_MIN} min preheat${ovenTag}`, process: 'simple' });
       // Items per bake round: from preferred-pan capacity (one recipe) or an even split.
@@ -9090,6 +9112,13 @@ ${notesHtml}
       grid.classList.remove('single-col', 'cols-1', 'cols-2', 'cols-3', 'cols-4', 'cols-5', 'cols-6');
       grid.classList.add('cols-' + Math.max(1, n));
     }
+    // Levain build ratios only matter when a sourdough process (loaf/muffin/bagel
+    // with a real levain) is in the plan.
+    const usesLevain = recipes.some(r => (plan[r.id] || 0) > 0
+      && ['sourdough-loaf', 'sourdough-muffin', 'bagel'].includes(getProcessType(r))
+      && r.leavening !== 'commercial-yeast');
+    const levainSection = document.getElementById('levain-ratios-section');
+    if (levainSection) levainSection.style.display = usesLevain ? '' : 'none';
   }
 
   let _scheduleResult = null;
@@ -9100,7 +9129,8 @@ ${notesHtml}
     if (/^(Mill |Weigh out|Start autolyse|Mix in salt|Mix muffin|Mix bagel|Mix focaccia|Mix simple|Mix & knead)/.test(t)) return 'mix';
     if (/^Stretch & fold/.test(t)) return 'fold';
     if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels|Shape focaccia|Shape \/ portion|Shape enriched)/.test(t)) return 'shape';
-    if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge|Pan rise|Chill \/ rest|Final proof|Bulk rise)/.test(t)) return 'proof';
+    if (/^Chill \/ rest/.test(t)) return 'chill';
+    if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge|Pan rise|Final proof|Bulk rise)/.test(t)) return 'proof';
     if (/^(Turn on oven|Set .* to \d|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
@@ -9836,6 +9866,7 @@ ${notesHtml}
     const levainContInfo = _scheduleResult.levainContainerInfo || {};
     const getEventContainer = ev => {
       const t = ev.title;
+      if (ev.container) return ev.container; // event carries its own container (e.g. chilling)
       // Levain build events
       if (t.includes('Levain Build')) {
         const isMuffin = t.includes('(muffins)');
