@@ -7786,6 +7786,18 @@ ${notesHtml}
     const enrichedRecipes = recipes.filter(r => getProcessType(r) === 'enriched' && (plan[r.id] || 0) > 0);
     const totalEnriched = enrichedRecipes.reduce((s, r) => s + plan[r.id], 0);
     const warnings = [];
+    // Bread (loaf/muffin/bagel/focaccia) still schedules one shared timeline per process,
+    // so recipes of the same type with different deadlines all bake to the EARLIEST. Flag
+    // that until per-deadline bread splitting lands (simple/enriched already split).
+    const deadlineSpread = (recs, procDeadline) => new Set(recs.map(r => {
+      const d = opts.recipeDeadlines && opts.recipeDeadlines[r.id];
+      return d ? new Date(d).getTime() : (procDeadline ? new Date(procDeadline).getTime() : 'none');
+    })).size;
+    [['loaves', loafRecipes, loafDeadline], ['English muffins', muffinRecipes, muffinDeadline || loafDeadline], ['bagels', bagelRecipes, bagelDeadline || loafDeadline], ['focaccia', focacciaRecipes, focacciaDeadline]].forEach(([label, recs, pd]) => {
+      if (recs.length > 1 && deadlineSpread(recs, pd) > 1) {
+        warnings.push({ msg: `Your ${label} have different deadlines, but bread of one type still bakes on a single shared timeline — they'll all be scheduled to the earliest deadline for now. (Per-deadline splitting for bread is in progress.)`, issue: 'bread-deadline-merge', kind: label, type: 'info' });
+      }
+    });
     if (totalLoaves === 0 && totalMuffins === 0 && totalBagels === 0 && totalFocaccia === 0 && totalSimple === 0 && totalEnriched === 0)
       return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia: 0, totalSimple: 0, totalEnriched: 0, batches: 0, events: [], warnings };
 
