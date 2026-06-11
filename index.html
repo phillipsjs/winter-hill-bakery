@@ -7754,7 +7754,7 @@ ${notesHtml}
     const bagelBatches = totalBagels > 0 ? Math.ceil(totalBagels / bagelBatchSizeEff) : 0;
     const bagelCycleMin = SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN + (bagelAgg ? bagelAgg.bakeMin : PROCESS_TEMPLATES.bagel.bakeMin);
     const bagelOvenSpanMin = bagelBatches * bagelCycleMin;
-    const batches = breadBatches + muffinBatches + bagelBatches;
+    let batches = breadBatches + muffinBatches + bagelBatches + focacciaBatches;
 
     // --- Simple / enriched aggregation (commercial-yeast / chemical leavening) ---
     const parseHrWindow = (v) => {
@@ -7813,6 +7813,7 @@ ${notesHtml}
     const enrichedGlazeMin = enrichedRecipes.filter(r => r.glazeEnabled).reduce((m, r) => Math.max(m, Number(r.glazeMin) || enrichedTmpl.glazeMin), 0) || enrichedTmpl.glazeMin;
     const enrichedCoolMin = enrichedTmpl.coolMin;
     const enrichedTemp = sideTemp(enrichedRecipes, enrichedTmpl);
+    batches += simpleBatches + enrichedBatches; // include side bakes in the oven-batch total
 
     // Muffin deadline + bake time fall back to the loaf values when not set.
     const effMuffinDeadline = muffinDeadline || loafDeadline;
@@ -8181,7 +8182,7 @@ ${notesHtml}
     const muffinMixBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
     const bagelMixBatches = totalBagels > 0 ? Math.ceil(totalBagels / SCHED.BAGEL_MIXER_CAPACITY) : 0;
     const focacciaMixBatches = totalFocaccia > 0 ? 1 : 0;
-    const totalMixBatches = numContainers + muffinMixBatches + bagelMixBatches + focacciaMixBatches;
+    const totalMixBatches = numContainers + muffinMixBatches + bagelMixBatches + focacciaMixBatches + simpleMixBatches + enrichedMixBatches;
 
     // Compute muffin sub-timeline up-front so the shared Build 2 levain can be
     // anchored to the earlier of the loaf mix and the muffin mix.
@@ -9422,6 +9423,8 @@ ${notesHtml}
     if (result.totalMuffins > 0) countParts.push(`${result.totalMuffins} muffins`);
     if (result.totalBagels > 0) countParts.push(`${result.totalBagels} bagels`);
     if ((result.totalFocaccia || 0) > 0) countParts.push(`${result.totalFocaccia} focaccia pan${result.totalFocaccia === 1 ? '' : 's'}`);
+    if ((result.totalSimple || 0) > 0) countParts.push(`${result.totalSimple} simple-bake item${result.totalSimple === 1 ? '' : 's'}`);
+    if ((result.totalEnriched || 0) > 0) countParts.push(`${result.totalEnriched} enriched item${result.totalEnriched === 1 ? '' : 's'}`);
     const countLabel = countParts.join(' + ');
     // Show the user's selected cold-proof window. (Per-container achieved
     // times appear in each "Into fridge" event detail.)
