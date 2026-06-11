@@ -34,57 +34,6 @@
     max-width: 110px;
     height: auto;
   }
-  #landing-screen {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 40px 24px;
-  }
-  #landing-screen.hidden { display: none; }
-  .landing-app-label {
-    font-size: 0.8rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin: 0 0 4px;
-  }
-  .landing-app-name {
-    font-size: 2.6rem;
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: var(--accent);
-    margin: 0 0 8px;
-    line-height: 1.1;
-  }
-  .landing-bakery-logo {
-    max-width: 120px;
-    max-height: 120px;
-    object-fit: contain;
-    margin-bottom: 16px;
-  }
-  .landing-bakery-name {
-    font-size: 1.4rem;
-    font-weight: 600;
-    color: var(--ink);
-    margin: 0 0 4px;
-  }
-  .landing-divider {
-    width: 40px;
-    border: none;
-    border-top: 1px solid var(--border);
-    margin: 16px auto;
-  }
-  #landing-enter-btn {
-    margin-top: 28px;
-    padding: 12px 32px;
-    font-size: 1rem;
-  }
   header h1 {
     margin: 0;
     font-size: 1.7rem;
@@ -756,15 +705,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
-
-<div id="landing-screen">
-  <img id="landing-logo" class="landing-bakery-logo" src="" alt="" style="display:none" />
-  <p id="landing-bakery-name" class="landing-bakery-name" style="display:none"></p>
-  <hr id="landing-divider" class="landing-divider" style="display:none" />
-  <p class="landing-app-label">Bake planner</p>
-  <p class="landing-app-name">Blind Bake</p>
-  <button id="landing-enter-btn" onclick="dismissLanding()">Open planner</button>
-</div>
 
 <header>
   <img id="header-logo" src="" alt="" class="brand-logo" style="display:none" />
@@ -1733,7 +1673,7 @@
           <span class="plan-card-toggle">▶</span>
           <h2>Your bakery</h2>
         </summary>
-        <p class="muted" style="margin-top:8px;font-size:0.9rem">Your bakery name and logo appear on the Blind Bake landing screen.</p>
+        <p class="muted" style="margin-top:8px;font-size:0.9rem">Your bakery name and logo appear in the Blind Bake header.</p>
         <div class="row" style="margin-top:12px">
           <label>Bakery name</label>
           <input type="text" id="bakery-name-input" placeholder="e.g. My Bakery" />
@@ -2438,26 +2378,16 @@
     const logo = localStorage.getItem(BAKERY_LOGO_KEY) || '';
     const headerName = document.getElementById('header-bakery-name');
     const headerLogo = document.getElementById('header-logo');
-    const landingName = document.getElementById('landing-bakery-name');
-    const landingLogo = document.getElementById('landing-logo');
-    const landingDivider = document.getElementById('landing-divider');
     if (name) {
       if (headerName) headerName.textContent = name.toUpperCase();
-      if (landingName) { landingName.textContent = name; landingName.style.display = ''; }
-      if (landingDivider) landingDivider.style.display = '';
     } else {
       if (headerName) headerName.textContent = 'Blind Bake';
-      if (landingName) landingName.style.display = 'none';
-      if (landingDivider) landingDivider.style.display = 'none';
     }
     if (logo) {
       const altText = name || 'Blind Bake';
       if (headerLogo) { headerLogo.src = logo; headerLogo.alt = altText; headerLogo.style.display = ''; }
-      if (landingLogo) { landingLogo.src = logo; landingLogo.alt = altText; landingLogo.style.display = ''; }
-      if (landingDivider) landingDivider.style.display = '';
     } else {
       if (headerLogo) headerLogo.style.display = 'none';
-      if (landingLogo) landingLogo.style.display = 'none';
     }
   }
 
@@ -2530,11 +2460,6 @@
     if (removeBtn) removeBtn.style.display = 'none';
     loadBakeryInfo();
     if (getGistConfig()) pushSettingsToGist().catch(function() {});
-  }
-
-  function dismissLanding() {
-    const el = document.getElementById('landing-screen');
-    if (el) el.classList.add('hidden');
   }
 
   function renderSettingsSyncStatus() {
