@@ -8754,12 +8754,37 @@ ${notesHtml}
             }).join(' | ')
           : '';
     if (specialtyFlourNames.size > 0) {
-      events.push({
+      // Milling only applies to the doughs that actually use a milled flour, so when
+      // loaves are split into per-dough columns, attribute the step to those column(s):
+      // one column → show it only there; several → keep it shared but let each column
+      // list its own milled flours.
+      const millByCol = {};
+      for (const r of loafRecipes) {
+        const ck = loafRecipeColKey.get(r.name) || 'loaf';
+        for (const i of r.ingredients) {
+          if ((Number(i.pct) || 0) > 0 && i.pantryId) {
+            const pi = pantryItems.find(p => p.id === i.pantryId);
+            if (pi && pi.requiresMilling) {
+              const set = millByCol[ck] || (millByCol[ck] = new Set());
+              set.add(i.name);
+            }
+          }
+        }
+      }
+      const involvedCols = Object.keys(millByCol);
+      const millEvent = {
         time: addMinutes(autolyseStart, -SCHED.MILL_ACTIVE_MIN),
         title: 'Mill flour',
         detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...specialtyFlourNames].join(' + ')}`,
         process: 'loaf',
-      });
+      };
+      if (loafColumns.length > 1 && involvedCols.length === 1) {
+        millEvent.columnKey = involvedCols[0];
+      } else if (loafColumns.length > 1 && involvedCols.length > 1) {
+        millEvent.colDetails = {};
+        involvedCols.forEach(ck => { millEvent.colDetails[ck] = [...millByCol[ck]].join('\n'); });
+      }
+      events.push(millEvent);
     }
     // Weigh out flours and salt: 5 min per loaf recipe, finishing just in
     // time for the mill step (or the autolyse if there's nothing to mill).
