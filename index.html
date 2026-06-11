@@ -8753,6 +8753,25 @@ ${notesHtml}
               return `${name}: ${contents}`;
             }).join(' | ')
           : '';
+    // Per-dough container assignment for the shared prep steps (autolyse / mix / folds):
+    // when loaves are split into per-dough columns, each column shows its own
+    // container(s) instead of the aggregate list crammed into the shared detail.
+    let prepColDetails = null;
+    if (loafColumns.length > 1 && numContainers > 0) {
+      prepColDetails = {};
+      containerInfo.forEach((c, i) => {
+        const contents = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+        const name = c.containerName
+          ? `${c.containerName} ${i + 1} of ${numContainers}`
+          : `container ${i + 1} of ${numContainers}`;
+        const ck = c.colKey || 'loaf';
+        const line = `${name}: ${contents}`;
+        prepColDetails[ck] = prepColDetails[ck] ? `${prepColDetails[ck]}\n${line}` : line;
+      });
+    }
+    // When split, the per-column cells carry the container list, so keep it out of the
+    // shared detail line (which becomes the headline).
+    const sharedContainerStr = (loafColumns.length > 1) ? '' : containerBulkStr;
     if (specialtyFlourNames.size > 0) {
       // Milling only applies to the doughs that actually use a milled flour, so when
       // loaves are split into per-dough columns, attribute the step to those column(s):
@@ -8806,16 +8825,16 @@ ${notesHtml}
       title: 'Start autolyse — flour + water only',
       detail: (numContainers > 1
         ? `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix × ${numContainers} containers = ${SCHED.AUTOLYSE_ACTIVE_MIN * numContainers} min active · then ${autolyseRestMin} min rest`
-        : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`) + containerBulkStr,
-      process: 'loaf',
+        : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`) + sharedContainerStr,
+      process: 'loaf', colDetails: prepColDetails,
     });
     events.push({
       time: mixTime,
       title: 'Mix in salt + ripe levain',
       detail: (numContainers > 1
         ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`
-        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`) + containerBulkStr,
-      process: 'loaf',
+        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`) + sharedContainerStr,
+      process: 'loaf', colDetails: prepColDetails,
     });
     for (let k = 0; k < loafAgg.foldsCount; k++) {
       const foldTime = addMinutes(firstFoldTime, k * SCHED.FOLD_INTERVAL_MIN);
@@ -8828,8 +8847,8 @@ ${notesHtml}
         title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}`,
         detail: (isLast
           ? `${activeStr} · then ${(loafAgg.bulkMin / 60).toFixed(loafAgg.bulkMin % 60 === 0 ? 0 : 1)} hr bulk ferment`
-          : `${activeStr} · next fold in ${SCHED.FOLD_INTERVAL_MIN} min`) + containerBulkStr,
-        process: 'loaf',
+          : `${activeStr} · next fold in ${SCHED.FOLD_INTERVAL_MIN} min`) + sharedContainerStr,
+        process: 'loaf', colDetails: prepColDetails,
       });
     }
     } // end if (totalLoaves > 0) loaf prep events
