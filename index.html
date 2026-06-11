@@ -432,7 +432,7 @@
   }
   .schedule-hour-cols {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     column-gap: 12px;
     row-gap: 6px;
     align-items: start;
@@ -441,6 +441,8 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .schedule-event {
     padding: 4px 0;
@@ -9991,7 +9993,10 @@ ${notesHtml}
     } else {
       html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: click any time to anchor a step — the rest of the schedule will shift.</p>`;
     }
-    const colsStyle = `grid-template-columns: repeat(${presentCols.length}, 1fr);`;
+    // minmax(0, 1fr) keeps every column an equal width even when one cell holds a long
+    // unbreakable line — otherwise a 1fr (= minmax(auto,1fr)) column grows to its content
+    // and collapses the empty sibling columns, making an in-column step look full-width.
+    const colsStyle = `grid-template-columns: repeat(${presentCols.length}, minmax(0, 1fr));`;
     if (splitView) {
       html += `<div class="schedule-hour-row schedule-hour-header-row schedule-sticky-header">
         <div></div>
@@ -10087,7 +10092,6 @@ ${notesHtml}
                 }
                 cellHtml += `</div>`;
               }
-              if (cellHtml.includes('Mill flour')) console.log('[MILL HTML]', { sharedCount: bucket.shared.length, byProc: Object.fromEntries(presentCols.map(p => [p, bucket.byProc[p].map(e => e.title)])), cellHtml });
               html += `<div style="grid-row: ${rowIdx}; grid-column: 2;">${cellHtml}</div>`;
             }
           }
