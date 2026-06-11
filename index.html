@@ -7893,55 +7893,96 @@ ${notesHtml}
         simpleSlot   ? { s: simpleSlot,   kind: 'simple'   } : null,
         enrichedSlot ? { s: enrichedSlot, kind: 'enriched' } : null,
       ].filter(Boolean);
-      slots.forEach(it => { it.temp = slotTemp(it.kind); it.preferredOvenId = slotPreferredOven(it.kind); });
+      slots.forEach(it => {
+        it.temp = slotTemp(it.kind);
+        it.preferredOvenId = slotPreferredOven(it.kind);
+        it.desiredFirst = new Date(it.s.firstBakeStart);     // original (pre-sequencing) start
+        it.durationMs = it.s.lastBakeEnd - it.s.firstBakeStart;
+        it.coolMin = PROC_COOL_MIN[it.kind];
+        it.deadlineMs = PROC_DEADLINE[it.kind] ? new Date(PROC_DEADLINE[it.kind]).getTime() : null;
+      });
 
-      // Assign slots to ovens: preferred first, then remaining longest-bake-first into
-      // the least-loaded oven so big bakes get the emptiest ovens (parallelism).
       const assigned = {}; ovenDefs.forEach(o => assigned[o.id] = []);
-      const bakeMs = (it) => (it.s.lastBakeEnd - it.s.firstBakeStart);
+      const bakeMs = (it) => it.durationMs;
       const loadOf = (id) => assigned[id].reduce((s, it) => s + bakeMs(it), 0);
       const validPref = (it) => it.preferredOvenId && assigned[it.preferredOvenId];
+
+      // Recompute one oven's bake times from each slot's desired start, pushing a later
+      // bake after the previous one ends (+ temp-change buffer). Idempotent — always
+      // derived from desiredFirst, so it can be re-run after a slot is reassigned.
+      const sequenceOven = (ovenId) => {
+        const list = assigned[ovenId].slice().sort((a, b) => a.desiredFirst - b.desiredFirst);
+        for (let i = 0; i < list.length; i++) {
+          const curr = list[i];
+          let start = new Date(curr.desiredFirst);
+          let tc = null;
+          if (i > 0) {
+            const prev = list[i - 1];
+            const buf = ovenTempChangeMin(prev.temp, curr.temp);
+            const earliest = new Date(prev.s.lastBakeEnd.getTime() + buf * 60000);
+            if (start < earliest) start = earliest;
+            if (buf > 0) tc = { min: buf, fromTemp: prev.temp, toTemp: curr.temp };
+          }
+          curr.s.firstBakeStart = start;
+          curr.s.lastBakeEnd = new Date(start.getTime() + curr.durationMs);
+          curr.s.packageReady = addMinutes(curr.s.lastBakeEnd, curr.coolMin);
+          curr.s.tempChangeBefore = tc;
+          curr.s.ovenName = multiOven ? ovenName(ovenId) : null;
+          curr.ovenId = ovenId;
+          curr.prevKind = i > 0 ? list[i - 1].kind : null;
+        }
+      };
+
+      // Initial assignment: preferred ovens first (honored), then remaining
+      // longest-bake-first into the least-loaded oven for parallelism.
       slots.filter(validPref).forEach(it => { assigned[it.preferredOvenId].push(it); });
       slots.filter(it => !validPref(it)).sort((a, b) => bakeMs(b) - bakeMs(a)).forEach(it => {
         const target = ovenDefs.slice().sort((a, b) => loadOf(a.id) - loadOf(b.id))[0].id;
         assigned[target].push(it);
-        it.assignedOvenId = target;
+      });
+      ovenDefs.forEach(o => sequenceOven(o.id));
+
+      // Soft preferred-oven fallback: if a slot misses its deadline in its preferred
+      // oven, try moving it to another oven where everything still fits, and warn.
+      const overflows = (it) => it.deadlineMs != null && it.s.packageReady.getTime() > it.deadlineMs;
+      const ovenFeasible = (ovenId) => assigned[ovenId].every(it => !overflows(it));
+      slots.filter(it => it.preferredOvenId && overflows(it)).forEach(it => {
+        const fromId = it.ovenId;
+        for (const o of ovenDefs) {
+          if (o.id === fromId) continue;
+          assigned[fromId] = assigned[fromId].filter(x => x !== it);
+          assigned[o.id].push(it);
+          sequenceOven(fromId); sequenceOven(o.id);
+          if (!overflows(it) && ovenFeasible(o.id)) {
+            warnings.push({
+              msg: `${PROC_LABEL[it.kind]} moved to ${ovenName(o.id)} — its preferred oven (${ovenName(fromId)}) was busy and couldn't finish it by the deadline.`,
+              issue: 'oven-fallback', kind: it.kind, type: 'info',
+            });
+            break; // keep the move
+          }
+          // revert
+          assigned[o.id] = assigned[o.id].filter(x => x !== it);
+          assigned[fromId].push(it);
+          sequenceOven(fromId); sequenceOven(o.id);
+        }
       });
 
-      // Per-oven sequencing with temp-change buffers.
+      // Final conflict warnings, from the committed assignment.
       ovenDefs.forEach(o => {
-        const list = assigned[o.id].sort((a, b) => a.s.firstBakeStart - b.s.firstBakeStart);
+        const list = assigned[o.id].slice().sort((a, b) => a.s.firstBakeStart - b.s.firstBakeStart);
         for (let i = 1; i < list.length; i++) {
-          const prev = list[i - 1];
-          const curr = list[i];
-          const bufMin = ovenTempChangeMin(prev.temp, curr.temp);
-          const earliest = new Date(prev.s.lastBakeEnd.getTime() + bufMin * 60000);
-          if (curr.s.firstBakeStart < earliest) {
-            const durationMs = curr.s.lastBakeEnd - curr.s.firstBakeStart;
-            curr.s.firstBakeStart = earliest;
-            curr.s.lastBakeEnd    = new Date(earliest.getTime() + durationMs);
-            curr.s.packageReady   = addMinutes(curr.s.lastBakeEnd, PROC_COOL_MIN[curr.kind]);
-            if (bufMin > 0) curr.s.tempChangeBefore = { min: bufMin, fromTemp: prev.temp, toTemp: curr.temp };
-            const ovenTag = multiOven ? ` in ${ovenName(o.id)}` : '';
-            const deadline = PROC_DEADLINE[curr.kind];
-            if (deadline && curr.s.packageReady > deadline) {
-              const overMin = Math.round((curr.s.packageReady - deadline) / 60000);
-              warnings.push({
-                msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}, but now ends ${overMin} min past its deadline.`,
-                issue: 'oven-overlap-late', kind: curr.kind, type: 'info',
-              });
-            } else {
-              warnings.push({
-                msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}${bufMin > 0 ? ` (incl. ${bufMin} min temp change to ${curr.temp}°F)` : ''}.`,
-                issue: 'oven-shifted', kind: curr.kind, type: 'info',
-              });
-            }
-          } else if (bufMin > 0) {
-            curr.s.tempChangeBefore = { min: bufMin, fromTemp: prev.temp, toTemp: curr.temp };
+          const prev = list[i - 1], curr = list[i];
+          const pushed = curr.s.firstBakeStart > curr.desiredFirst;
+          if (!pushed) continue;
+          const ovenTag = multiOven ? ` in ${ovenName(o.id)}` : '';
+          const bufMin = curr.s.tempChangeBefore ? curr.s.tempChangeBefore.min : 0;
+          if (curr.deadlineMs != null && curr.s.packageReady.getTime() > curr.deadlineMs) {
+            const overMin = Math.round((curr.s.packageReady.getTime() - curr.deadlineMs) / 60000);
+            warnings.push({ msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}, but now ends ${overMin} min past its deadline.`, issue: 'oven-overlap-late', kind: curr.kind, type: 'info' });
+          } else {
+            warnings.push({ msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}${bufMin > 0 ? ` (incl. ${bufMin} min temp change to ${curr.temp}°F)` : ''}.`, issue: 'oven-shifted', kind: curr.kind, type: 'info' });
           }
         }
-        // Record the oven name on each slot for display (null when there's only one oven).
-        list.forEach(it => { it.s.ovenName = multiOven ? ovenName(o.id) : null; });
       });
     }
 
@@ -8125,7 +8166,7 @@ ${notesHtml}
         for (let b = 0; b < focacciaBatches; b++) {
           const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
           const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F`, process: 'focaccia' });
+          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia' });
           cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
         }
         events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
@@ -8584,7 +8625,7 @@ ${notesHtml}
         events.push({
           time: bakeStart,
           title: `Bake batch ${b + 1} of ${bagelBatches} — bagels into oven`,
-          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake${bagelSlot && bagelSlot.ovenName ? ` · ${bagelSlot.ovenName}` : ''}`,
           process: 'bagel',
         });
       }
@@ -8723,7 +8764,7 @@ ${notesHtml}
       for (let b = 0; b < focacciaBatches; b++) {
         const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
         const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F`, process: 'focaccia' });
+        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia' });
         cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
       events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
