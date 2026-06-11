@@ -7803,8 +7803,13 @@ ${notesHtml}
     const muffinSpecs = muffinRecipes.map(getRecipeSpec);
     const maxOr = (arr, fallback) => arr.length ? Math.max(...arr) : fallback;
     const minOr = (arr, fallback) => arr.length ? Math.min(...arr) : fallback;
+    // Bake temp for a bread process: the first in-plan recipe's override, else the
+    // template default (bread of one type bakes together at a single oven temp).
+    const breadBakeTempF = (list, proc) => (list[0] && Number.isFinite(Number(list[0].bakeTempF)))
+      ? Number(list[0].bakeTempF) : PROCESS_TEMPLATES[proc].bakeTempF;
     const loafAgg = {
       bakeMin:      maxOr(loafSpecs.map(s => s.bakeMin), SCHED.BAKE_MIN),
+      bakeTempF:    breadBakeTempF(loafRecipes, 'sourdough-loaf'),
       ovenCapacity: minOr(loafSpecs.map(s => s.ovenCapacity), SCHED.OVEN_CAPACITY),
       deckCapacity: minOr(loafSpecs.map(s => s.deckCapacity), 4),
       autolyseMin:  maxOr(loafSpecs.map(s => s.autolyseMin), SCHED.AUTOLYSE_MIN),
@@ -7813,6 +7818,7 @@ ${notesHtml}
     };
     const muffinAgg = totalMuffins > 0 ? {
       bakeMin:      maxOr(muffinSpecs.map(s => s.bakeMin), SCHED.BAKE_MIN),
+      bakeTempF:    breadBakeTempF(muffinRecipes, 'sourdough-muffin'),
       ovenCapacity: minOr(muffinSpecs.map(s => s.ovenCapacity), SCHED.MUFFIN_DECK_CAPACITY * 3),
       bulkMin:      maxOr(muffinSpecs.map(s => s.bulkMin), SCHED.MUFFIN_BULK_MIN),
       warmupMin:    maxOr(muffinSpecs.map(s => s.warmupMin), SCHED.MUFFIN_WARMUP_MIN),
@@ -7820,6 +7826,7 @@ ${notesHtml}
     const bagelSpecs = bagelRecipes.map(getRecipeSpec);
     const bagelAgg = totalBagels > 0 ? {
       bakeMin:    maxOr(bagelSpecs.map(s => s.bakeMin), PROCESS_TEMPLATES.bagel.bakeMin),
+      bakeTempF:  breadBakeTempF(bagelRecipes, 'bagel'),
       bulkMin:    maxOr(bagelSpecs.map(s => s.bulkMin), PROCESS_TEMPLATES.bagel.bulkMin),
       shapeMinPerUnit: maxOr(bagelSpecs.map(s => s.shapeMinPerUnit), PROCESS_TEMPLATES.bagel.shapeMinPerUnit),
     } : null;
@@ -8947,7 +8954,7 @@ ${notesHtml}
       events.push({
         time: bakeStart,
         title: `Bake ${b + 1} of ${breadBatches}${kindSuffix}`,
-        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake${reheatSuffix}${planLines}`,
+        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${loafAgg.bakeTempF}°F${reheatSuffix}${planLines}`,
         process: 'loaf', colDetails: bakeColDetails,
       });
     }
@@ -8967,7 +8974,7 @@ ${notesHtml}
         events.push({
           time: bakeStart,
           title: `Bake ${b + 1} of ${muffinBatches} — muffins into oven`,
-          detail: `${SCHED.OVEN_LOAD_MIN} min load · ${muffinAgg.bakeMin} min bake${reheatSuffix}${planLines}`,
+          detail: `${SCHED.OVEN_LOAD_MIN} min load · ${muffinAgg.bakeMin} min bake · ${muffinAgg.bakeTempF}°F${reheatSuffix}${planLines}`,
           process: 'muffin',
         });
         muffinCumOffset += muffinAgg.bakeMin + (b < muffinBatches - 1 ? SCHED.REHEAT_MIN : 0);
@@ -8996,7 +9003,7 @@ ${notesHtml}
         events.push({
           time: bakeStart,
           title: `Bake batch ${b + 1} of ${bagelBatches} — bagels into oven`,
-          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake${bagelSlot && bagelSlot.ovenName ? ` · ${bagelSlot.ovenName}` : ''}`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake · ${bagelAgg.bakeTempF}°F${bagelSlot && bagelSlot.ovenName ? ` · ${bagelSlot.ovenName}` : ''}`,
           process: 'bagel',
         });
       }
