@@ -10033,6 +10033,7 @@ ${notesHtml}
           }
           const bucket = hourBuckets.get(key);
           const proc = colKeyOf(ev);
+          if (ev.title === 'Mill flour') console.log('[MILL RENDER]', { columnKey: ev.columnKey, process: ev.process, proc, presentCols, hasByProc: !!bucket.byProc[proc], routedTo: (proc === 'shared' || !bucket.byProc[proc]) ? 'SHARED' : proc, splitView });
           if (proc === 'shared' || !bucket.byProc[proc]) bucket.shared.push(ev);
           else bucket.byProc[proc].push(ev);
         }
