@@ -7877,8 +7877,39 @@ ${notesHtml}
     };
 
     const simpleTmpl = PROCESS_TEMPLATES.simple;
-    const simpleMixBatches = totalSimple > 0 ? sideMixBatches(simpleRecipes) : 0;
-    const simpleBatches = totalSimple > 0 ? sideBatchesFor(simpleRecipes, simpleTmpl.ovenCapacity) : 0;
+    // The full-volume unit capacity of a simple recipe's chilling container (chilled
+    // dough fills to capacity), and the container's name.
+    const chillContainerCandidates = (r) => {
+      const prefIds = r.preferredContainerIds || [];
+      return userContainers.filter(c => c.processTag === 'any' && (prefIds.length === 0 || prefIds.includes(c.id)));
+    };
+    const chillContainerUnitsFor = (r) => {
+      const cands = chillContainerCandidates(r);
+      if (cands.length === 0) return Infinity;
+      const maxFullGrams = Math.max(...cands.map(c => c.maxDoughGrams / CONTAINER_FILL_FACTOR));
+      return Math.max(1, Math.floor(maxFullGrams / Math.max(1, r.loafWeight)));
+    };
+    const chillContainerNameFor = (r) => {
+      const cands = chillContainerCandidates(r);
+      if (cands.length === 0) return '';
+      return cands.reduce((best, c) => (c.maxDoughGrams > best.maxDoughGrams ? c : best), cands[0]).name;
+    };
+    // Unified per-recipe batching: batch size = the smallest of mixer / pan / chilling-
+    // container capacity, divided evenly — so each batch fits the mixer, one container,
+    // and one oven load (no leftover bits that don't fit somewhere).
+    const simpleBatchPlan = simpleRecipes.map(r => {
+      const count = plan[r.id] || 0;
+      const mx = mixerForRecipe(r);
+      const mixerCap = (mx && mx.recipeCapacities && mx.recipeCapacities[r.id] > 0) ? mx.recipeCapacities[r.id] * (mx.quantity || 1) : Infinity;
+      const panCap = bakeCapFor(r, simpleTmpl.ovenCapacity);
+      const chillHr = parseHrWindow(r.chillWindow);
+      const containerCap = chillHr > 0 ? chillContainerUnitsFor(r) : Infinity;
+      const batchSize = Math.max(1, Math.min(count || 1, mixerCap, panCap, containerCap));
+      const numBatches = Math.max(1, Math.ceil(count / Math.max(1, batchSize)));
+      return { recipe: r, count, chillHr, numBatches, perBatch: splitEvenly(count, numBatches), containerName: chillHr > 0 ? chillContainerNameFor(r) : '' };
+    });
+    const simpleBatches = simpleBatchPlan.reduce((s, p) => s + p.numBatches, 0);
+    const simpleMixBatches = simpleBatches; // mixing, chilling and baking share one batching
     const simpleBakeTotalMin = simpleBatches > 0 ? simpleBatches * simpleTmpl.bakeMin + Math.max(0, simpleBatches - 1) * SCHED.REHEAT_MIN : 0;
     const simpleChillHr = simpleRecipes.reduce((m, r) => Math.max(m, parseHrWindow(r.chillWindow)), 0);
     const simpleShapeMin = sideShapeMin(simpleRecipes, simpleTmpl);
@@ -9011,38 +9042,22 @@ ${notesHtml}
       const chilling = simpleChillHr > 0;
       const chillMin = simpleChillHr * 60;
       const fmtChillLabel = (hr) => hr < 1 ? `${Math.round(hr * 60)} min` : `${hr} hr`;
-      // Container(s) the chilled dough goes into (same assignment logic as proofing).
-      let cLabel = '';
-      if (chilling) {
-        const chillRecipes = simpleRecipes.filter(r => r.chillWindow && r.chillWindow !== '');
-        const cNames = [];
-        planDoughContainers(chillRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers).forEach(g => {
-          g.containers.forEach((c, i) => cNames.push(c.containerName ? (g.containers.length > 1 ? `${c.containerName} ${i + 1}` : c.containerName) : 'a container'));
-        });
-        cLabel = cNames.join(', ');
-      }
       const shapeStart = addMinutes(simpleSlot.firstBakeStart, -simpleShapeMin);
-      // Each batch is weighed, mixed, then goes straight into the fridge. Chill is a
-      // MINIMUM, so only the LAST batch mixed needs the full chill before shaping
-      // (earlier batches just chill longer). Back up from shape by chill + per-batch prep.
+      // Each batch is weighed, mixed, then goes straight into its OWN container in the
+      // fridge. Chill is a MINIMUM, so only the last batch needs the full chill before
+      // shaping. Back up from shape by chill + per-batch prep (weigh + mix).
       const WEIGH = SCHED.WEIGH_MIN_PER_RECIPE;
       const perBatchPrep = WEIGH + simpleTmpl.mixMin;
       const mixEndTarget = chilling ? addMinutes(shapeStart, -chillMin) : shapeStart;
       const prepStart = addMinutes(mixEndTarget, -simpleMixBatches * perBatchPrep);
       let simpleMixIdx = 0;
-      simpleRecipes.forEach(r => {
-        const mx = mixerForRecipe(r);
-        const cap = (mx && mx.recipeCapacities && mx.recipeCapacities[r.id]) || 0;
-        const count = plan[r.id] || 0;
-        const perBatch = (mx && cap > 0) ? cap * (mx.quantity || 1) : count;
-        const rBatches = Math.max(1, Math.ceil(count / Math.max(1, perBatch)));
-        for (let b = 0; b < rBatches; b++) {
-          const batchUnits = Math.max(0, Math.min(perBatch, count - b * perBatch));
-          const unit = r.unit || 'item';
-          const batchSuffix = simpleMixBatches > 1 ? ` — batch ${b + 1} of ${rBatches}` : '';
+      simpleBatchPlan.forEach(p => {
+        const r = p.recipe;
+        const unit = r.unit || 'item';
+        p.perBatch.forEach((batchUnits, b) => {
+          const batchSuffix = p.numBatches > 1 ? ` — batch ${b + 1} of ${p.numBatches}` : '';
           const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
           const t0 = addMinutes(prepStart, simpleMixIdx * perBatchPrep);
-          // Weigh out just this batch's ingredients (prep), then mix, then fridge.
           events.push({
             time: t0, title: `Weigh out ${r.name}${batchSuffix} ingredients`,
             detail: `${unitsLabel} · ${WEIGH} min`,
@@ -9051,32 +9066,38 @@ ${notesHtml}
           const mt = addMinutes(t0, WEIGH);
           events.push({
             time: mt, title: `Mix ${r.name}${batchSuffix}`,
-            detail: `${unitsLabel} · ${simpleTmpl.mixMin} min active${chilling ? ' · then into the fridge' : ''}`,
+            detail: `${unitsLabel} · ${simpleTmpl.mixMin} min active${p.chillHr > 0 ? ' · then into the fridge' : ''}`,
             process: 'simple', stage: 'mix', activeStep: true,
           });
-          if (chilling) {
+          if (p.chillHr > 0) {
+            // This batch's own container (one container per batch).
+            const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
             events.push({
               time: addMinutes(mt, simpleTmpl.mixMin),
               title: `Chill ${r.name} dough — into fridge${batchSuffix}`,
-              detail: `chill at least ${fmtChillLabel(simpleChillHr)}${cLabel ? ` · use ${cLabel}` : ''}`,
-              process: 'simple', stage: 'chill', activeStep: false, container: cLabel || undefined,
+              detail: `${unitsLabel} · chill at least ${fmtChillLabel(p.chillHr)} · use ${contLabel}`,
+              process: 'simple', stage: 'chill', activeStep: false, container: contLabel,
             });
           }
           simpleMixIdx++;
-        }
+        });
       });
       events.push({ time: shapeStart, title: `Shape / portion ${simpleNames}`, detail: `${Math.round(simpleShapeMin)} min · ${totalSimple} item${totalSimple === 1 ? '' : 's'}${chilling ? ' (chilled)' : ''}`, process: 'simple', stage: 'shape', activeStep: true });
       const simplePreheat = ovenPreheatMin(userOvens.find(o => o.id === simpleSlot.ovenId), simpleTemp) ?? SIDE_PREHEAT_MIN;
       events.push({ time: addMinutes(simpleSlot.firstBakeStart, -simplePreheat), title: `Turn on oven to ${simpleTemp}°F`, detail: `~${simplePreheat} min preheat${ovenTag}`, process: 'simple', stage: 'bake', activeStep: false });
-      // Items per bake round: from preferred-pan capacity (one recipe) or an even split.
-      const simplePerBatch = simpleRecipes.length === 1 ? bakeCapFor(simpleRecipes[0], simpleTmpl.ovenCapacity) : Math.ceil(totalSimple / Math.max(1, simpleBatches));
-      let cum = 0;
-      for (let b = 0; b < simpleBatches; b++) {
-        const bs = addMinutes(simpleSlot.firstBakeStart, cum);
-        const countThis = Math.max(0, Math.min(simplePerBatch, totalSimple - b * simplePerBatch));
-        events.push({ time: bs, timeEnd: addMinutes(bs, simpleTmpl.bakeMin), title: simpleBatches === 1 ? `Bake ${simpleNames}` : `Bake ${simpleNames} — batch ${b + 1} of ${simpleBatches}`, detail: `${countThis} item${countThis === 1 ? '' : 's'} · ${simpleTmpl.bakeMin} min · ${simpleTemp}°F${ovenTag}`, process: 'simple', stage: 'bake', activeStep: false });
-        cum += simpleTmpl.bakeMin + (b < simpleBatches - 1 ? SCHED.REHEAT_MIN : 0);
-      }
+      // Bake each batch (aligned 1:1 with the mixing/chilling batches).
+      let cum = 0, bakeIdx = 0;
+      simpleBatchPlan.forEach(p => {
+        const r = p.recipe;
+        const unit = r.unit || 'item';
+        p.perBatch.forEach((batchUnits, b) => {
+          const bs = addMinutes(simpleSlot.firstBakeStart, cum);
+          const batchSuffix = p.numBatches > 1 ? ` — batch ${b + 1} of ${p.numBatches}` : '';
+          events.push({ time: bs, timeEnd: addMinutes(bs, simpleTmpl.bakeMin), title: `Bake ${r.name}${batchSuffix}`, detail: `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'} · ${simpleTmpl.bakeMin} min · ${simpleTemp}°F${ovenTag}`, process: 'simple', stage: 'bake', activeStep: false });
+          cum += simpleTmpl.bakeMin + (bakeIdx < simpleBatches - 1 ? SCHED.REHEAT_MIN : 0);
+          bakeIdx++;
+        });
+      });
       events.push({ time: simpleSlot.lastBakeEnd, title: `${simpleNames} out — cool`, detail: `${simpleCoolMin} min cool`, process: 'simple', stage: 'done', activeStep: false });
       events.push({ time: simpleSlot.packageReady, title: 'Package & ready for sale', detail: '', process: 'simple', stage: 'done', activeStep: false });
     }
