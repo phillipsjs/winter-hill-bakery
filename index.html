@@ -394,6 +394,11 @@
   }
   .schedule-input-col .row { margin-top: 6px; }
   .schedule-input-col .row:first-of-type { margin-top: 0; }
+  /* Per-process deadline & bake-time rows are superseded by the default deadline +
+     per-recipe overrides; keep the inputs in the DOM (scheduler still reads them as
+     fallbacks) but hide them. Cold-proof rows stay visible. */
+  #schedule-inputs-grid [id^="deadline-"][id$="-row"],
+  #schedule-inputs-grid [id^="bake-time-"][id$="-row"] { display: none !important; }
   .schedule-input-col label { min-width: 88px; font-size: 0.9rem; }
   .schedule-input-col .settings-select,
   .schedule-input-col input[type="datetime-local"] { flex: 1; min-width: 0; }
@@ -1322,8 +1327,32 @@
   <section id="tab-schedule" style="display:none">
     <div class="card">
       <h2>Bake deadline & time</h2>
-      <p class="muted" style="margin-top:0">When does each process need to be packaged and ready for sale? Set separate deadlines and bake-time windows for loaves, muffins, and bagels — they share a single Build 1 + Build 2 levain (the scheduler splits it automatically when timings can't align).</p>
+      <p class="muted" style="margin-top:0">When does everything need to be packaged and ready? Set one default deadline; the scheduler sequences all your recipes to hit it. Give a recipe its own deadline below to bake it at a different time.</p>
 
+      <div class="row" id="deadline-default-row" style="align-items:center; gap:10px; margin-top:8px">
+        <label style="width:120px">Default deadline:</label>
+        <input type="datetime-local" id="deadline-default-input" />
+      </div>
+      <div class="row" id="bake-time-default-row" style="align-items:center; gap:10px; margin-top:8px">
+        <label style="width:120px">Bake time:</label>
+        <select id="bake-time-default-input" class="settings-select">
+          <option value="">— any (use deadline) —</option>
+          <option value="morning">Morning (6 AM – 11 AM)</option>
+          <option value="lunch">Lunch (11 AM – 2 PM)</option>
+          <option value="afternoon">Afternoon (2 PM – 6 PM)</option>
+          <option value="evening">Evening (6 PM – 10 PM)</option>
+        </select>
+      </div>
+
+      <details id="recipe-deadlines-details" style="margin-top:12px;display:none">
+        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem">Per-recipe deadlines <span class="muted" style="font-weight:400;font-size:0.85rem">(optional — leave blank to use the default)</span></summary>
+        <div id="recipe-deadlines-list" style="margin-top:8px"></div>
+      </details>
+
+      <div id="coldproof-grid-heading" style="margin-top:14px;display:none">
+        <hr class="sep" />
+        <p class="muted" style="margin:0 0 6px">Cold proof window — how long shaped dough rests in the fridge before baking.</p>
+      </div>
       <div class="schedule-inputs-grid" id="schedule-inputs-grid">
         <div class="schedule-input-col" id="schedule-input-loaf-col">
           <div class="schedule-input-col-header">Sourdough loaves</div>
@@ -1922,6 +1951,9 @@
   const SIMPLE_BAKETIME_KEY = 'whb-baketime-simple-v1';
   const ENRICHED_DEADLINE_KEY = 'whb-deadline-enriched-v1';
   const ENRICHED_BAKETIME_KEY = 'whb-baketime-enriched-v1';
+  const DEFAULT_DEADLINE_KEY = 'whb-deadline-default-v1';
+  const DEFAULT_BAKETIME_KEY = 'whb-baketime-default-v1';
+  const RECIPE_DEADLINES_KEY = 'whb-recipe-deadlines-v1';
   const QUIET_START_KEY = 'cottage-bakery-quiet-start-v1';
   const QUIET_END_KEY = 'cottage-bakery-quiet-end-v1';
   const KITCHEN_WINDOWS_KEY = 'whb-kitchen-windows-v1';       // legacy: stored closed/quiet windows
@@ -5461,14 +5493,9 @@ ${notesHtml}
 
   function updateBakeSheetTabVisibility() {
     const hasPlanItems = recipes.some(r => (plan[r.id] || 0) > 0);
-    const hasDeadline = !!(
-      document.getElementById('deadline-loaf-input').value ||
-      document.getElementById('deadline-muffin-input').value ||
-      document.getElementById('deadline-bagel-input').value ||
-      document.getElementById('deadline-focaccia-input').value ||
-      document.getElementById('deadline-simple-input').value ||
-      document.getElementById('deadline-enriched-input').value
-    );
+    const defEl = document.getElementById('deadline-default-input');
+    const hasDeadline = !!((defEl && defEl.value) ||
+      Object.values(loadRecipeDeadlines()).some(Boolean));
     const show = hasPlanItems && hasDeadline;
     const btn = document.getElementById('tab-bakesheet-btn');
     if (btn) btn.style.display = show ? '' : 'none';
@@ -5496,7 +5523,7 @@ ${notesHtml}
     if (name === 'recipes') renderRecipes();
     if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderKitchenWindows(); }
     if (name === 'prices') renderPrices();
-    if (name === 'schedule') renderSchedule();
+    if (name === 'schedule') { renderRecipeDeadlines(); renderSchedule(); }
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     if (name === 'history') { renderHistory(); renderFinancials(); }
     if (name === 'settings') {
@@ -6353,8 +6380,8 @@ ${notesHtml}
       build1: pickDefault('build1', build1Pref),
       build2: pickDefault('build2', build2Pref),
     };
-    const loafDeadlineStr = document.getElementById('deadline-loaf-input').value;
-    const muffinDeadlineStr = document.getElementById('deadline-muffin-input').value;
+    const loafDeadlineStr = effectiveProcessDeadlineStr('sourdough-loaf');
+    const muffinDeadlineStr = effectiveProcessDeadlineStr('sourdough-muffin');
     const effLoafStr = loafDeadlineStr || muffinDeadlineStr;
     const effMuffinStr = muffinDeadlineStr || loafDeadlineStr;
     if (!effLoafStr) return defaults;
@@ -6363,13 +6390,14 @@ ${notesHtml}
     const muffinDeadline = effMuffinStr ? new Date(effMuffinStr) : loafDeadline;
     if (isNaN(muffinDeadline.getTime())) return defaults;
 
-    const loafBakeTime = document.getElementById('bake-time-loaf-input').value;
-    const muffinBakeTime = document.getElementById('bake-time-muffin-input').value;
+    const defBakeTime = (document.getElementById('bake-time-default-input') || {}).value || '';
+    const loafBakeTime = defBakeTime;
+    const muffinBakeTime = defBakeTime;
     const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
     const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
-    const bagelDeadlineStr = document.getElementById('deadline-bagel-input').value;
+    const bagelDeadlineStr = effectiveProcessDeadlineStr('bagel');
     const bagelDeadline = bagelDeadlineStr ? new Date(bagelDeadlineStr) : (effMuffinStr ? muffinDeadline : loafDeadline);
-    const bagelBakeTime = document.getElementById('bake-time-bagel-input').value;
+    const bagelBakeTime = defBakeTime;
     const bagelColdProofRaw = document.getElementById('coldproof-bagel-input').value;
     const bagelBatchSize = getBagelBatchSize();
     const resolveColdProofWindow = (raw, fallbackMin) => {
@@ -9288,15 +9316,22 @@ ${notesHtml}
     const focacciaCol = document.getElementById('schedule-input-focaccia-col');
     const simpleCol = document.getElementById('schedule-input-simple-col');
     const enrichedCol = document.getElementById('schedule-input-enriched-col');
+    // Deadlines & bake times now come from the default + per-recipe overrides, so the
+    // only thing left in this grid is the cold-proof window, which applies to the
+    // sourdough types only. Focaccia/simple/enriched have no cold-proof control, so
+    // their columns stay hidden entirely.
     if (loafCol) loafCol.style.display = hasLoaf ? '' : 'none';
     if (muffinCol) muffinCol.style.display = hasMuffin ? '' : 'none';
     if (bagelCol) bagelCol.style.display = hasBagel ? '' : 'none';
-    if (focacciaCol) focacciaCol.style.display = hasFocaccia ? '' : 'none';
-    if (simpleCol) simpleCol.style.display = hasSimple ? '' : 'none';
-    if (enrichedCol) enrichedCol.style.display = hasEnriched ? '' : 'none';
+    if (focacciaCol) focacciaCol.style.display = 'none';
+    if (simpleCol) simpleCol.style.display = 'none';
+    if (enrichedCol) enrichedCol.style.display = 'none';
     const grid = document.getElementById('schedule-inputs-grid');
+    const coldproofHeading = document.getElementById('coldproof-grid-heading');
     if (grid) {
-      const n = (hasLoaf ? 1 : 0) + (hasMuffin ? 1 : 0) + (hasBagel ? 1 : 0) + (hasFocaccia ? 1 : 0) + (hasSimple ? 1 : 0) + (hasEnriched ? 1 : 0);
+      const n = (hasLoaf ? 1 : 0) + (hasMuffin ? 1 : 0) + (hasBagel ? 1 : 0);
+      grid.style.display = n > 0 ? '' : 'none';
+      if (coldproofHeading) coldproofHeading.style.display = n > 0 ? '' : 'none';
       grid.classList.remove('single-col', 'cols-1', 'cols-2', 'cols-3', 'cols-4', 'cols-5', 'cols-6');
       grid.classList.add('cols-' + Math.max(1, n));
     }
@@ -9370,90 +9405,131 @@ ${notesHtml}
     if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  // Per-recipe deadline overrides: { [recipeId]: 'datetime-local string' }.
+  // A blank/absent entry means "use the default deadline".
+  function loadRecipeDeadlines() {
+    try {
+      const raw = localStorage.getItem(RECIPE_DEADLINES_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      return (obj && typeof obj === 'object') ? obj : {};
+    } catch (e) { return {}; }
+  }
+  function saveRecipeDeadlines(map) {
+    const clean = {};
+    Object.keys(map || {}).forEach(k => { if (map[k]) clean[k] = map[k]; });
+    if (Object.keys(clean).length) localStorage.setItem(RECIPE_DEADLINES_KEY, JSON.stringify(clean));
+    else localStorage.removeItem(RECIPE_DEADLINES_KEY);
+  }
+
+  // Effective deadline (datetime-local string) for a process type = the earliest
+  // effective deadline among its in-plan recipes, where each recipe's effective
+  // deadline is its per-recipe override or, failing that, the shared default.
+  function effectiveProcessDeadlineStr(pt) {
+    const defEl = document.getElementById('deadline-default-input');
+    const defaultStr = (defEl && defEl.value) || '';
+    const recipeDeadlines = loadRecipeDeadlines();
+    const planNow = loadPlan();
+    const ds = recipes.filter(r => (planNow[r.id] || 0) > 0 && getProcessType(r) === pt)
+      .map(r => recipeDeadlines[r.id] || defaultStr).filter(Boolean);
+    if (!ds.length) return '';
+    return ds.reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
+  }
+
+  // Populate the per-recipe deadline override list in the Schedule tab. Shows one
+  // row per in-plan schedulable recipe; blank input = inherit the default deadline.
+  function renderRecipeDeadlines() {
+    const details = document.getElementById('recipe-deadlines-details');
+    const list = document.getElementById('recipe-deadlines-list');
+    if (!list || !details) return;
+    const plan = loadPlan();
+    const inPlan = recipes.filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) !== 'levain');
+    if (inPlan.length < 2) {
+      // Nothing meaningful to override when 0 or 1 recipe is in the plan.
+      details.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    details.style.display = '';
+    const saved = loadRecipeDeadlines();
+    const defaultStr = (document.getElementById('deadline-default-input') || {}).value || '';
+    const defLabel = defaultStr ? new Date(defaultStr).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'no default set';
+    list.innerHTML = inPlan.map(r => `
+      <div class="row" style="align-items:center; gap:10px; margin-bottom:6px">
+        <label style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(r.name)}</label>
+        <input type="datetime-local" data-recipe-deadline="${r.id}" value="${saved[r.id] || ''}" />
+      </div>`).join('') +
+      `<div class="muted" style="font-size:12px; margin-top:4px">Blank rows use the default deadline (${escapeHtml(defLabel)}).</div>`;
+    list.querySelectorAll('input[data-recipe-deadline]').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const map = loadRecipeDeadlines();
+        const id = inp.dataset.recipeDeadline;
+        if (inp.value) map[id] = inp.value; else delete map[id];
+        saveRecipeDeadlines(map);
+        renderSchedule();
+        renderTotals();
+      });
+    });
+  }
+
   function renderSchedule() {
     if (suppressScheduleRender) return;
     _scheduleResult = null;
     updateProcessRowVisibility();
     const out = document.getElementById('schedule-output');
-    const loafDeadlineStr = document.getElementById('deadline-loaf-input').value;
-    const muffinDeadlineStr = document.getElementById('deadline-muffin-input').value;
-    // A single deadline is enough if only that process has any plan items.
-    const hasLoafPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'sourdough-loaf');
-    const hasMuffinPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'sourdough-muffin');
-    const hasFocacciaPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'focaccia');
-    const focacciaDeadlineStr = document.getElementById('deadline-focaccia-input').value;
-    const effLoafDeadlineStr = loafDeadlineStr || muffinDeadlineStr;
-    const effMuffinDeadlineStr = muffinDeadlineStr || loafDeadlineStr;
-    const simpleDeadlineStr0 = document.getElementById('deadline-simple-input').value;
-    const enrichedDeadlineStr0 = document.getElementById('deadline-enriched-input').value;
-    if (!effLoafDeadlineStr && !effMuffinDeadlineStr && !document.getElementById('deadline-bagel-input').value && !focacciaDeadlineStr && !simpleDeadlineStr0 && !enrichedDeadlineStr0) {
-      out.innerHTML = '<p class="muted">Set a deadline above to see the schedule.</p>';
+    // Deadlines come from one default + optional per-recipe overrides. A process's
+    // deadline is the earliest effective deadline among its in-plan recipes (per-recipe
+    // deadline SPLITTING into separate timelines is a later phase — for now mixed
+    // deadlines collapse to the earliest, with a warning).
+    const defaultDeadlineStr = document.getElementById('deadline-default-input').value;
+    const defaultBakeTime = document.getElementById('bake-time-default-input').value;
+    const recipeDeadlines = loadRecipeDeadlines();
+    const effRecipeDeadline = (r) => recipeDeadlines[r.id] || defaultDeadlineStr;
+    const procDeadlineStr = (pt) => {
+      const ds = recipes.filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) === pt).map(effRecipeDeadline).filter(Boolean);
+      if (!ds.length) return '';
+      return ds.reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
+    };
+    const hasPlanType = (pt) => recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === pt);
+    const hasLoafPlan = hasPlanType('sourdough-loaf');
+    const hasMuffinPlan = hasPlanType('sourdough-muffin');
+    const hasBagelPlan = hasPlanType('bagel');
+    const hasFocacciaPlan = hasPlanType('focaccia');
+    const hasSimplePlan = hasPlanType('simple');
+    const hasEnrichedPlan = hasPlanType('enriched');
+    const hasAnyPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) !== 'levain');
+    if (hasAnyPlan && !defaultDeadlineStr && Object.values(recipeDeadlines).filter(Boolean).length === 0) {
+      out.innerHTML = '<p class="muted">Set a default deadline above to see the schedule.</p>';
       return;
     }
-    if (hasLoafPlan && !effLoafDeadlineStr) {
-      out.innerHTML = '<p class="muted">Set a loaf deadline to see the schedule.</p>';
+    const effLoafDeadlineStr = procDeadlineStr('sourdough-loaf');
+    const effMuffinDeadlineStr = procDeadlineStr('sourdough-muffin');
+    const effBagelDeadlineStr = procDeadlineStr('bagel');
+    const effFocacciaDeadlineStr = procDeadlineStr('focaccia');
+    const effSimpleDeadlineStr = procDeadlineStr('simple');
+    const effEnrichedDeadlineStr = procDeadlineStr('enriched');
+    const needDeadline = (has, str, label) => {
+      if (has && !str) { out.innerHTML = `<p class="muted">Set a deadline for your ${label} to see the schedule.</p>`; return true; }
+      return false;
+    };
+    if (needDeadline(hasLoafPlan, effLoafDeadlineStr, 'loaves')) return;
+    if (needDeadline(hasMuffinPlan, effMuffinDeadlineStr, 'muffins')) return;
+    if (needDeadline(hasBagelPlan, effBagelDeadlineStr, 'bagels')) return;
+    if (needDeadline(hasFocacciaPlan, effFocacciaDeadlineStr, 'focaccia')) return;
+    if (needDeadline(hasSimplePlan, effSimpleDeadlineStr, 'simple bakes')) return;
+    if (needDeadline(hasEnrichedPlan, effEnrichedDeadlineStr, 'enriched dough')) return;
+    const mkDate = (s) => s ? new Date(s) : null;
+    const loafDeadline = mkDate(effLoafDeadlineStr);
+    const muffinDeadline = mkDate(effMuffinDeadlineStr);
+    const bagelDeadline = mkDate(effBagelDeadlineStr);
+    const focacciaDeadline = mkDate(effFocacciaDeadlineStr);
+    const simpleDeadline = mkDate(effSimpleDeadlineStr);
+    const enrichedDeadline = mkDate(effEnrichedDeadlineStr);
+    if ([loafDeadline, muffinDeadline, bagelDeadline, focacciaDeadline, simpleDeadline, enrichedDeadline].some(d => d && isNaN(d.getTime()))) {
+      out.innerHTML = '<p class="muted">Invalid deadline.</p>';
       return;
     }
-    if (hasMuffinPlan && !effMuffinDeadlineStr) {
-      out.innerHTML = '<p class="muted">Set a muffin deadline to see the schedule.</p>';
-      return;
-    }
-    const loafDeadline = effLoafDeadlineStr ? new Date(effLoafDeadlineStr) : null;
-    const muffinDeadline = effMuffinDeadlineStr ? new Date(effMuffinDeadlineStr) : null;
-    if (loafDeadline && isNaN(loafDeadline.getTime())) {
-      out.innerHTML = '<p class="muted">Invalid loaf deadline.</p>';
-      return;
-    }
-    if (muffinDeadline && isNaN(muffinDeadline.getTime())) {
-      out.innerHTML = '<p class="muted">Invalid muffin deadline.</p>';
-      return;
-    }
-    const bagelDeadlineStr = document.getElementById('deadline-bagel-input').value;
-    const hasBagelPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'bagel');
-    const effBagelDeadlineStr = bagelDeadlineStr || effLoafDeadlineStr || effMuffinDeadlineStr;
-    if (hasBagelPlan && !effBagelDeadlineStr) {
-      out.innerHTML = '<p class="muted">Set a bagel deadline to see the schedule.</p>';
-      return;
-    }
-    const bagelDeadline = effBagelDeadlineStr ? new Date(effBagelDeadlineStr) : null;
-    if (bagelDeadline && isNaN(bagelDeadline.getTime())) {
-      out.innerHTML = '<p class="muted">Invalid bagel deadline.</p>';
-      return;
-    }
-    const effFocacciaDeadlineStr = focacciaDeadlineStr || effLoafDeadlineStr || effMuffinDeadlineStr || effBagelDeadlineStr;
-    if (hasFocacciaPlan && !effFocacciaDeadlineStr) {
-      out.innerHTML = '<p class="muted">Set a focaccia deadline to see the schedule.</p>';
-      return;
-    }
-    const focacciaDeadline = effFocacciaDeadlineStr ? new Date(effFocacciaDeadlineStr) : null;
-    if (focacciaDeadline && isNaN(focacciaDeadline.getTime())) {
-      out.innerHTML = '<p class="muted">Invalid focaccia deadline.</p>';
-      return;
-    }
-    const hasSimplePlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'simple');
-    const hasEnrichedPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === 'enriched');
-    const effSimpleDeadlineStr = simpleDeadlineStr0 || effLoafDeadlineStr || effFocacciaDeadlineStr;
-    const effEnrichedDeadlineStr = enrichedDeadlineStr0 || effLoafDeadlineStr || effFocacciaDeadlineStr;
-    if (hasSimplePlan && !effSimpleDeadlineStr) {
-      out.innerHTML = '<p class="muted">Set a deadline for your simple bakes to see the schedule.</p>';
-      return;
-    }
-    if (hasEnrichedPlan && !effEnrichedDeadlineStr) {
-      out.innerHTML = '<p class="muted">Set a deadline for your enriched dough to see the schedule.</p>';
-      return;
-    }
-    const simpleDeadline = effSimpleDeadlineStr ? new Date(effSimpleDeadlineStr) : null;
-    const enrichedDeadline = effEnrichedDeadlineStr ? new Date(effEnrichedDeadlineStr) : null;
-    if ((simpleDeadline && isNaN(simpleDeadline.getTime())) || (enrichedDeadline && isNaN(enrichedDeadline.getTime()))) {
-      out.innerHTML = '<p class="muted">Invalid simple/enriched deadline.</p>';
-      return;
-    }
-    const simpleBakeTime = document.getElementById('bake-time-simple-input').value;
-    const enrichedBakeTime = document.getElementById('bake-time-enriched-input').value;
-    const loafBakeTime = document.getElementById('bake-time-loaf-input').value;
-    const muffinBakeTime = document.getElementById('bake-time-muffin-input').value;
-    const bagelBakeTime = document.getElementById('bake-time-bagel-input').value;
-    const focacciaBakeTime = document.getElementById('bake-time-focaccia-input').value;
+    const loafBakeTime = defaultBakeTime, muffinBakeTime = defaultBakeTime, bagelBakeTime = defaultBakeTime;
+    const focacciaBakeTime = defaultBakeTime, simpleBakeTime = defaultBakeTime, enrichedBakeTime = defaultBakeTime;
     const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
     const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
     const bagelColdProofRaw = document.getElementById('coldproof-bagel-input').value;
@@ -10559,6 +10635,38 @@ ${notesHtml}
       });
     }
   });
+  // Default deadline + bake time (one shared default; per-recipe overrides below).
+  // Migrate: if no default is set yet, seed it from the first legacy per-process deadline.
+  if (localStorage.getItem(DEFAULT_DEADLINE_KEY) == null) {
+    const legacy = [LOAF_DEADLINE_KEY, MUFFIN_DEADLINE_KEY, BAGEL_DEADLINE_KEY, FOCACCIA_DEADLINE_KEY, SIMPLE_DEADLINE_KEY, ENRICHED_DEADLINE_KEY]
+      .map(k => localStorage.getItem(k)).find(Boolean);
+    if (legacy) localStorage.setItem(DEFAULT_DEADLINE_KEY, legacy);
+  }
+  if (localStorage.getItem(DEFAULT_BAKETIME_KEY) == null) {
+    const legacyBt = [LOAF_BAKETIME_KEY, MUFFIN_BAKETIME_KEY, BAGEL_BAKETIME_KEY, FOCACCIA_BAKETIME_KEY, SIMPLE_BAKETIME_KEY, ENRICHED_BAKETIME_KEY]
+      .map(k => localStorage.getItem(k)).find(Boolean);
+    if (legacyBt) localStorage.setItem(DEFAULT_BAKETIME_KEY, legacyBt);
+  }
+  const defaultDeadlineInput = document.getElementById('deadline-default-input');
+  if (defaultDeadlineInput) {
+    defaultDeadlineInput.value = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
+    defaultDeadlineInput.addEventListener('input', () => {
+      if (defaultDeadlineInput.value) localStorage.setItem(DEFAULT_DEADLINE_KEY, defaultDeadlineInput.value);
+      else localStorage.removeItem(DEFAULT_DEADLINE_KEY);
+      renderRecipeDeadlines();
+      renderSchedule();
+      renderTotals();
+    });
+  }
+  const defaultBaketimeInput = document.getElementById('bake-time-default-input');
+  if (defaultBaketimeInput) {
+    defaultBaketimeInput.value = localStorage.getItem(DEFAULT_BAKETIME_KEY) || 'morning';
+    defaultBaketimeInput.addEventListener('change', () => {
+      localStorage.setItem(DEFAULT_BAKETIME_KEY, defaultBaketimeInput.value);
+      renderSchedule();
+      renderTotals();
+    });
+  }
   const build1RatioInput = document.getElementById('build1-ratio-input');
   build1RatioInput.value = localStorage.getItem(BUILD1_RATIO_KEY) || '';
   build1RatioInput.addEventListener('change', () => {
