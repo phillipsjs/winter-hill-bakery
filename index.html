@@ -5027,13 +5027,17 @@ ${notesHtml}
     const out = document.getElementById('mixer-output');
     const summaryEl = document.getElementById('mixer-summary');
     if (!card || !out) return;
-    const mixerCovers = (m, rid) => m.recipeCapacities && (rid in m.recipeCapacities);
-    const using = recipes.filter(r => (plan[r.id] || 0) > 0 && userMixers.some(m => mixerCovers(m, r.id)));
+    // A recipe uses a mixer if it prefers it (recipe-side) or the mixer has a capacity
+    // entry for it (mixer-side) — check both so neither half being stale hides it.
+    const usesMixer = (r, m) => (m.recipeCapacities && (r.id in m.recipeCapacities))
+      || (Array.isArray(r.preferredMixerIds) && r.preferredMixerIds.includes(m.id));
+    const using = recipes.filter(r => (plan[r.id] || 0) > 0 && userMixers.some(m => usesMixer(r, m)));
     if (using.length === 0) { card.style.display = 'none'; return; }
     out.innerHTML = using.map(r => {
       const needed = plan[r.id] || 0;
-      const parts = userMixers.filter(m => mixerCovers(m, r.id)).map(m => {
-        const cap = m.recipeCapacities[r.id] || 1;
+      const parts = userMixers.filter(m => usesMixer(r, m)).map(m => {
+        const cap = (m.recipeCapacities && m.recipeCapacities[r.id]) || 0;
+        if (cap <= 0) return `${escapeHtml(m.name)} <span class="muted" style="font-size:0.85rem">(capacity not set)</span>`;
         const perRound = cap * (m.quantity || 1);
         const batches = Math.ceil(needed / Math.max(1, perRound));
         return `${escapeHtml(m.name)} <span class="muted" style="font-size:0.85rem">(${cap}/batch · ${batches} batch${batches > 1 ? 'es' : ''})</span>`;
@@ -7343,6 +7347,9 @@ ${notesHtml}
       }
     });
     if (mixersChanged) saveMixersLocally();
+    // Pan/mixer capacities live in settings.json — push so the startup Gist fetch
+    // doesn't overwrite these edits with stale data on reload.
+    if ((pansChanged || mixersChanged) && getGistConfig()) pushSettingsToGist().catch(() => {});
 
     saveRecipes();
     cancelEdit();
@@ -7474,9 +7481,22 @@ ${notesHtml}
     /^Shape bagels/,
     /^Bagels into fridge/,
   ];
+  const ACTIVE_SIMPLE_TITLE_PATTERNS = [
+    /^Weigh out simple/,
+    /^Mix simple/,
+    /^Shape \/ portion/,
+  ];
+  const ACTIVE_ENRICHED_TITLE_PATTERNS = [
+    /^Weigh out enriched/,
+    /^Mix & knead/,
+    /^Shape enriched/,
+    /^Glaze \/ ice/,
+  ];
   function isActiveStep(ev, kind) {
     const patterns = kind === 'loaf' ? ACTIVE_LOAF_TITLE_PATTERNS
       : kind === 'bagel' ? ACTIVE_BAGEL_TITLE_PATTERNS
+      : kind === 'simple' ? ACTIVE_SIMPLE_TITLE_PATTERNS
+      : kind === 'enriched' ? ACTIVE_ENRICHED_TITLE_PATTERNS
       : ACTIVE_MUFFIN_TITLE_PATTERNS;
     return patterns.some(p => p.test(ev.title));
   }
@@ -7758,8 +7778,21 @@ ${notesHtml}
       list.reduce((s, r) => s + (plan[r.id] || 0) * (getRecipeSpec(r).shapeMinPerUnit || tmpl.shapeMinPerUnit), 0);
     const sideTemp = (list, tmpl) =>
       (list.length && Number.isFinite(Number(list[0].bakeTempF))) ? Number(list[0].bakeTempF) : tmpl.bakeTempF;
+    // Mixing batches: a recipe that uses a mixer can only mix its per-batch capacity
+    // at a time, so M units need ceil(M / (capacity × mixer count)) mix steps.
+    const mixerForRecipe = (r) => userMixers.find(m =>
+      (m.recipeCapacities && (r.id in m.recipeCapacities)) ||
+      (Array.isArray(r.preferredMixerIds) && r.preferredMixerIds.includes(m.id)));
+    const sideMixBatches = (list) => list.reduce((s, r) => {
+      const m = mixerForRecipe(r);
+      const cap = (m && m.recipeCapacities && m.recipeCapacities[r.id]) || 0;
+      if (m && cap > 0) return s + Math.ceil((plan[r.id] || 0) / Math.max(1, cap * (m.quantity || 1)));
+      return s + 1; // no mixer (or no capacity set) → a single mix
+    }, 0);
+    const SIDE_PREHEAT_MIN = 15; // home-oven preheat for simple/enriched bakes
 
     const simpleTmpl = PROCESS_TEMPLATES.simple;
+    const simpleMixBatches = totalSimple > 0 ? sideMixBatches(simpleRecipes) : 0;
     const simpleBatches = totalSimple > 0 ? sideBatchesFor(simpleRecipes, simpleTmpl.ovenCapacity) : 0;
     const simpleBakeTotalMin = simpleBatches > 0 ? simpleBatches * simpleTmpl.bakeMin + Math.max(0, simpleBatches - 1) * SCHED.REHEAT_MIN : 0;
     const simpleChillHr = simpleRecipes.reduce((m, r) => Math.max(m, parseHrWindow(r.chillWindow)), 0);
@@ -7768,6 +7801,7 @@ ${notesHtml}
     const simpleTemp = sideTemp(simpleRecipes, simpleTmpl);
 
     const enrichedTmpl = PROCESS_TEMPLATES.enriched;
+    const enrichedMixBatches = totalEnriched > 0 ? sideMixBatches(enrichedRecipes) : 0;
     const enrichedBatches = totalEnriched > 0 ? sideBatchesFor(enrichedRecipes, enrichedTmpl.ovenCapacity) : 0;
     const enrichedBakeTotalMin = enrichedBatches > 0 ? enrichedBatches * enrichedTmpl.bakeMin + Math.max(0, enrichedBatches - 1) * SCHED.REHEAT_MIN : 0;
     const enrichedBulkMin = enrichedRecipes.reduce((m, r) => Math.max(m, getRecipeSpec(r).bulkMin || enrichedTmpl.bulkMin), 0) || enrichedTmpl.bulkMin;
@@ -8879,15 +8913,23 @@ ${notesHtml}
       const ovenTag = simpleSlot.ovenName ? ` · ${simpleSlot.ovenName}` : '';
       const shapeStart = addMinutes(simpleSlot.firstBakeStart, -simpleShapeMin);
       const chillStart = addMinutes(shapeStart, -simpleChillHr * 60);
-      const mixStart = addMinutes(chillStart, -simpleTmpl.mixMin);
+      const mixStart = addMinutes(chillStart, -simpleMixBatches * simpleTmpl.mixMin);
       events.push({ time: addMinutes(mixStart, -SCHED.WEIGH_MIN_PER_RECIPE), title: 'Weigh out simple-bake ingredients', detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'simple' });
-      events.push({ time: mixStart, title: 'Mix simple-bake dough/batter', detail: `${simpleTmpl.mixMin} min active${simpleChillHr > 0 ? ` · then chill ${simpleChillHr} hr` : ''}`, process: 'simple' });
+      for (let mb = 0; mb < simpleMixBatches; mb++) {
+        const mt = addMinutes(mixStart, mb * simpleTmpl.mixMin);
+        const lastMix = mb === simpleMixBatches - 1;
+        events.push({ time: mt, title: simpleMixBatches === 1 ? 'Mix simple-bake dough/batter' : `Mix simple-bake batch ${mb + 1} of ${simpleMixBatches}`, detail: `${simpleTmpl.mixMin} min active${lastMix && simpleChillHr > 0 ? ` · then chill ${simpleChillHr} hr` : ''}`, process: 'simple' });
+      }
       if (simpleChillHr > 0) events.push({ time: chillStart, title: 'Chill / rest simple-bake dough', detail: `${simpleChillHr} hr`, process: 'simple' });
       events.push({ time: shapeStart, title: 'Shape / portion simple bakes', detail: `${Math.round(simpleShapeMin)} min · ${totalSimple} item${totalSimple === 1 ? '' : 's'}`, process: 'simple' });
+      events.push({ time: addMinutes(simpleSlot.firstBakeStart, -SIDE_PREHEAT_MIN), title: `Turn on oven to ${simpleTemp}°F`, detail: `~${SIDE_PREHEAT_MIN} min preheat${ovenTag}`, process: 'simple' });
+      // Items per bake round: from preferred-pan capacity (one recipe) or an even split.
+      const simplePerBatch = simpleRecipes.length === 1 ? bakeCapFor(simpleRecipes[0], simpleTmpl.ovenCapacity) : Math.ceil(totalSimple / Math.max(1, simpleBatches));
       let cum = 0;
       for (let b = 0; b < simpleBatches; b++) {
         const bs = addMinutes(simpleSlot.firstBakeStart, cum);
-        events.push({ time: bs, timeEnd: addMinutes(bs, simpleTmpl.bakeMin), title: simpleBatches === 1 ? 'Bake simple bakes' : `Bake simple batch ${b + 1} of ${simpleBatches}`, detail: `${simpleTmpl.bakeMin} min · ${simpleTemp}°F${ovenTag}`, process: 'simple' });
+        const countThis = Math.max(0, Math.min(simplePerBatch, totalSimple - b * simplePerBatch));
+        events.push({ time: bs, timeEnd: addMinutes(bs, simpleTmpl.bakeMin), title: simpleBatches === 1 ? 'Bake simple bakes' : `Bake simple batch ${b + 1} of ${simpleBatches}`, detail: `${countThis} item${countThis === 1 ? '' : 's'} · ${simpleTmpl.bakeMin} min · ${simpleTemp}°F${ovenTag}`, process: 'simple' });
         cum += simpleTmpl.bakeMin + (b < simpleBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
       events.push({ time: simpleSlot.lastBakeEnd, title: 'Simple bakes out — cool', detail: `${simpleCoolMin} min cool`, process: 'simple' });
@@ -8901,21 +8943,40 @@ ${notesHtml}
       const shapeStart = addMinutes(enrichedSlot.firstBakeStart, -proofMin);
       const bulkEnd = addMinutes(shapeStart, -enrichedShapeMin);
       const bulkStart = addMinutes(bulkEnd, -enrichedBulkMin);
-      const mixStart = addMinutes(bulkStart, -enrichedTmpl.mixMin);
+      const mixStart = addMinutes(bulkStart, -enrichedMixBatches * enrichedTmpl.mixMin);
       events.push({ time: addMinutes(mixStart, -SCHED.WEIGH_MIN_PER_RECIPE), title: 'Weigh out enriched-dough ingredients', detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'enriched' });
-      events.push({ time: mixStart, title: 'Mix & knead enriched dough', detail: `${enrichedTmpl.mixMin} min active · then ${enrichedBulkMin} min bulk rise`, process: 'enriched' });
+      for (let mb = 0; mb < enrichedMixBatches; mb++) {
+        const mt = addMinutes(mixStart, mb * enrichedTmpl.mixMin);
+        const lastMix = mb === enrichedMixBatches - 1;
+        events.push({ time: mt, title: enrichedMixBatches === 1 ? 'Mix & knead enriched dough' : `Mix & knead enriched batch ${mb + 1} of ${enrichedMixBatches}`, detail: `${enrichedTmpl.mixMin} min active${lastMix ? ` · then ${enrichedBulkMin} min bulk rise` : ''}`, process: 'enriched' });
+      }
       events.push({ time: bulkStart, title: 'Bulk rise — enriched dough', detail: `${enrichedBulkMin} min warm rise`, process: 'enriched' });
       events.push({ time: bulkEnd, title: 'Shape enriched dough', detail: `${Math.round(enrichedShapeMin)} min · ${totalEnriched} unit${totalEnriched === 1 ? '' : 's'}`, process: 'enriched' });
       events.push({ time: shapeStart, title: enrichedCold ? 'Final proof — cold (overnight retard)' : 'Final proof — warm', detail: enrichedCold ? `${enrichedColdHr} hr in the fridge` : `${enrichedWarmMin} min warm`, process: 'enriched' });
+      events.push({ time: addMinutes(enrichedSlot.firstBakeStart, -SIDE_PREHEAT_MIN), title: `Turn on oven to ${enrichedTemp}°F`, detail: `~${SIDE_PREHEAT_MIN} min preheat${ovenTag}`, process: 'enriched' });
+      const enrichedPerBatch = enrichedRecipes.length === 1 ? bakeCapFor(enrichedRecipes[0], enrichedTmpl.ovenCapacity) : Math.ceil(totalEnriched / Math.max(1, enrichedBatches));
       let cum = 0;
       for (let b = 0; b < enrichedBatches; b++) {
         const bs = addMinutes(enrichedSlot.firstBakeStart, cum);
-        events.push({ time: bs, timeEnd: addMinutes(bs, enrichedTmpl.bakeMin), title: enrichedBatches === 1 ? 'Bake enriched dough' : `Bake enriched batch ${b + 1} of ${enrichedBatches}`, detail: `${enrichedTmpl.bakeMin} min · ${enrichedTemp}°F${ovenTag}`, process: 'enriched' });
+        const countThis = Math.max(0, Math.min(enrichedPerBatch, totalEnriched - b * enrichedPerBatch));
+        events.push({ time: bs, timeEnd: addMinutes(bs, enrichedTmpl.bakeMin), title: enrichedBatches === 1 ? 'Bake enriched dough' : `Bake enriched batch ${b + 1} of ${enrichedBatches}`, detail: `${countThis} unit${countThis === 1 ? '' : 's'} · ${enrichedTmpl.bakeMin} min · ${enrichedTemp}°F${ovenTag}`, process: 'enriched' });
         cum += enrichedTmpl.bakeMin + (b < enrichedBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
       events.push({ time: enrichedSlot.lastBakeEnd, title: 'Enriched dough out — cool', detail: `${enrichedCoolMin} min cool`, process: 'enriched' });
       if (enrichedGlaze) events.push({ time: addMinutes(enrichedSlot.lastBakeEnd, enrichedCoolMin), title: 'Glaze / ice enriched bakes', detail: `${enrichedGlazeMin} min`, process: 'enriched' });
       events.push({ time: enrichedSlot.packageReady, title: 'Package & ready for sale', detail: '', process: 'enriched' });
+    }
+
+    // Late-night warnings for simple/enriched (computed here, after their steps exist).
+    const lateSimple = totalSimple > 0 ? lateNightActiveSteps(events, 'simple') : [];
+    if (lateSimple.length > 0) {
+      const names = simpleRecipes.map(r => r.name).join(', ');
+      warnings.push({ msg: `${lateSimple.length} active step${lateSimple.length > 1 ? 's' : ''} for ${names} fall outside ${quietHoursLabel()} (${fmtLateNames(lateSimple)}). Try a later deadline or a different bake time.`, issue: 'late-night', kind: 'simple' });
+    }
+    const lateEnriched = totalEnriched > 0 ? lateNightActiveSteps(events, 'enriched') : [];
+    if (lateEnriched.length > 0) {
+      const names = enrichedRecipes.map(r => r.name).join(', ');
+      warnings.push({ msg: `${lateEnriched.length} active step${lateEnriched.length > 1 ? 's' : ''} for ${names} fall outside ${quietHoursLabel()} (${fmtLateNames(lateEnriched)}). Try a later deadline or a different bake time.`, issue: 'late-night', kind: 'enriched' });
     }
 
     // Surface oven temp-change buffers (set by the oven-assignment layer) as their
