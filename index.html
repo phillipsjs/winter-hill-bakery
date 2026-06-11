@@ -9211,6 +9211,13 @@ ${notesHtml}
     const COL_PRESENT = { loaf: hasLoaves, muffin: hasMuffins, bagel: hasBagels, focaccia: hasFocacciaResult, simple: hasSimpleResult, enriched: hasEnrichedResult };
     const presentCols = ['loaf', 'muffin', 'bagel', 'focaccia', 'simple', 'enriched'].filter(p => COL_PRESENT[p]);
     const splitView = presentCols.length >= 2;
+    // Column header shows the actual recipe name(s) in that column — users think in
+    // recipes, not the backend process. Falls back to the process label if needed.
+    const COL_PROCESS = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia', simple: 'simple', enriched: 'enriched' };
+    const colLabelFor = (p) => {
+      const names = recipes.filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) === COL_PROCESS[p]).map(r => r.name);
+      return names.length ? names.join(', ') : PROC_LABELS[p];
+    };
 
     const buildInput1El = document.getElementById('build1-ratio-input');
     const buildInput2El = document.getElementById('build2-ratio-input');
@@ -9281,7 +9288,7 @@ ${notesHtml}
         <div></div>
         <div class="schedule-hour-content">
           <div class="schedule-hour-cols" style="${colsStyle}">
-            ${presentCols.map(p => `<div class="schedule-col-header">${PROC_LABELS[p]}</div>`).join('')}
+            ${presentCols.map(p => `<div class="schedule-col-header">${escapeHtml(colLabelFor(p))}</div>`).join('')}
           </div>
         </div>
       </div>`;
