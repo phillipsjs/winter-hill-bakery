@@ -504,6 +504,17 @@
     border-radius: 6px;
     padding: 6px 10px;
   }
+  /* Per-column breakdown shown inside a shared step (e.g. which loaves of each
+     dough go on which deck for a shared bake). Aligns with the schedule columns. */
+  .schedule-shared-cols {
+    display: grid;
+    column-gap: 12px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #b8cdb8;
+  }
+  .schedule-shared-col { font-size: 0.78rem; line-height: 1.3; white-space: pre-line; }
+  .schedule-shared-col-empty { opacity: 0.3; }
   .schedule-day-grid {
     display: grid;
     grid-template-columns: 56px 1fr;
@@ -8356,6 +8367,7 @@ ${notesHtml}
     // shape / into-fridge steps are tagged to it. A single loaf dough keeps the plain
     // 'loaf' column (unchanged), and the aggregated mix/fold/bake stay shared.
     let loafColumns = [];
+    const loafRecipeColKey = new Map(); // recipe name -> loaf column key (for shared-step breakdowns)
     let shapePhaseStart = null, lastFoldTime = null, firstFoldTime = null, mixTime = null, autolyseStart = null;
 
     const PRESHAPE_RATIO = SCHED.PRESHAPE_MIN_PER_LOAF /
@@ -8385,8 +8397,9 @@ ${notesHtml}
       const multiDough = containerGroups.length > 1;
       containerGroups.forEach((group, gi) => {
         const colKey = multiDough ? `loaf#${gi}` : 'loaf';
+        const names = [...new Set((group.items || []).map(it => it.recipe.name))];
+        names.forEach(n => loafRecipeColKey.set(n, colKey));
         if (multiDough) {
-          const names = [...new Set((group.items || []).map(it => it.recipe.name))];
           loafColumns.push({ key: colKey, label: names.join(', ') });
         }
         for (const c of group.containers) {
@@ -8949,11 +8962,24 @@ ${notesHtml}
             .map((deck, di) => `${deckLabelFor(di)}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
             .join('\n')
         : '';
+      // When loaves are split into per-dough columns, attach a per-column breakdown so
+      // each dough's column shows its own loaves/deck under the shared bake instruction.
+      let bakeColDetails = null;
+      if (plan_b && loafColumns.length > 1) {
+        bakeColDetails = {};
+        plan_b.forEach((deck, di) => {
+          deck.items.forEach(it => {
+            const ck = loafRecipeColKey.get(it.name) || 'loaf';
+            const line = `${it.count} × ${it.name} (${deckLabelFor(di)})`;
+            bakeColDetails[ck] = bakeColDetails[ck] ? `${bakeColDetails[ck]}\n${line}` : line;
+          });
+        });
+      }
       events.push({
         time: bakeStart,
         title: `Bake ${b + 1} of ${breadBatches}${kindSuffix}`,
         detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake${reheatSuffix}${planLines}`,
-        process: 'loaf',
+        process: 'loaf', colDetails: bakeColDetails,
       });
     }
 
@@ -9791,6 +9817,36 @@ ${notesHtml}
         ${renderEventContent(ev)}
       </div>`;
     };
+    // A shared step spans all columns but keeps its stage label like any other step.
+    // When it carries per-column detail (ev.colDetails: { colKey: text }), each column
+    // shows its own relevant note (e.g. its loaves/deck for a shared bake) below the
+    // spanning instruction; columns with no detail are dimmed.
+    const renderColDetailCells = (cd) => {
+      if (!cd) return '';
+      const cells = presentCols.map(p => {
+        const txt = cd[p];
+        return `<div class="schedule-shared-col${txt ? '' : ' schedule-shared-col-empty'}">${txt ? escapeHtml(txt) : ''}</div>`;
+      }).join('');
+      return `<div class="schedule-shared-cols" style="${colsStyle}">${cells}</div>`;
+    };
+    const renderSharedEvent = (ev, extraStyle) => {
+      const stage = getEventStage(ev);
+      let body;
+      if (ev.colDetails) {
+        // Per-column cells replace any inline breakdown; keep only the headline detail
+        // (the part before the first newline, e.g. the bake's load/bake timing).
+        const headline = (ev.detail || '').split('\n')[0];
+        body = `<div class="schedule-title">${escapeHtml(ev.title)}</div>
+          ${headline ? `<div class="schedule-detail">${escapeHtml(headline)}</div>` : ''}
+          ${renderColDetailCells(ev.colDetails)}`;
+      } else {
+        body = renderEventContent(ev);
+      }
+      return `<div class="schedule-event schedule-event-shared"${stage ? ` data-stage="${stage}"` : ''}${extraStyle ? ` style="${extraStyle}"` : ''}>
+        <div class="schedule-event-time">${formatEventTime(ev)}</div>
+        ${body}
+      </div>`;
+    };
 
     const hourFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', hour12: true });
 
@@ -9988,19 +10044,13 @@ ${notesHtml}
               const endRounded = roundToFiveMin(ev.timeEnd);
               const rangeLabel = formatHourRange(startRounded, endRounded);
               html += `<div class="schedule-hour-label" style="grid-row: ${rowIdx}; grid-column: 1;">${rangeLabel}</div>`;
-              html += `<div class="schedule-event schedule-event-shared" style="grid-row: ${rowIdx}; grid-column: 2;">
-                <div class="schedule-event-time">${formatEventTime(ev)}</div>
-                ${renderEventContent(ev)}
-              </div>`;
+              html += renderSharedEvent(ev, `grid-row: ${rowIdx}; grid-column: 2;`);
             } else {
               const bucket = row.bucket;
               html += `<div class="schedule-hour-label" style="grid-row: ${rowIdx}; grid-column: 1;">${hourFmt.format(bucket.hour)}</div>`;
               let cellHtml = '';
               for (const ev of bucket.shared) {
-                cellHtml += `<div class="schedule-event schedule-event-shared">
-                  <div class="schedule-event-time">${formatEventTime(ev)}</div>
-                  ${renderEventContent(ev)}
-                </div>`;
+                cellHtml += renderSharedEvent(ev);
               }
               if (presentCols.some(p => bucket.byProc[p].length > 0)) {
                 const quarterMap = new Map();
