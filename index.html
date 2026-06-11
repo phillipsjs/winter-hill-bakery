@@ -992,7 +992,6 @@
               <option value="44-48">44–48 hours</option>
             </select>
           </div>
-          <div class="row"><label style="width:160px">Bake time</label><input type="number" id="r-bake-min" min="0" step="1" /> <span class="muted">min</span></div>
           <div class="row"><label style="width:160px">Autolyse</label><input type="number" id="r-autolyse" min="0" step="5" /> <span class="muted">min</span></div>
           <div class="row"><label style="width:160px">Warm-up before bake</label><input type="number" id="r-warmup" min="0" step="5" /> <span class="muted">min</span></div>
           <div class="row"><label style="width:160px">Bulk ferment</label><input type="number" id="r-bulk" min="0" step="5" /> <span class="muted">min</span></div>
@@ -1012,6 +1011,7 @@
           <div class="row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
           <div class="row"><label style="width:160px">Deck capacity</label><input type="number" id="r-deck-cap" min="0" step="1" /> <span class="muted">per deck — kept in sync</span></div>
           <div class="row"><label style="width:160px">Bake temp</label><input type="number" id="r-bake-temp" min="0" step="5" /> <span class="muted">°F</span></div>
+          <div class="row"><label style="width:160px">Bake time</label><input type="number" id="r-bake-min" min="0" step="1" /> <span class="muted">min</span></div>
         </div>
       </details>
 
@@ -6142,10 +6142,14 @@ ${notesHtml}
     const override = Number(r.batchSizeOverride);
     const batchSize = (Number.isFinite(override) && override > 0) ? Math.max(1, Math.min(count || 1, override)) : auto;
     const numBatches = Math.max(1, Math.ceil(count / Math.max(1, batchSize)));
+    const spec = getRecipeSpec(r);
+    const bakeMin = spec.bakeMin || tmpl.bakeMin;
+    const bakeTempF = Number.isFinite(Number(r.bakeTempF)) ? Number(r.bakeTempF) : tmpl.bakeTempF;
     return {
       recipe: r, count, batchSize, numBatches, perBatch: splitEvenly(count, numBatches),
       chillHr, cold, containerName: needsContainer ? chillContainerNameG(r) : '',
-      shapePerUnit: (getRecipeSpec(r).shapeMinPerUnit || tmpl.shapeMinPerUnit),
+      shapePerUnit: (spec.shapeMinPerUnit || tmpl.shapeMinPerUnit),
+      bakeMin, bakeTempF,
       mixerCap, panCap, containerCap, override,
     };
   }
@@ -7960,8 +7964,10 @@ ${notesHtml}
       list.reduce((s, r) => s + Math.ceil((plan[r.id] || 0) / Math.max(1, bakeCapFor(r, tmplCap))), 0);
     const sideShapeMin = (list, tmpl) =>
       list.reduce((s, r) => s + (plan[r.id] || 0) * (getRecipeSpec(r).shapeMinPerUnit || tmpl.shapeMinPerUnit), 0);
-    const sideTemp = (list, tmpl) =>
-      (list.length && Number.isFinite(Number(list[0].bakeTempF))) ? Number(list[0].bakeTempF) : tmpl.bakeTempF;
+    // Hottest bake temp across a set of side recipes (each falling back to the template
+    // when it has no override). Used to preheat the shared oven high enough for all.
+    const sideMaxTemp = (list, tmpl) =>
+      list.length ? Math.max(...list.map(r => Number.isFinite(Number(r.bakeTempF)) ? Number(r.bakeTempF) : tmpl.bakeTempF)) : tmpl.bakeTempF;
     // Mixing batches: a recipe that uses a mixer can only mix its per-batch capacity
     // at a time, so M units need ceil(M / (capacity × mixer count)) mix steps.
     const mixerForRecipe = (r) => userMixers.find(m =>
@@ -8014,18 +8020,22 @@ ${notesHtml}
     simpleBatchPlan.forEach(p => batchSizeWarning(p, 'simple', 'chilling'));
     const simpleBatches = simpleBatchPlan.reduce((s, p) => s + p.numBatches, 0);
     const simpleMixBatches = simpleBatches; // mixing, chilling and baking share one batching
-    const simpleBakeTotalMin = simpleBatches > 0 ? simpleBatches * simpleTmpl.bakeMin + Math.max(0, simpleBatches - 1) * SCHED.REHEAT_MIN : 0;
+    // Sum each batch's own bake time (recipes can override the template) + reheat gaps.
+    const simpleBakeSum = simpleBatchPlan.reduce((s, p) => s + p.numBatches * p.bakeMin, 0);
+    const simpleBakeTotalMin = simpleBatches > 0 ? simpleBakeSum + Math.max(0, simpleBatches - 1) * SCHED.REHEAT_MIN : 0;
     const simpleChillHr = simpleRecipes.reduce((m, r) => Math.max(m, parseHrWindow(r.chillWindow)), 0);
     const simpleShapeMin = sideShapeMin(simpleRecipes, simpleTmpl);
     const simpleCoolMin = simpleTmpl.coolMin;
-    const simpleTemp = sideTemp(simpleRecipes, simpleTmpl);
+    // Preheat to the hottest recipe's temp so the oven is ready for every batch.
+    const simpleTemp = sideMaxTemp(simpleRecipes, simpleTmpl);
 
     const enrichedTmpl = PROCESS_TEMPLATES.enriched;
     const enrichedBatchPlan = enrichedRecipes.map(sideBatchInfo);
     enrichedBatchPlan.forEach(p => batchSizeWarning(p, 'enriched', 'cold-proof'));
     const enrichedBatches = enrichedBatchPlan.reduce((s, p) => s + p.numBatches, 0);
     const enrichedMixBatches = enrichedBatches;
-    const enrichedBakeTotalMin = enrichedBatches > 0 ? enrichedBatches * enrichedTmpl.bakeMin + Math.max(0, enrichedBatches - 1) * SCHED.REHEAT_MIN : 0;
+    const enrichedBakeSum = enrichedBatchPlan.reduce((s, p) => s + p.numBatches * p.bakeMin, 0);
+    const enrichedBakeTotalMin = enrichedBatches > 0 ? enrichedBakeSum + Math.max(0, enrichedBatches - 1) * SCHED.REHEAT_MIN : 0;
     const enrichedBulkMin = enrichedRecipes.reduce((m, r) => Math.max(m, getRecipeSpec(r).bulkMin || enrichedTmpl.bulkMin), 0) || enrichedTmpl.bulkMin;
     const enrichedShapeMin = sideShapeMin(enrichedRecipes, enrichedTmpl);
     const enrichedCold = enrichedRecipes.some(r => r.finalProofMode === 'cold');
@@ -8034,7 +8044,7 @@ ${notesHtml}
     const enrichedGlaze = enrichedRecipes.some(r => r.glazeEnabled);
     const enrichedGlazeMin = enrichedRecipes.filter(r => r.glazeEnabled).reduce((m, r) => Math.max(m, Number(r.glazeMin) || enrichedTmpl.glazeMin), 0) || enrichedTmpl.glazeMin;
     const enrichedCoolMin = enrichedTmpl.coolMin;
-    const enrichedTemp = sideTemp(enrichedRecipes, enrichedTmpl);
+    const enrichedTemp = sideMaxTemp(enrichedRecipes, enrichedTmpl);
     batches += simpleBatches + enrichedBatches; // include side bakes in the oven-batch total
 
     // Muffin deadline + bake time fall back to the loaf values when not set.
@@ -9229,8 +9239,8 @@ ${notesHtml}
         p.perBatch.forEach((batchUnits, b) => {
           const bs = addMinutes(simpleSlot.firstBakeStart, cum);
           const batchSuffix = p.numBatches > 1 ? ` — batch ${b + 1} of ${p.numBatches}` : '';
-          events.push({ time: bs, timeEnd: addMinutes(bs, simpleTmpl.bakeMin), title: `Bake ${r.name}${batchSuffix}`, detail: `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'} · ${simpleTmpl.bakeMin} min · ${simpleTemp}°F${ovenTag}`, process: 'simple', columnKey: sideColKey.get(r.id), stage: 'bake', activeStep: false });
-          cum += simpleTmpl.bakeMin + (bakeIdx < simpleBatches - 1 ? SCHED.REHEAT_MIN : 0);
+          events.push({ time: bs, timeEnd: addMinutes(bs, p.bakeMin), title: `Bake ${r.name}${batchSuffix}`, detail: `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'} · ${p.bakeMin} min · ${p.bakeTempF}°F${ovenTag}`, process: 'simple', columnKey: sideColKey.get(r.id), stage: 'bake', activeStep: false });
+          cum += p.bakeMin + (bakeIdx < simpleBatches - 1 ? SCHED.REHEAT_MIN : 0);
           bakeIdx++;
         });
       });
@@ -9275,8 +9285,8 @@ ${notesHtml}
           } else {
             events.push({ time: proofStart, title: `Final proof — warm — ${r.name}${suffix}`, detail: `${unitsLabel} · ${enrichedWarmMin} min warm`, process: 'enriched', columnKey: colKey, stage: 'proof', activeStep: false });
           }
-          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, enrichedTmpl.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${enrichedTmpl.bakeMin} min · ${enrichedTemp}°F${ovenTag}`, process: 'enriched', columnKey: colKey, stage: 'bake', activeStep: false });
-          cum += enrichedTmpl.bakeMin + (bakeIdx < enrichedBatches - 1 ? SCHED.REHEAT_MIN : 0);
+          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, p.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${p.bakeMin} min · ${p.bakeTempF}°F${ovenTag}`, process: 'enriched', columnKey: colKey, stage: 'bake', activeStep: false });
+          cum += p.bakeMin + (bakeIdx < enrichedBatches - 1 ? SCHED.REHEAT_MIN : 0);
           bakeIdx++;
         });
       });
