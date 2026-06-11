@@ -6918,6 +6918,10 @@ ${notesHtml}
         + selOpt('2', '2 hours', chill)
         + selOpt('8-12', 'Overnight (8–12 hr)', chill)
         + '</select></div>';
+      const bso = recipe.batchSizeOverride != null ? recipe.batchSizeOverride : '';
+      html += '<div class="row"><label style="width:170px">Batch size</label>'
+        + '<input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" value="' + escapeAttr(String(bso)) + '" style="width:80px;flex:none" /> '
+        + '<span class="muted" style="font-size:0.8rem">units/batch — blank auto-fits to your mixer, container & oven</span></div>';
     } else if (processType === 'enriched') {
       const mode = recipe.finalProofMode || 'warm';
       const warmMin = recipe.finalProofWarmMin != null ? recipe.finalProofWarmMin : '';
@@ -7360,6 +7364,8 @@ ${notesHtml}
     const stepFields = {};
     const chillEl = document.getElementById('r-chill');
     if (chillEl) stepFields.chillWindow = chillEl.value || '';
+    const batchSizeEl = document.getElementById('r-batch-size');
+    if (batchSizeEl) { const bs = parseInt(batchSizeEl.value, 10); stepFields.batchSizeOverride = (Number.isFinite(bs) && bs > 0) ? bs : null; }
     const fpModeEl = document.getElementById('r-final-proof-mode');
     if (fpModeEl) {
       stepFields.finalProofMode = fpModeEl.value || 'warm';
@@ -7904,7 +7910,18 @@ ${notesHtml}
       const panCap = bakeCapFor(r, simpleTmpl.ovenCapacity);
       const chillHr = parseHrWindow(r.chillWindow);
       const containerCap = chillHr > 0 ? chillContainerUnitsFor(r) : Infinity;
-      const batchSize = Math.max(1, Math.min(count || 1, mixerCap, panCap, containerCap));
+      const autoBatchSize = Math.max(1, Math.min(count || 1, mixerCap, panCap, containerCap));
+      const override = Number(r.batchSizeOverride);
+      let batchSize = autoBatchSize;
+      if (Number.isFinite(override) && override > 0) {
+        batchSize = Math.max(1, Math.min(count || 1, override));
+        // Warn when the chosen batch size won't physically fit a constraint.
+        const probs = [];
+        if (override > mixerCap) probs.push(`the mixer (${mixerCap}/batch)`);
+        if (override > containerCap) probs.push(`one chilling container (${containerCap})`);
+        if (override > panCap) probs.push(`one oven load (${panCap})`);
+        if (probs.length) warnings.push({ msg: `${r.name}: a batch size of ${override} is bigger than ${probs.join(', ')} — that batch won't fit in a single load. Lower the batch size or split it.`, issue: 'batch-size', kind: 'simple', type: 'info' });
+      }
       const numBatches = Math.max(1, Math.ceil(count / Math.max(1, batchSize)));
       return { recipe: r, count, chillHr, numBatches, perBatch: splitEvenly(count, numBatches), containerName: chillHr > 0 ? chillContainerNameFor(r) : '' };
     });
