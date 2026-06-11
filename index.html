@@ -9204,10 +9204,12 @@ ${notesHtml}
     const hasMuffins = (result.totalMuffins || 0) > 0;
     const hasBagels = (result.totalBagels || 0) > 0;
     const hasFocacciaResult = (result.totalFocaccia || 0) > 0;
+    const hasSimpleResult = (result.totalSimple || 0) > 0;
+    const hasEnrichedResult = (result.totalEnriched || 0) > 0;
     // Columns present in the split view, in fixed order.
-    const PROC_LABELS = { loaf: 'Sourdough loaves', muffin: 'English muffins', bagel: 'Bagels', focaccia: 'Focaccia' };
-    const presentCols = ['loaf', 'muffin', 'bagel', 'focaccia'].filter(p =>
-      p === 'loaf' ? hasLoaves : p === 'muffin' ? hasMuffins : p === 'bagel' ? hasBagels : hasFocacciaResult);
+    const PROC_LABELS = { loaf: 'Sourdough loaves', muffin: 'English muffins', bagel: 'Bagels', focaccia: 'Focaccia', simple: 'Simple bakes', enriched: 'Enriched dough' };
+    const COL_PRESENT = { loaf: hasLoaves, muffin: hasMuffins, bagel: hasBagels, focaccia: hasFocacciaResult, simple: hasSimpleResult, enriched: hasEnrichedResult };
+    const presentCols = ['loaf', 'muffin', 'bagel', 'focaccia', 'simple', 'enriched'].filter(p => COL_PRESENT[p]);
     const splitView = presentCols.length >= 2;
 
     const buildInput1El = document.getElementById('build1-ratio-input');
