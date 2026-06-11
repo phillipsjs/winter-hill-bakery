@@ -847,6 +847,18 @@
       </details>
     </div>
 
+    <div class="card totals" id="mixer-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Mixers</h2>
+          <span id="mixer-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Recipes that use a mixer, with how many mix batches each needs. Set a recipe's mixer and per-batch capacity in the recipe editor.</p>
+        <div id="mixer-output" style="margin-top:8px"></div>
+      </details>
+    </div>
+
     <div class="card totals" id="oven-overview-card" style="display:none">
       <details class="plan-details">
         <summary>
@@ -5009,6 +5021,33 @@ ${notesHtml}
     card.style.display = '';
   }
 
+  // Bake Plan "Mixers" card: which in-plan recipes use a mixer, and how many mix batches.
+  function renderMixerPlan() {
+    const card = document.getElementById('mixer-card');
+    const out = document.getElementById('mixer-output');
+    const summaryEl = document.getElementById('mixer-summary');
+    if (!card || !out) return;
+    const mixerCovers = (m, rid) => m.recipeCapacities && (rid in m.recipeCapacities);
+    const using = recipes.filter(r => (plan[r.id] || 0) > 0 && userMixers.some(m => mixerCovers(m, r.id)));
+    if (using.length === 0) { card.style.display = 'none'; return; }
+    out.innerHTML = using.map(r => {
+      const needed = plan[r.id] || 0;
+      const parts = userMixers.filter(m => mixerCovers(m, r.id)).map(m => {
+        const cap = m.recipeCapacities[r.id] || 1;
+        const perRound = cap * (m.quantity || 1);
+        const batches = Math.ceil(needed / Math.max(1, perRound));
+        return `${escapeHtml(m.name)} <span class="muted" style="font-size:0.85rem">(${cap}/batch · ${batches} batch${batches > 1 ? 'es' : ''})</span>`;
+      });
+      return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1">${escapeHtml(r.name)}</span>
+        <span class="muted" style="font-size:0.85rem">${needed} units</span>
+        <span style="font-size:0.85rem">${parts.join(', ')}</span>
+      </div>`;
+    }).join('');
+    if (summaryEl) { summaryEl.textContent = `${using.length} recipe${using.length > 1 ? 's' : ''} using a mixer`; summaryEl.style.color = ''; }
+    card.style.display = '';
+  }
+
   // ---- recipe editor cost display ----
   function updateRecipeEditorCostDisplay() {
     const costEl = document.getElementById('r-cost-display');
@@ -5715,6 +5754,8 @@ ${notesHtml}
       if (cc) cc.style.display = 'none';
       const oc = document.getElementById('oven-overview-card');
       if (oc) oc.style.display = 'none';
+      const mc = document.getElementById('mixer-card');
+      if (mc) mc.style.display = 'none';
       if (intro) intro.style.display = 'none';
       if (cta) cta.style.display = 'none';
       return;
@@ -5803,6 +5844,7 @@ ${notesHtml}
     renderDoughContainerPlan();
     renderBannetonPlan();
     renderPanPlan();
+    renderMixerPlan();
     renderOvenOverview();
   }
 
@@ -5848,10 +5890,18 @@ ${notesHtml}
     if (loafRecipes.length) addDeckPlan(planOvenLoads(loafRecipes, plan));
     if (muffinRecipes.length) addDeckPlan(planMuffinBakes(muffinRecipes, plan));
 
-    // Other bakes that aren't deck-allocated (focaccia/bagel are pan/batch based;
-    // simple/enriched aren't scheduled yet). Listed with their preferred oven.
+    // Pan/batch bakes (focaccia, bagel, simple, enriched) aren't deck-allocated.
+    // Attribute each to its preferred oven, or to the only oven when there's just one.
     const otherTypes = ['focaccia', 'bagel', 'simple', 'enriched'];
     const other = active.filter(r => otherTypes.includes(getProcessType(r)));
+    const otherByOven = {}; ovenList.forEach(o => otherByOven[o.id] = []);
+    const otherUnassigned = [];
+    other.forEach(r => {
+      if (r.preferredOvenId && otherByOven[r.preferredOvenId]) otherByOven[r.preferredOvenId].push(r);
+      else if (ovenList.length === 1) otherByOven[ovenList[0].id].push(r);
+      else otherUnassigned.push(r);
+    });
+    const fmtRecipeTemp = (r) => { const t = tempOf(r); return escapeHtml(r.name) + (t ? ' (' + t + '°F)' : ''); };
 
     let html = '';
     if (userOvens.length === 0) {
@@ -5863,33 +5913,26 @@ ${notesHtml}
       const decks = Math.max(1, o.decks || 1);
       const data = perOven[o.name] || { items: {}, rounds: 0 };
       const names = Object.keys(data.items);
+      const otherHere = otherByOven[o.id] || [];
       html += '<div style="padding:8px 0;border-top:1px solid var(--border)">';
       html += '<div style="font-weight:600">' + escapeHtml(o.name) + ' <span class="muted" style="font-weight:400;font-size:0.85rem">· ' + decks + ' deck' + (decks !== 1 ? 's' : '') + '</span></div>';
+      const lines = [];
       if (names.length) {
         const roundNote = data.rounds > 1 ? ' <span class="muted" style="font-size:0.8rem">(' + data.rounds + ' bake rounds)</span>' : '';
-        html += '<div style="font-size:0.9rem;margin-top:2px">Baking: ' + names.map(n => data.items[n] + ' × ' + escapeHtml(n)).join(', ') + roundNote + '</div>';
-      } else {
-        // Nothing deck-allocated here — is a pan/other bake assigned to it?
-        const prefHere = other.filter(r => r.preferredOvenId === o.id);
-        if (prefHere.length) {
-          html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + prefHere.map(r => { const t = tempOf(r); return escapeHtml(r.name) + (t ? ' (' + t + '°F)' : ''); }).join(', ') + '</div>';
-        } else {
-          html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">Idle / available</div>';
-        }
+        lines.push('Baking: ' + names.map(n => data.items[n] + ' × ' + escapeHtml(n)).join(', ') + roundNote);
       }
+      if (otherHere.length) {
+        lines.push((names.length ? 'Also: ' : 'Baking: ') + otherHere.map(fmtRecipeTemp).join(', '));
+      }
+      if (!lines.length) lines.push('<span class="muted">Idle / available</span>');
+      html += lines.map(l => '<div style="font-size:0.9rem;margin-top:2px">' + l + '</div>').join('');
       html += '</div>';
     });
 
-    if (other.length) {
+    if (otherUnassigned.length) {
       html += '<div style="padding:8px 0;border-top:1px solid var(--border)">';
-      html += '<div style="font-weight:600">Other bakes <span class="muted" style="font-weight:400;font-size:0.8rem">(not deck-allocated)</span></div>';
-      html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + other.map(r => {
-        const pt = getProcessType(r);
-        const t = tempOf(r);
-        const where = (pt === 'simple' || pt === 'enriched') ? 'not yet scheduled'
-          : (r.preferredOvenId ? ovenNameOf(r.preferredOvenId) : 'any oven');
-        return escapeHtml(r.name) + (t ? ' (' + t + '°F)' : '') + ' → ' + where;
-      }).join('; ') + '</div></div>';
+      html += '<div style="font-weight:600">Scheduled into any free oven</div>';
+      html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + otherUnassigned.map(fmtRecipeTemp).join(', ') + '</div></div>';
     }
 
     // Single-oven, mixed-temp heads-up across the whole plan.
@@ -5957,7 +6000,9 @@ ${notesHtml}
 
   function planDoughContainers(loafRecipes, planMap, capacity, userCont) {
     const active = loafRecipes
-      .filter(r => (planMap[r.id] || 0) > 0)
+      // Simple bakes (cookies, scones, quick breads) don't bulk-ferment, so they
+      // never need a proofing container.
+      .filter(r => (planMap[r.id] || 0) > 0 && getProcessType(r) !== 'simple')
       .map(r => ({ recipe: r, count: planMap[r.id], dough: r.loafWeight * planMap[r.id] }));
     if (active.length === 0) return [];
     const groups = new Map();
@@ -7868,6 +7913,11 @@ ${notesHtml}
       const PROC_COOL_MIN = { loaf: SCHED.COOL_HOURS * 60, muffin: SCHED.COOL_HOURS * 60, bagel: SCHED.COOL_HOURS * 60, focaccia: FOCACCIA_COOL_MIN, simple: simpleCoolMin, enriched: enrichedCoolMin + (enrichedGlaze ? enrichedGlazeMin : 0) };
       const PROC_RECIPES  = { loaf: loafRecipes, muffin: muffinRecipes, bagel: bagelRecipes, focaccia: focacciaRecipes, simple: simpleRecipes, enriched: enrichedRecipes };
       const PROC_PROCESS  = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia', simple: 'simple', enriched: 'enriched' };
+      // Warnings reference recipe names (what the user knows), not the backend process.
+      const recipeLabel = (kind) => {
+        const rs = PROC_RECIPES[kind] || [];
+        return rs.length ? rs.map(r => r.name).join(', ') : PROC_LABEL[kind];
+      };
 
       const slotTemp = (kind) => {
         const rs = PROC_RECIPES[kind] || [];
@@ -7955,7 +8005,7 @@ ${notesHtml}
           sequenceOven(fromId); sequenceOven(o.id);
           if (!overflows(it) && ovenFeasible(o.id)) {
             warnings.push({
-              msg: `${PROC_LABEL[it.kind]} moved to ${ovenName(o.id)} — its preferred oven (${ovenName(fromId)}) was busy and couldn't finish it by the deadline.`,
+              msg: `${recipeLabel(it.kind)} moved to ${ovenName(o.id)} — its preferred oven (${ovenName(fromId)}) was busy and couldn't finish it by the deadline.`,
               issue: 'oven-fallback', kind: it.kind, type: 'info',
             });
             break; // keep the move
@@ -7978,9 +8028,9 @@ ${notesHtml}
           const bufMin = curr.s.tempChangeBefore ? curr.s.tempChangeBefore.min : 0;
           if (curr.deadlineMs != null && curr.s.packageReady.getTime() > curr.deadlineMs) {
             const overMin = Math.round((curr.s.packageReady.getTime() - curr.deadlineMs) / 60000);
-            warnings.push({ msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}, but now ends ${overMin} min past its deadline.`, issue: 'oven-overlap-late', kind: curr.kind, type: 'info' });
+            warnings.push({ msg: `Oven conflict${ovenTag}: ${recipeLabel(curr.kind)} bakes after ${recipeLabel(prev.kind)}, but now ends ${overMin} min past its deadline.`, issue: 'oven-overlap-late', kind: curr.kind, type: 'info' });
           } else {
-            warnings.push({ msg: `Oven conflict${ovenTag}: ${PROC_LABEL[curr.kind]} bakes after ${PROC_LABEL[prev.kind]}${bufMin > 0 ? ` (incl. ${bufMin} min temp change to ${curr.temp}°F)` : ''}.`, issue: 'oven-shifted', kind: curr.kind, type: 'info' });
+            warnings.push({ msg: `Oven conflict${ovenTag}: ${recipeLabel(curr.kind)} bakes after ${recipeLabel(prev.kind)}${bufMin > 0 ? ` (incl. ${bufMin} min temp change to ${curr.temp}°F)` : ''}.`, issue: 'oven-shifted', kind: curr.kind, type: 'info' });
           }
         }
       });
@@ -8776,12 +8826,16 @@ ${notesHtml}
     if (muffinSlot) readyEntries.push({ time: muffinSlot.packageReady, label: 'Muffins', process: 'muffin' });
     if (bagelSlot) readyEntries.push({ time: bagelSlot.packageReady, label: 'Bagels', process: 'bagel' });
     if (focacciaSlot) readyEntries.push({ time: focacciaSlot.packageReady, label: 'Focaccia', process: 'focaccia' });
-    const allReadyClose = readyEntries.every(e => Math.abs(e.time - readyEntries[0].time) < 60 * 1000);
-    if (readyEntries.length === 1 || allReadyClose) {
-      events.push({ time: readyEntries[0].time, title: 'Package & ready for sale', detail: '', process: 'shared' });
-    } else {
-      for (const e of readyEntries) {
-        events.push({ time: e.time, title: `${e.label} ready for sale`, detail: '', process: e.process });
+    // Shared "ready for sale" summary for the sourdough/focaccia processes. Simple and
+    // enriched emit their own ready events, so this is skipped when only those are planned.
+    if (readyEntries.length > 0) {
+      const allReadyClose = readyEntries.every(e => Math.abs(e.time - readyEntries[0].time) < 60 * 1000);
+      if (readyEntries.length === 1 || allReadyClose) {
+        events.push({ time: readyEntries[0].time, title: 'Package & ready for sale', detail: '', process: 'shared' });
+      } else {
+        for (const e of readyEntries) {
+          events.push({ time: e.time, title: `${e.label} ready for sale`, detail: '', process: e.process });
+        }
       }
     }
 
@@ -9148,14 +9202,21 @@ ${notesHtml}
     const bagelColdProofHours = bagelColdProofWindow.min;
     const bagelColdProofMaxHr = bagelColdProofWindow.max;
 
-    const result = buildSchedule({
-      loafDeadline, muffinDeadline, bagelDeadline, focacciaDeadline,
-      loafColdProofHours, muffinColdProofHours, bagelColdProofHours,
-      loafBakeTime, muffinBakeTime, bagelBakeTime, focacciaBakeTime,
-      loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr,
-      bagelBatchSize,
-      simpleDeadline, simpleBakeTime, enrichedDeadline, enrichedBakeTime,
-    });
+    let result;
+    try {
+      result = buildSchedule({
+        loafDeadline, muffinDeadline, bagelDeadline, focacciaDeadline,
+        loafColdProofHours, muffinColdProofHours, bagelColdProofHours,
+        loafBakeTime, muffinBakeTime, bagelBakeTime, focacciaBakeTime,
+        loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr,
+        bagelBatchSize,
+        simpleDeadline, simpleBakeTime, enrichedDeadline, enrichedBakeTime,
+      });
+    } catch (err) {
+      console.error('Schedule build failed:', err);
+      out.innerHTML = '<p class="muted">Couldn’t build the schedule: ' + escapeHtml((err && err.message) || String(err)) + '</p>';
+      return;
+    }
     _scheduleResult = result;
     const anchors = getAnchors();
     const anchoredTitles = applyAnchorsToEvents(result.events, anchors);
