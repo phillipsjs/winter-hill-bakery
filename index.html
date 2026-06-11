@@ -649,6 +649,7 @@
     border-radius: 2px;
     overflow: hidden;
   }
+  .schedule-row[data-stage="prep"]::before,   .schedule-event[data-stage="prep"]::before,   .stage-group[data-stage="prep"]::before   { background: #6b7280; }
   .schedule-row[data-stage="levain"]::before, .schedule-event[data-stage="levain"]::before, .stage-group[data-stage="levain"]::before { background: #d97706; }
   .schedule-row[data-stage="mix"]::before,    .schedule-event[data-stage="mix"]::before,    .stage-group[data-stage="mix"]::before    { background: #0e7490; }
   .schedule-row[data-stage="fold"]::before,   .schedule-event[data-stage="fold"]::before,   .stage-group[data-stage="fold"]::before   { background: #7c3aed; }
@@ -8948,14 +8949,13 @@ ${notesHtml}
         cLabel = cNames.join(', ');
       }
       const shapeStart = addMinutes(simpleSlot.firstBakeStart, -simpleShapeMin);
-      // Each mix batch goes into the fridge right after it's mixed; chill is a MINIMUM,
-      // so only the LAST batch mixed needs the full chill before shaping (batches mixed
-      // earlier just chill longer, which is fine). So back up from shape by chill + mixing.
+      // Each batch is weighed, mixed, then goes straight into the fridge. Chill is a
+      // MINIMUM, so only the LAST batch mixed needs the full chill before shaping
+      // (earlier batches just chill longer). Back up from shape by chill + per-batch prep.
+      const WEIGH = SCHED.WEIGH_MIN_PER_RECIPE;
+      const perBatchPrep = WEIGH + simpleTmpl.mixMin;
       const mixEndTarget = chilling ? addMinutes(shapeStart, -chillMin) : shapeStart;
-      const mixStart = addMinutes(mixEndTarget, -simpleMixBatches * simpleTmpl.mixMin);
-      const simpleWeighIngs = simpleRecipes.flatMap(r => ingsForUnits(r, plan[r.id] || 0));
-      events.push({ time: addMinutes(mixStart, -SCHED.WEIGH_MIN_PER_RECIPE), title: `Weigh out ${simpleNames} ingredients`, detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'simple', stage: 'mix', activeStep: true, batchIngredients: simpleWeighIngs });
-      // One mix step (+ its own chill) per mixer batch, per recipe.
+      const prepStart = addMinutes(mixEndTarget, -simpleMixBatches * perBatchPrep);
       let simpleMixIdx = 0;
       simpleRecipes.forEach(r => {
         const mx = mixerForRecipe(r);
@@ -8965,14 +8965,21 @@ ${notesHtml}
         const rBatches = Math.max(1, Math.ceil(count / Math.max(1, perBatch)));
         for (let b = 0; b < rBatches; b++) {
           const batchUnits = Math.max(0, Math.min(perBatch, count - b * perBatch));
-          const mt = addMinutes(mixStart, simpleMixIdx * simpleTmpl.mixMin);
           const unit = r.unit || 'item';
-          const batchSuffix = rBatches > 1 ? ` — batch ${b + 1} of ${rBatches}` : '';
+          const batchSuffix = simpleMixBatches > 1 ? ` — batch ${b + 1} of ${rBatches}` : '';
+          const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
+          const t0 = addMinutes(prepStart, simpleMixIdx * perBatchPrep);
+          // Weigh out just this batch's ingredients (prep), then mix, then fridge.
           events.push({
-            time: mt,
-            title: `Mix ${r.name}${batchSuffix}`,
-            detail: `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'} · ${simpleTmpl.mixMin} min active${chilling ? ' · then into the fridge' : ''}`,
-            process: 'simple', stage: 'mix', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits),
+            time: t0, title: `Weigh out ${r.name}${batchSuffix} ingredients`,
+            detail: `${unitsLabel} · ${WEIGH} min`,
+            process: 'simple', stage: 'prep', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits),
+          });
+          const mt = addMinutes(t0, WEIGH);
+          events.push({
+            time: mt, title: `Mix ${r.name}${batchSuffix}`,
+            detail: `${unitsLabel} · ${simpleTmpl.mixMin} min active${chilling ? ' · then into the fridge' : ''}`,
+            process: 'simple', stage: 'mix', activeStep: true,
           });
           if (chilling) {
             events.push({
@@ -9008,9 +9015,9 @@ ${notesHtml}
       const shapeStart = addMinutes(enrichedSlot.firstBakeStart, -proofMin);
       const bulkEnd = addMinutes(shapeStart, -enrichedShapeMin);
       const bulkStart = addMinutes(bulkEnd, -enrichedBulkMin);
-      const mixStart = addMinutes(bulkStart, -enrichedMixBatches * enrichedTmpl.mixMin);
-      const enrichedWeighIngs = enrichedRecipes.flatMap(r => ingsForUnits(r, plan[r.id] || 0));
-      events.push({ time: addMinutes(mixStart, -SCHED.WEIGH_MIN_PER_RECIPE), title: `Weigh out ${enrichedNames} ingredients`, detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'enriched', stage: 'mix', activeStep: true, batchIngredients: enrichedWeighIngs });
+      const WEIGH = SCHED.WEIGH_MIN_PER_RECIPE;
+      const perBatchPrep = WEIGH + enrichedTmpl.mixMin;
+      const prepStart = addMinutes(bulkStart, -enrichedMixBatches * perBatchPrep);
       let enrichedMixIdx = 0;
       enrichedRecipes.forEach(r => {
         const mx = mixerForRecipe(r);
@@ -9020,14 +9027,21 @@ ${notesHtml}
         const rBatches = Math.max(1, Math.ceil(count / Math.max(1, perBatch)));
         for (let b = 0; b < rBatches; b++) {
           const batchUnits = Math.max(0, Math.min(perBatch, count - b * perBatch));
-          const mt = addMinutes(mixStart, enrichedMixIdx * enrichedTmpl.mixMin);
           const lastMix = enrichedMixIdx === enrichedMixBatches - 1;
-          const batchSuffix = rBatches > 1 ? ` — batch ${b + 1} of ${rBatches}` : '';
+          const batchSuffix = enrichedMixBatches > 1 ? ` — batch ${b + 1} of ${rBatches}` : '';
           const unit = r.unit || 'unit';
+          const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
+          const t0 = addMinutes(prepStart, enrichedMixIdx * perBatchPrep);
+          events.push({
+            time: t0, title: `Weigh out ${r.name}${batchSuffix} ingredients`,
+            detail: `${unitsLabel} · ${WEIGH} min`,
+            process: 'enriched', stage: 'prep', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits),
+          });
+          const mt = addMinutes(t0, WEIGH);
           events.push({
             time: mt, title: `Mix & knead ${r.name}${batchSuffix}`,
-            detail: `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'} · ${enrichedTmpl.mixMin} min active${lastMix ? ` · then ${enrichedBulkMin} min bulk rise` : ''}`,
-            process: 'enriched', stage: 'mix', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits),
+            detail: `${unitsLabel} · ${enrichedTmpl.mixMin} min active${lastMix ? ` · then ${enrichedBulkMin} min bulk rise` : ''}`,
+            process: 'enriched', stage: 'mix', activeStep: true,
           });
           enrichedMixIdx++;
         }
@@ -9140,7 +9154,8 @@ ${notesHtml}
     if (ev.stage) return ev.stage; // event carries its own stage (simple/enriched use this)
     const t = ev.title;
     if (/^Levain Build/.test(t)) return 'levain';
-    if (/^(Mill |Weigh out|Start autolyse|Mix in salt|Mix muffin|Mix bagel|Mix focaccia|Mix simple|Mix & knead)/.test(t)) return 'mix';
+    if (/^(Mill |Weigh )/.test(t)) return 'prep';
+    if (/^(Start autolyse|Mix in salt|Mix muffin|Mix bagel|Mix focaccia|Mix simple|Mix & knead)/.test(t)) return 'mix';
     if (/^Stretch & fold/.test(t)) return 'fold';
     if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels|Shape focaccia|Shape \/ portion|Shape enriched)/.test(t)) return 'shape';
     if (/^Chill \/ rest/.test(t)) return 'chill';
