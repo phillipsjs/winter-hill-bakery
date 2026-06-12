@@ -9449,6 +9449,52 @@ ${notesHtml}
   // that group's loaves are active, with the non-loaf processes (and the shared levain)
   // riding along with the EARLIEST group — then merge. A single loaf deadline takes the
   // plain single-call path, so existing schedules stay byte-identical.
+  // Doughs (by ratio signature) the baker has opted to combine into one staggered-bake batch.
+  const COMBINE_DOUGHS_KEY = 'whb-combine-doughs-v1';
+  function loadCombineDoughs() {
+    try { const a = JSON.parse(localStorage.getItem(COMBINE_DOUGHS_KEY) || '[]'); return new Set(Array.isArray(a) ? a : []); }
+    catch (e) { return new Set(); }
+  }
+  function saveCombineDoughs(set) {
+    const a = [...set];
+    if (a.length) localStorage.setItem(COMBINE_DOUGHS_KEY, JSON.stringify(a));
+    else localStorage.removeItem(COMBINE_DOUGHS_KEY);
+  }
+  function toggleCombineDough(btn) {
+    const sig = btn && btn.dataset ? btn.dataset.combineSig : null;
+    if (!sig) return;
+    const set = loadCombineDoughs();
+    if (set.has(sig)) set.delete(sig); else set.add(sig);
+    saveCombineDoughs(set);
+    renderSchedule();
+  }
+
+  // Schedule a COMBINED unit (same-dough recipes across close deadlines) as ONE dough with
+  // staggered bakes: a shared prep call (sized for the full dough, anchored to the earliest
+  // deadline) supplies everything except the loaf bakes, and one bake call per recipe
+  // (anchored to its own deadline) supplies that recipe's bake from the single fridged batch.
+  function scheduleCombinedUnit(unit, baseOpts, rd, carryNonLoaf, fullPlan, dlMs) {
+    const sorted = [...unit.recipes].sort((a, b) => (dlMs(a) || 0) - (dlMs(b) || 0));
+    const ids = new Set(sorted.map(r => r.id));
+    const isLoafBake = (ev) => { if (ev.process !== 'loaf') return false; const s = getEventStage(ev); return s === 'bake' || s === 'done'; };
+    const prepPlan = {};
+    recipes.forEach(r => {
+      const c = fullPlan[r.id] || 0; if (c <= 0) return;
+      if (getProcessType(r) === 'sourdough-loaf') { if (ids.has(r.id)) prepPlan[r.id] = c; }
+      else if (carryNonLoaf) prepPlan[r.id] = c;
+    });
+    plan = prepPlan;
+    const prepRes = buildSchedule({ ...baseOpts, loafDeadline: rd[sorted[0].id] || baseOpts.loafDeadline });
+    const events = prepRes.events.filter(ev => !isLoafBake(ev)); // shared prep, no loaf bakes
+    sorted.forEach(r => {
+      const bp = {}; bp[r.id] = fullPlan[r.id] || 0;
+      plan = bp;
+      const br = buildSchedule({ ...baseOpts, loafDeadline: rd[r.id] || baseOpts.loafDeadline });
+      br.events.forEach(ev => { if (isLoafBake(ev)) events.push(ev); }); // this recipe's bake at its deadline
+    });
+    return { ...prepRes, events };
+  }
+
   function buildScheduleAcrossLoafGroups(baseOpts) {
     const rd = baseOpts.recipeDeadlines || {};
     const dlMs = (r) => { const d = rd[r.id] || baseOpts.loafDeadline; return d ? new Date(d).getTime() : null; };
@@ -9462,53 +9508,84 @@ ${notesHtml}
     const groups = [...groupsMap.values()].sort((a, b) => (a.ms || 0) - (b.ms || 0));
     if (groups.length <= 1) return buildSchedule(baseOpts);
 
+    const windowWidthHr = Math.max(0, (Number(baseOpts.loafColdProofMaxHr) || 0) - (Number(baseOpts.loafColdProofHours) || 0));
+    const combineSigs = loadCombineDoughs();
+    // Units start one-per-deadline-group; merge groups that share a combine-flagged dough
+    // signature (within the cold-proof window) into a single combined staggered unit.
+    let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, combined: false }));
+    if (combineSigs.size && windowWidthHr > 0) {
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (let i = 0; i < units.length && !changed; i++) {
+          for (let j = i + 1; j < units.length; j++) {
+            const flaggedI = new Set(units[i].recipes.map(ratioSignature).filter(s => combineSigs.has(s)));
+            if (!flaggedI.size || !units[j].recipes.some(r => flaggedI.has(ratioSignature(r)))) continue;
+            if (Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 > windowWidthHr) continue;
+            units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), combined: true };
+            units.splice(j, 1); changed = true; break;
+          }
+        }
+      }
+    }
+    units.sort((a, b) => (a.ms || 0) - (b.ms || 0));
+
     const fullPlan = plan;
     const results = [];
     try {
-      groups.forEach((g, gi) => {
-        const groupIds = new Set(g.recipes.map(r => r.id));
-        const partPlan = {};
-        recipes.forEach(r => {
-          const c = fullPlan[r.id] || 0;
-          if (c <= 0) return;
-          if (getProcessType(r) === 'sourdough-loaf') { if (groupIds.has(r.id)) partPlan[r.id] = c; }
-          else if (gi === 0) partPlan[r.id] = c; // muffin/bagel/simple/enriched ride with the earliest group
-        });
-        plan = partPlan; // partition the module-level plan for this call (restored in finally)
-        const groupDeadline = rd[g.recipes[0].id] || baseOpts.loafDeadline;
-        results.push({ res: buildSchedule({ ...baseOpts, loafDeadline: groupDeadline }), gi, group: g });
+      units.forEach((u, ui) => {
+        const carryNonLoaf = ui === 0; // non-loaf processes + shared levain ride with the earliest unit
+        if (u.combined) {
+          results.push({ res: scheduleCombinedUnit(u, baseOpts, rd, carryNonLoaf, fullPlan, dlMs), gi: ui, group: u });
+        } else {
+          const ids = new Set(u.recipes.map(r => r.id));
+          const partPlan = {};
+          recipes.forEach(r => {
+            const c = fullPlan[r.id] || 0; if (c <= 0) return;
+            if (getProcessType(r) === 'sourdough-loaf') { if (ids.has(r.id)) partPlan[r.id] = c; }
+            else if (carryNonLoaf) partPlan[r.id] = c;
+          });
+          plan = partPlan; // partition the module-level plan for this call (restored in finally)
+          results.push({ res: buildSchedule({ ...baseOpts, loafDeadline: rd[u.recipes[0].id] || baseOpts.loafDeadline }), gi: ui, group: u });
+        }
       });
     } finally {
       plan = fullPlan; // ALWAYS restore the real plan
     }
     const merged = mergeLoafGroupResults(results);
-    // Flag same-dough recipes split across CLOSE deadlines: they're being made as
-    // separate doughs, but the baker may want one dough with staggered bakes. Threshold
-    // = max(2 hr, the cold-proof window width) — within that, one shaped/fridged batch
-    // could plausibly serve both bakes. Default stays "separate"; this is just a heads-up.
-    // Combining a same-dough pair into one staggered-bake dough is only sound when the
-    // LATER bake still lands inside the cold-proof window (else the second portion
-    // over-proofs). Window width = max − planned cold-proof hours.
-    const windowWidthHr = Math.max(0, (Number(baseOpts.loafColdProofMaxHr) || 0) - (Number(baseOpts.loafColdProofHours) || 0));
+
+    // Heads-up for same-dough recipes split across CLOSE deadlines, with a combine toggle.
     const warnThresholdHr = Math.max(2, windowWidthHr);
+    const warnedSigs = new Set();
     for (let i = 0; i < groups.length; i++) {
       for (let j = i + 1; j < groups.length; j++) {
-        const sigA = new Set(groups[i].recipes.map(ratioSignature));
-        if (!groups[j].recipes.some(r => sigA.has(ratioSignature(r)))) continue;
+        const sharedSig = groups[i].recipes.map(ratioSignature).find(s => groups[j].recipes.some(r => ratioSignature(r) === s));
+        if (!sharedSig || warnedSigs.has(sharedSig)) continue;
         const diffHr = Math.abs((groups[i].ms || 0) - (groups[j].ms || 0)) / 3600000;
         if (diffHr >= warnThresholdHr || !Number.isFinite(diffHr)) continue;
+        warnedSigs.add(sharedSig);
         const names = [...new Set([...groups[i].recipes, ...groups[j].recipes].map(r => r.name))].join(' & ');
+        if (combineSigs.has(sharedSig)) continue; // combined: no "separate doughs" warning (info shown below)
         const apart = diffHr < 1 ? 'under an hour' : `~${Math.round(diffHr)} hr`;
         const canCombine = windowWidthHr > 0 && diffHr <= windowWidthHr;
         const tail = canCombine
-          ? ` Since both bakes fall within the cold-proof window, you could instead make ONE batch of dough and stagger the bakes.`
-          : ` (Their bakes are too far apart for the cold-proof window to combine into one dough.)`;
+          ? ` Both bakes fit the cold-proof window, so you can make ONE dough and stagger the bakes instead.`
+          : ` (Too far apart for the cold-proof window to combine into one dough.)`;
         merged.warnings.unshift({
           msg: `${names} are the same dough but have deadlines ${apart} apart, so they're being made as SEPARATE doughs (separate mix/fold for each).${tail}`,
-          issue: 'same-dough-close', kind: 'loaf', type: 'info', canCombine,
+          issue: 'same-dough-close', kind: 'loaf', type: 'info', canCombine, combineSig: canCombine ? sharedSig : null,
         });
       }
     }
+    // Info + "separate" toggle for doughs currently combined into one staggered batch.
+    units.filter(u => u.combined).forEach(u => {
+      const sig = u.recipes.map(ratioSignature).find(s => combineSigs.has(s));
+      const names = [...new Set(u.recipes.map(r => r.name))].join(' & ');
+      merged.warnings.unshift({
+        msg: `${names} are baked from ONE dough with staggered bakes (shared mix & fold, then each baked at its own deadline).`,
+        issue: 'same-dough-combined', kind: 'loaf', type: 'info', combineSig: sig, combined: true,
+      });
+    });
     return merged;
   }
 
@@ -9526,7 +9603,7 @@ ${notesHtml}
       out.batches += res.batches || 0;
       mixBatches += res.mixBatches || 0;
       const prefix = `g${gi}~`;
-      const dlLabel = ` · ${fmtDl(group.ms)}`;
+      const dlLabel = group.combined ? ' · one dough (staggered)' : ` · ${fmtDl(group.ms)}`;
       const singleDough = !(res.loafColumns && res.loafColumns.length);
       let cols = (res.loafColumns || []).map(c => ({ key: prefix + c.key, label: c.label + dlLabel }));
       if (!cols.length) {
@@ -10027,7 +10104,9 @@ ${notesHtml}
     // loaf steps (mix/fold/bake) carry no columnKey, so they render shared full-width.
     const loafCols = result.loafColumns || [];
     if (hasLoaves) {
-      if (loafCols.length > 1) loafCols.forEach(c => columns.push({ key: c.key, label: c.label }));
+      // Merged multi-group/combined results carry explicit loaf columns (≥1, namespaced);
+      // a plain single-call result has none (single dough) → fall back to one 'loaf' column.
+      if (loafCols.length >= 1) loafCols.forEach(c => columns.push({ key: c.key, label: c.label }));
       else columns.push({ key: 'loaf', label: breadColLabel('loaf') });
     }
     if (hasMuffins) columns.push({ key: 'muffin', label: breadColLabel('muffin') });
@@ -10069,6 +10148,10 @@ ${notesHtml}
         const hlTitles = getHighlightTitlesForWarning(w, result.events);
         if (hlTitles.length) {
           block += `<br><button class="schedule-highlight-btn" data-titles="${escapeAttr(JSON.stringify(hlTitles))}" onclick="highlightScheduleStep(this)">↓ Show in schedule</button>`;
+        }
+        if (w.combineSig) {
+          const label = w.combined ? '↺ Make separate doughs' : '⊕ Combine into one dough (staggered bakes)';
+          block += `<br><button class="schedule-highlight-btn" data-combine-sig="${escapeAttr(w.combineSig)}" onclick="toggleCombineDough(this)">${label}</button>`;
         }
         return block + `</div>`;
       }).join('');
