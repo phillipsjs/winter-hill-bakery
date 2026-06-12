@@ -9481,7 +9481,27 @@ ${notesHtml}
     } finally {
       plan = fullPlan; // ALWAYS restore the real plan
     }
-    return mergeLoafGroupResults(results);
+    const merged = mergeLoafGroupResults(results);
+    // Flag same-dough recipes split across CLOSE deadlines: they're being made as
+    // separate doughs, but the baker may want one dough with staggered bakes. Threshold
+    // = max(2 hr, the cold-proof window width) — within that, one shaped/fridged batch
+    // could plausibly serve both bakes. Default stays "separate"; this is just a heads-up.
+    const thresholdHr = Math.max(2, (Number(baseOpts.loafColdProofMaxHr) || 0) - (Number(baseOpts.loafColdProofHours) || 0));
+    for (let i = 0; i < groups.length; i++) {
+      for (let j = i + 1; j < groups.length; j++) {
+        const sigA = new Set(groups[i].recipes.map(ratioSignature));
+        if (!groups[j].recipes.some(r => sigA.has(ratioSignature(r)))) continue;
+        const diffHr = Math.abs((groups[i].ms || 0) - (groups[j].ms || 0)) / 3600000;
+        if (diffHr >= thresholdHr || !Number.isFinite(diffHr)) continue;
+        const names = [...new Set([...groups[i].recipes, ...groups[j].recipes].map(r => r.name))].join(' & ');
+        const apart = diffHr < 1 ? 'under an hour' : `~${Math.round(diffHr)} hr`;
+        merged.warnings.unshift({
+          msg: `${names} are the same dough but have deadlines ${apart} apart, so they're being made as SEPARATE doughs (separate mix/fold for each). If you'd rather make one batch of dough and just bake them at different times, that's not auto-applied — set them to the same deadline to combine into one dough, or tell us to stagger one dough's bakes.`,
+          issue: 'same-dough-close', kind: 'loaf', type: 'info',
+        });
+      }
+    }
+    return merged;
   }
 
   // Merge per-loaf-group schedule results into one. Loaf column keys + loaf event
