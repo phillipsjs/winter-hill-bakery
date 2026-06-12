@@ -9269,11 +9269,14 @@ ${notesHtml}
         process: 'bagel',
       });
       if (bagelColdProofHours > 0) {
+        // Bagels cold-proof on a tray/sheet pan after shaping.
+        const bagelPanNames = panNamesForRecipesG(bagelRecipes);
+        const bagelContainer = bagelPanNames.length ? bagelPanNames.join(' + ') : 'sheet tray';
         events.push({
           time: bagelTimes.bagelFridgeIn,
           title: 'Bagels into fridge — cold proof',
           detail: `${bagelColdProofHours} hr in fridge · boiled straight from cold`,
-          process: 'bagel',
+          process: 'bagel', container: bagelContainer,
         });
       }
     }
