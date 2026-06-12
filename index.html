@@ -2192,6 +2192,10 @@
     OVEN_LOAD_MIN: 10,
     OVEN_PREHEAT_MIN: 90,
     REHEAT_MIN: 5,
+    // If an oven sits idle longer than this between two bakes, it's treated as
+    // cooled to room temp: the earlier bake gets an "oven off" step and the later
+    // one preheats from cold instead of just adjusting temperature.
+    OVEN_COOL_GAP_MIN: 60,
     OVEN_CAPACITY: 12,
     COOL_HOURS: 1,
     LEVAIN_REFRESH_ACTIVE_MIN: 2,
@@ -8329,12 +8333,22 @@ ${notesHtml}
           const curr = list[i];
           let start = new Date(curr.desiredFirst);
           let tc = null;
+          curr.s.turnOffAfter = false;
           if (i > 0) {
             const prev = list[i - 1];
-            const buf = ovenTempChangeMin(prev.temp, curr.temp);
-            const earliest = new Date(prev.s.lastBakeEnd.getTime() + buf * 60000);
-            if (start < earliest) start = earliest;
-            if (buf > 0) tc = { min: buf, fromTemp: prev.temp, toTemp: curr.temp };
+            const gapMs = curr.desiredFirst.getTime() - prev.s.lastBakeEnd.getTime();
+            if (gapMs > SCHED.OVEN_COOL_GAP_MIN * 60000) {
+              // Big idle gap → oven cools to room temp. The earlier bake turns the
+              // oven off; this bake preheats from cold (no temp-change-from-prev).
+              prev.s.turnOffAfter = true;
+            } else {
+              // Sequential: oven stays hot, so add a temp-change buffer and push the
+              // start past the previous bake if they'd otherwise collide.
+              const buf = ovenTempChangeMin(prev.temp, curr.temp);
+              const earliest = new Date(prev.s.lastBakeEnd.getTime() + buf * 60000);
+              if (start < earliest) start = earliest;
+              if (buf > 0) tc = { min: buf, fromTemp: prev.temp, toTemp: curr.temp };
+            }
           }
           curr.s.firstBakeStart = start;
           curr.s.lastBakeEnd = new Date(start.getTime() + curr.durationMs);
@@ -8345,6 +8359,8 @@ ${notesHtml}
           curr.ovenId = ovenId;
           curr.prevKind = i > 0 ? list[i - 1].kind : null;
         }
+        // The last bake in this oven ends the session — turn the oven off afterward.
+        if (list.length) list[list.length - 1].s.turnOffAfter = true;
       };
 
       // Initial assignment: preferred ovens first (honored), then remaining
@@ -9515,6 +9531,18 @@ ${notesHtml}
           process, columnKey, equip: s.ovenName ? [s.ovenName] : [],
         });
       }
+      // Turn the oven off once its baking is done (or before a long idle gap), so the
+      // schedule doesn't assume it stays hot. The next bake preheats from room temp.
+      if (s && s.turnOffAfter && s.lastBakeEnd) {
+        const ovenLabel = s.ovenName || 'the oven';
+        events.push({
+          time: new Date(s.lastBakeEnd),
+          title: `Turn off ${ovenLabel}`,
+          detail: 'Baking done — oven off, cools to room temp',
+          process, columnKey,
+          equip: s.ovenName ? [s.ovenName] : (singleOvenName ? [singleOvenName] : []),
+        });
+      }
     });
 
     events.sort((a, b) => a.time - b.time);
@@ -9807,7 +9835,7 @@ ${notesHtml}
     if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels|Shape focaccia|Shape \/ portion|Shape enriched)/.test(t)) return 'shape';
     if (/^Chill \/ rest/.test(t)) return 'chill';
     if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge|Pan rise|Final proof|Bulk rise)/.test(t)) return 'proof';
-    if (/^(Turn on oven|Set .* to \d|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
+    if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
   }
