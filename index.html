@@ -574,19 +574,52 @@
     background: #faf4e8;
     border: 1px solid #d6c79f;
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 8px 28px 8px 10px;
     font-size: 0.85rem;
     color: #6a4a10;
     margin: 0 0 12px;
+    position: relative;
   }
   .schedule-info {
     background: #e8f0e8;
     border: 1px solid #94b496;
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 8px 28px 8px 10px;
     font-size: 0.85rem;
     color: #1f4d2e;
     margin: 0 0 12px;
+    position: relative;
+  }
+  button.schedule-dismiss-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: inherit;
+    opacity: 0.5;
+    cursor: pointer;
+    font-size: 1.1rem;
+    border-radius: 4px;
+  }
+  button.schedule-dismiss-btn:hover { opacity: 1; background: rgba(0,0,0,0.06); }
+  .schedule-dismissed-note {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  button.schedule-linklike {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent-dark);
+    cursor: pointer;
+    font-size: inherit;
+    text-decoration: underline;
   }
   /* Stage color coding — vertical label pill per bake phase */
   .schedule-row[data-stage], .schedule-event[data-stage], .stage-group[data-stage] {
@@ -9511,6 +9544,33 @@ ${notesHtml}
     renderSchedule();
   }
 
+  // Dismissed schedule warnings/notices. Keyed by the warning's message text, so a
+  // dismissed notice stays hidden across re-renders but reappears if the underlying
+  // situation (and thus its wording) changes.
+  const DISMISSED_WARNINGS_KEY = 'whb-dismissed-warnings-v1';
+  function loadDismissedWarnings() {
+    try { const a = JSON.parse(localStorage.getItem(DISMISSED_WARNINGS_KEY) || '[]'); return new Set(Array.isArray(a) ? a : []); }
+    catch (e) { return new Set(); }
+  }
+  function saveDismissedWarnings(set) {
+    const a = [...set];
+    if (a.length) localStorage.setItem(DISMISSED_WARNINGS_KEY, JSON.stringify(a));
+    else localStorage.removeItem(DISMISSED_WARNINGS_KEY);
+  }
+  function warningKey(w) { return w && w.msg ? String(w.msg) : ''; }
+  function dismissWarning(btn) {
+    const key = btn && btn.dataset ? btn.dataset.warnKey : null;
+    if (!key) return;
+    const set = loadDismissedWarnings();
+    set.add(key);
+    saveDismissedWarnings(set);
+    renderSchedule();
+  }
+  function restoreDismissedWarnings() {
+    saveDismissedWarnings(new Set());
+    renderSchedule();
+  }
+
   // Schedule a COMBINED unit (same-dough recipes across close deadlines) as ONE dough with
   // staggered bakes: a shared prep call (sized for the full dough, anchored to the earliest
   // deadline) supplies everything except the loaf bakes, and one bake call per recipe
@@ -10184,9 +10244,14 @@ ${notesHtml}
 
     let html = '';
     if (result.warnings && result.warnings.length) {
-      html += result.warnings.map(w => {
+      const dismissed = loadDismissedWarnings();
+      const visibleWarnings = result.warnings.filter(w => !dismissed.has(warningKey(w)));
+      const hiddenCount = result.warnings.length - visibleWarnings.length;
+      html += visibleWarnings.map(w => {
         const blockClass = w.type === 'info' ? 'schedule-info' : 'schedule-warn';
-        let block = `<div class="${blockClass}">${escapeHtml(w.msg)}`;
+        let block = `<div class="${blockClass}">`;
+        block += `<button class="schedule-dismiss-btn" title="Dismiss this notice" data-warn-key="${escapeAttr(warningKey(w))}" onclick="dismissWarning(this)">&times;</button>`;
+        block += escapeHtml(w.msg);
         const hlTitles = getHighlightTitlesForWarning(w, result.events);
         if (hlTitles.length) {
           block += `<br><button class="schedule-highlight-btn" data-titles="${escapeAttr(JSON.stringify(hlTitles))}" onclick="highlightScheduleStep(this)">↓ Show in schedule</button>`;
@@ -10197,6 +10262,9 @@ ${notesHtml}
         }
         return block + `</div>`;
       }).join('');
+      if (hiddenCount > 0) {
+        html += `<div class="schedule-dismissed-note">${hiddenCount} notice${hiddenCount > 1 ? 's' : ''} hidden · <button class="schedule-linklike" onclick="restoreDismissedWarnings()">Show all</button></div>`;
+      }
     }
     const countParts = [];
     if (result.totalLoaves > 0) countParts.push(`${result.totalLoaves} loaves`);
