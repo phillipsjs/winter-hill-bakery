@@ -1297,7 +1297,7 @@
         </select>
       </div>
 
-      <details id="recipe-deadlines-details" style="margin-top:12px;display:none">
+      <details id="recipe-deadlines-details" open style="margin-top:12px;display:none">
         <summary style="cursor:pointer;font-weight:600;font-size:0.9rem">Per-recipe deadlines <span class="muted" style="font-weight:400;font-size:0.85rem">(optional — leave blank to use the default)</span></summary>
         <div id="recipe-deadlines-list" style="margin-top:8px"></div>
       </details>
@@ -5580,6 +5580,8 @@ ${notesHtml}
     savePlan();
     renderTotals();
     renderFinancials();
+    // Keep the per-recipe deadline list in sync (it appears once 2+ recipes are in plan).
+    if (typeof renderRecipeDeadlines === 'function') renderRecipeDeadlines();
   }
 
   // Per-recipe static pricing data used by renderFinancials + recalcFinancialsTotals.
