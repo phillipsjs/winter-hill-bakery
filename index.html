@@ -704,7 +704,7 @@
     white-space: nowrap; width: 110px; }
   .bs-step strong { font-size: 0.88rem; }
   .bs-detail { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
-  .bs-recipes { margin: 3px 0 1px; display: flex; flex-wrap: wrap; gap: 3px; }
+  .bs-recipes { margin: 5px 0 1px; display: flex; flex-wrap: wrap; gap: 3px; }
   .bs-recipe-tag {
     display: inline-block;
     font-size: 0.68rem;
@@ -10874,10 +10874,9 @@ ${notesHtml}
           ? `<div class="bs-recipes">${recipeNames.map(n => `<span class="bs-recipe-tag">${escapeHtml(n)}</span>`).join('')}</div>`
           : '';
         const stepCell = `
-          <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}</td>
+          <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}${recipesLabel}</td>
           <td class="bs-step"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
             <strong>${escapeHtml(titleText)}</strong>
-            ${recipesLabel}
             ${detailText ? `<div class="bs-detail">${escapeHtml(detailText)}</div>` : ''}
           </td>`;
         if (!batches) {
