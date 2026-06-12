@@ -676,6 +676,9 @@
   .bs-ings table td { padding: 1px 4px; border: none; }
   .bs-ings .bs-recipe-label { font-size: 0.75rem; font-weight: 600;
     color: var(--accent-dark); margin-bottom: 2px; }
+  .bs-ings .bs-batch-note { font-size: 0.72rem; font-weight: 600; font-style: italic;
+    color: var(--muted); margin: 0 0 2px; }
+  .bs-ings .bs-batch-gap { height: 6px; }
   .bs-container { width: 130px; font-size: 0.78rem; color: var(--muted); white-space: pre-line; vertical-align: top; }
   .bs-stage { width: 24px; padding: 2px; display: flex; align-items: center; justify-content: center; border-left: 1px solid #ccc; }
   .bs-stage-label {
@@ -8470,6 +8473,14 @@ ${notesHtml}
       autolyseStart = addMinutes(mixTime, -(loafAgg.autolyseMin + (containerInfo.length - 1) * SCHED.AUTOLYSE_ACTIVE_MIN));
     }
     const numContainers = containerInfo.length;
+    // Per-container batch breakdown for the bake sheet, so batched mixing steps can
+    // show ingredients per batch (one mix per container) instead of overall totals.
+    const loafBatchContents = numContainers > 1
+      ? containerInfo.map((c, i) => ({
+          label: (c.containerName ? `${c.containerName} ` : 'Container ') + `${i + 1} of ${numContainers}`,
+          contents: (c.contents || []).map(x => ({ recipe: x.recipe, count: x.count })),
+        }))
+      : null;
     const muffinMixBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
     const bagelMixBatches = totalBagels > 0 ? Math.ceil(totalBagels / SCHED.BAGEL_MIXER_CAPACITY) : 0;
     const focacciaMixBatches = totalFocaccia > 0 ? 1 : 0;
@@ -8822,7 +8833,7 @@ ${notesHtml}
       detail: (numContainers > 1
         ? `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix × ${numContainers} containers = ${SCHED.AUTOLYSE_ACTIVE_MIN * numContainers} min active · then ${autolyseRestMin} min rest`
         : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`) + sharedContainerStr,
-      process: 'loaf', colDetails: prepColDetails,
+      process: 'loaf', colDetails: prepColDetails, mixBatchContents: loafBatchContents,
     });
     events.push({
       time: mixTime,
@@ -8830,7 +8841,7 @@ ${notesHtml}
       detail: (numContainers > 1
         ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`
         : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`) + sharedContainerStr,
-      process: 'loaf', colDetails: prepColDetails,
+      process: 'loaf', colDetails: prepColDetails, mixBatchContents: loafBatchContents,
     });
     for (let k = 0; k < loafAgg.foldsCount; k++) {
       const foldTime = addMinutes(firstFoldTime, k * SCHED.FOLD_INTERVAL_MIN);
@@ -9092,6 +9103,7 @@ ${notesHtml}
         title: 'Mix muffin dough',
         detail: muffinMixDetail,
         process: 'muffin',
+        mixBatchCount: muffinMixBatches > 1 ? muffinMixBatches : undefined,
       });
       const muffinShapeDetail = muffinRecipes.length === 1
         ? `${getRecipeSpec(muffinRecipes[0]).shapeMinPerUnit} min × ${totalMuffins} muffins = ${totalMuffinShapeMin} min total`
@@ -9140,6 +9152,7 @@ ${notesHtml}
         title: 'Mix bagel dough',
         detail: bagelMixDetail,
         process: 'bagel',
+        mixBatchCount: bagelMixBatches > 1 ? bagelMixBatches : undefined,
       });
       const bagelShapeDetail = bagelRecipes.length === 1
         ? `${getRecipeSpec(bagelRecipes[0]).shapeMinPerUnit} min × ${totalBagels} bagels = ${totalBagelShapeMin} min total`
@@ -10511,14 +10524,67 @@ ${notesHtml}
       return null;
     };
 
+    const recipeBlockHtml = (name, count, rows) =>
+      `<div class="bs-recipe-label">${escapeHtml(name)} &times; ${count}</div>${ingTableHtml(rows)}`;
+
+    // Build per-batch ingredient blocks for a batched mixing step (one mix per
+    // mixer batch or per proofing container). Returns null when not batched.
+    const batchedBlocks = (ev, ings) => {
+      if (ings.type !== 'byRecipe' || !ings.recipes.length) return null;
+      // Per-unit ingredient amounts for each recipe in this (already-filtered) step.
+      const perUnit = {};
+      ings.recipes.forEach(r => {
+        perUnit[r.name] = { count: r.count, rows: r.ingredients };
+      });
+      // Determine each batch's per-recipe unit counts.
+      let batchSpecs = null;
+      if (Array.isArray(ev.mixBatchContents) && ev.mixBatchContents.length > 1) {
+        // Loaf: one mix per proofing container, with that container's contents.
+        batchSpecs = ev.mixBatchContents.map(b => ({
+          label: b.label,
+          parts: (b.contents || [])
+            .filter(c => perUnit[c.recipe])
+            .map(c => ({ name: c.recipe, count: c.count })),
+        }));
+      } else if (ev.mixBatchCount > 1) {
+        // Muffin/bagel: mixer-limited — split each recipe evenly across batches.
+        const n = ev.mixBatchCount;
+        const splits = {};
+        ings.recipes.forEach(r => { splits[r.name] = splitEvenly(r.count, n); });
+        batchSpecs = Array.from({ length: n }, (_, b) => ({
+          label: `Batch ${b + 1} of ${n}`,
+          parts: ings.recipes
+            .map(r => ({ name: r.name, count: splits[r.name][b] }))
+            .filter(p => p.count > 0),
+        }));
+      }
+      if (!batchSpecs || batchSpecs.every(b => b.parts.length === 0)) return null;
+
+      const renderBatch = spec => spec.parts.map(p => {
+        const src = perUnit[p.name];
+        const rows = src.rows.map(i => ({ name: i.name, grams: (i.grams / Math.max(1, src.count)) * p.count }));
+        return recipeBlockHtml(p.name, p.count, rows);
+      }).join('');
+
+      // If every batch is identical, show one batch and a "repeat" note.
+      const sig = spec => JSON.stringify(spec.parts.map(p => [p.name, p.count]));
+      const allSame = batchSpecs.every(b => sig(b) === sig(batchSpecs[0]));
+      if (allSame) {
+        return `<div class="bs-batch-note">Per batch &middot; repeat ${batchSpecs.length}&times;</div>${renderBatch(batchSpecs[0])}`;
+      }
+      return batchSpecs.map((spec, i) =>
+        `<div class="bs-batch-note">${escapeHtml(spec.label)}</div>${renderBatch(spec)}`
+      ).join('<div class="bs-batch-gap"></div>');
+    };
+
     const renderIngCol = ev => {
       const ings = getEventIngredients(ev);
       if (!ings) return '';
+      const batched = (ev.mixBatchContents || ev.mixBatchCount) ? batchedBlocks(ev, ings) : null;
+      if (batched) return batched;
       if (ings.type === 'simple') return ingTableHtml(ings.rows);
       // byRecipe
-      return ings.recipes.map(r =>
-        `<div class="bs-recipe-label">${escapeHtml(r.name)} &times; ${r.count}</div>${ingTableHtml(r.ingredients)}`
-      ).join('');
+      return ings.recipes.map(r => recipeBlockHtml(r.name, r.count, r.ingredients)).join('');
     };
 
     const loafContainers = (_scheduleResult.loafContainerInfo || []);
