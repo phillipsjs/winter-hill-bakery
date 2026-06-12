@@ -8781,6 +8781,13 @@ ${notesHtml}
     const sharedLevainCont   = sharedLevainTotal  > 0 ? pickLevainContainer(sharedLevainTotal)  : null;
     const muffinLevainCont   = muffinLevainTotal  > 0 ? pickLevainContainer(muffinLevainTotal)  : null;
     const bagelLevainCont    = bagelLevainTotal   > 0 ? pickLevainContainer(bagelLevainTotal)   : null;
+    // Build 1 only makes the seed that goes into Build 2 (the starter share of the
+    // Build 2 ratio), so it's much smaller — size its container separately so a small
+    // refresh isn't sitting in a huge tub.
+    const build1Grams = (total, b2Opt) => { const p = ratioParts(b2Opt); return total * (p.s / p.total); };
+    const sharedLevainB1Cont = sharedLevainTotal > 0 ? pickLevainContainer(build1Grams(sharedLevainTotal, build2Opt)) : null;
+    const muffinLevainB1Cont = (muffinLevainTotal > 0 && muffinBuild2Opt) ? pickLevainContainer(build1Grams(muffinLevainTotal, muffinBuild2Opt)) : null;
+    const bagelLevainB1Cont  = (bagelLevainTotal  > 0 && bagelBuild2Opt)  ? pickLevainContainer(build1Grams(bagelLevainTotal,  bagelBuild2Opt))  : null;
     const levainContainerInfo = {
       shared: sharedLevainCont ? { name: sharedLevainCont.name, grams: sharedLevainTotal } : null,
       muffin: muffinLevainCont ? { name: muffinLevainCont.name, grams: muffinLevainTotal } : null,
@@ -8795,8 +8802,9 @@ ${notesHtml}
         time: levainBuild1EarliestStart,
         timeEnd: levainBuild1LatestStart,
         title: `Levain Build 1 — first refresh${loafLevainSuffix}`,
-        detail: `${build1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1Note}${levainContStr(sharedLevainCont)}`,
+        detail: `${build1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build1Opt.min}–${build1Opt.max} hr${build1Note}${levainContStr(sharedLevainB1Cont)}`,
         process: loafLevainProcess,
+        container: sharedLevainB1Cont ? sharedLevainB1Cont.name : '', equipStrip: levainContStr(sharedLevainB1Cont),
       });
       events.push({
         time: levainBuild2EarliestStart,
@@ -8804,6 +8812,7 @@ ${notesHtml}
         title: `Levain Build 2 — final build${loafLevainSuffix}`,
         detail: `${build2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${build2Opt.min}–${build2Opt.max} hr${build2Note}${levainContStr(sharedLevainCont)}`,
         process: loafLevainProcess,
+        container: sharedLevainCont ? sharedLevainCont.name : '', equipStrip: levainContStr(sharedLevainCont),
       });
     }
     if (useSeparateLevains && muffinBuild1Opt && muffinBuild2Opt) {
@@ -8813,8 +8822,9 @@ ${notesHtml}
         time: muffinLevainBuild1EarliestStart,
         timeEnd: muffinLevainBuild1LatestStart,
         title: 'Levain Build 1 — first refresh (muffins)',
-        detail: `${muffinBuild1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${muffinBuild1Opt.min}–${muffinBuild1Opt.max} hr${mb1Note}${levainContStr(muffinLevainCont)}`,
+        detail: `${muffinBuild1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${muffinBuild1Opt.min}–${muffinBuild1Opt.max} hr${mb1Note}${levainContStr(muffinLevainB1Cont)}`,
         process: 'muffin',
+        container: muffinLevainB1Cont ? muffinLevainB1Cont.name : '', equipStrip: levainContStr(muffinLevainB1Cont),
       });
       events.push({
         time: muffinLevainBuild2EarliestStart,
@@ -8822,6 +8832,7 @@ ${notesHtml}
         title: 'Levain Build 2 — final build (muffins)',
         detail: `${muffinBuild2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${muffinBuild2Opt.min}–${muffinBuild2Opt.max} hr${mb2Note}${levainContStr(muffinLevainCont)}`,
         process: 'muffin',
+        container: muffinLevainCont ? muffinLevainCont.name : '', equipStrip: levainContStr(muffinLevainCont),
       });
     }
     if (useBagelSeparateLevain && bagelBuild1Opt && bagelBuild2Opt) {
@@ -8831,8 +8842,9 @@ ${notesHtml}
         time: bagelLevainBuild1EarliestStart,
         timeEnd: bagelLevainBuild1LatestStart,
         title: 'Levain Build 1 — first refresh (bagels)',
-        detail: `${bagelBuild1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${bagelBuild1Opt.min}–${bagelBuild1Opt.max} hr${bb1Note}${levainContStr(bagelLevainCont)}`,
+        detail: `${bagelBuild1Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${bagelBuild1Opt.min}–${bagelBuild1Opt.max} hr${bb1Note}${levainContStr(bagelLevainB1Cont)}`,
         process: 'bagel',
+        container: bagelLevainB1Cont ? bagelLevainB1Cont.name : '', equipStrip: levainContStr(bagelLevainB1Cont),
       });
       events.push({
         time: bagelLevainBuild2EarliestStart,
@@ -8840,6 +8852,7 @@ ${notesHtml}
         title: 'Levain Build 2 — final build (bagels)',
         detail: `${bagelBuild2Opt.ratio} ratio · ${SCHED.LEVAIN_REFRESH_ACTIVE_MIN} min mix · ripens in ${bagelBuild2Opt.min}–${bagelBuild2Opt.max} hr${bb2Note}${levainContStr(bagelLevainCont)}`,
         process: 'bagel',
+        container: bagelLevainCont ? bagelLevainCont.name : '', equipStrip: levainContStr(bagelLevainCont),
       });
     }
     if (totalLoaves > 0) {
