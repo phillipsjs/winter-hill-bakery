@@ -9499,6 +9499,7 @@ ${notesHtml}
       mixBatches += res.mixBatches || 0;
       const prefix = `g${gi}~`;
       const dlLabel = ` · ${fmtDl(group.ms)}`;
+      const singleDough = !(res.loafColumns && res.loafColumns.length);
       let cols = (res.loafColumns || []).map(c => ({ key: prefix + c.key, label: c.label + dlLabel }));
       if (!cols.length) {
         const names = [...new Set(group.recipes.map(r => r.name))].join(', ');
@@ -9507,7 +9508,13 @@ ${notesHtml}
       out.loafColumns.push(...cols);
       res.events.forEach(ev => {
         const e = { ...ev };
-        if (e.process === 'loaf' && e.columnKey) e.columnKey = prefix + e.columnKey;
+        if (e.process === 'loaf') {
+          // Namespace the per-dough column keys. For a single-dough group, also pull the
+          // aggregated steps (weigh/mill/autolyse/mix/fold — no columnKey) into that
+          // group's one column so they don't render shared/full-width across both groups.
+          if (e.columnKey) e.columnKey = prefix + e.columnKey;
+          else if (singleDough) e.columnKey = prefix + 'loaf';
+        }
         if (e.colDetails) {
           const cd = {};
           Object.keys(e.colDetails).forEach(k => { cd[prefix + k] = e.colDetails[k]; });
