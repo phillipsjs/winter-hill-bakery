@@ -10748,6 +10748,33 @@ ${notesHtml}
       return s.replace(/[\s·|]+$/, '').replace(/\n+$/, '');
     };
 
+    // For a dough mixed once per proofing container, split the step into one row per
+    // container so the container (Equipment) lines up exactly with its ingredient set.
+    // Returns one {equipHtml, ingHtml} per batch, or null when the step isn't split.
+    const getEventBatchRows = ev => {
+      if (!Array.isArray(ev.mixBatchContents) || ev.mixBatchContents.length <= 1) return null;
+      const ings = getEventIngredients(ev);
+      if (!ings || ings.type !== 'byRecipe' || !ings.recipes.length) return null;
+      const perUnit = {};
+      ings.recipes.forEach(r => { perUnit[r.name] = { count: r.count, rows: r.ingredients }; });
+      const n = ev.mixBatchContents.length;
+      const extraEquip = (Array.isArray(ev.equip) ? ev.equip : []).filter(Boolean);
+      return ev.mixBatchContents.map((b, i) => {
+        const parts = (b.contents || []).filter(c => perUnit[c.recipe]).map(c => ({ name: c.recipe, count: c.count }));
+        const ingBlocks = parts.map(p => {
+          const src = perUnit[p.name];
+          const rows = src.rows.map(ig => ({ name: ig.name, grams: (ig.grams / Math.max(1, src.count)) * p.count }));
+          return recipeBlockHtml(p.name, p.count, rows);
+        }).join('');
+        const equipLines = [escapeHtml(b.label)];
+        if (i === 0) extraEquip.forEach(e => equipLines.push(escapeHtml(e)));
+        return {
+          equipHtml: equipLines.join('<br>'),
+          ingHtml: `<div class="bs-batch-note">Batch ${i + 1} of ${n}</div>${ingBlocks}`,
+        };
+      });
+    };
+
     // Group events by day
     const sorted = [..._scheduleResult.events].sort((a, b) => a.time - b.time);
     const groups = [];
@@ -10762,39 +10789,59 @@ ${notesHtml}
     const totalUnits = ingData.byRecipe.reduce((s, r) => s + r.count, 0);
 
     const daysHtml = groups.map((g, gi) => {
-      // Compute rowspan for each event's stage cell.
-      // First event of a consecutive same-stage run gets rowspan=N; the rest get rowspan=0 (omitted).
-      const stageInfo = g.events.map(() => ({ span: 1, emit: true }));
-      for (let si = 0; si < g.events.length; si++) {
-        const stage = getEventStage(g.events[si]);
+      // Each event renders as one row, except a per-container mixing step, which
+      // renders one row per batch (so its container lines up with its ingredients).
+      const eventRows = g.events.map(ev => {
+        const batches = getEventBatchRows(ev);
+        return { ev, batches, rowCount: batches ? batches.length : 1 };
+      });
+      // Stage cell spans a run of consecutive same-stage events; with multi-row
+      // events the rowspan is the SUM of their row counts. Emitted in the run's
+      // first <tr>. No-stage events get an empty cell spanning their own rows.
+      const stageInfo = eventRows.map(() => ({ totalRows: 0, emit: true }));
+      for (let si = 0; si < eventRows.length; si++) {
+        const stage = getEventStage(eventRows[si].ev);
         if (!stage || !stageInfo[si].emit) continue;
-        let sj = si + 1;
-        while (sj < g.events.length && getEventStage(g.events[sj]) === stage) {
+        let sj = si + 1, rows = eventRows[si].rowCount;
+        while (sj < eventRows.length && getEventStage(eventRows[sj].ev) === stage) {
           stageInfo[sj].emit = false;
+          rows += eventRows[sj].rowCount;
           sj++;
         }
-        stageInfo[si].span = sj - si;
+        stageInfo[si].totalRows = rows;
       }
-      const rowsHtml = g.events.map((ev, idx) => {
+      const rowsHtml = eventRows.map((er, idx) => {
+        const { ev, batches, rowCount } = er;
         const stage = getEventStage(ev);
-        const { span, emit } = stageInfo[idx];
-        const stageCell = emit
-          ? `<td class="bs-stage"${span > 1 ? ` rowspan="${span}"` : ''}>${stage ? `<span class="bs-stage-label">${stage}</span>` : ''}</td>`
-          : '';
-        const equipText = getEventEquipment(ev);
+        const info = stageInfo[idx];
+        let stageCell = '';
+        if (info.emit) {
+          const span = stage ? info.totalRows : rowCount;
+          stageCell = `<td class="bs-stage"${span > 1 ? ` rowspan="${span}"` : ''}>${stage ? `<span class="bs-stage-label">${stage}</span>` : ''}</td>`;
+        }
         const titleText = bsTitle(ev);
         const detailText = bsDetail(ev);
-        return `
-        <tr>
-          <td class="bs-time">${fmtRange(ev)}</td>
-          <td class="bs-step">
+        const stepCell = `
+          <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}</td>
+          <td class="bs-step"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
             <strong>${escapeHtml(titleText)}</strong>
             ${detailText ? `<div class="bs-detail">${escapeHtml(detailText)}</div>` : ''}
-          </td>
-          <td class="bs-container">${escapeHtml(equipText)}</td>
+          </td>`;
+        if (!batches) {
+          return `
+        <tr>${stepCell}
+          <td class="bs-container">${escapeHtml(getEventEquipment(ev))}</td>
           <td class="bs-ings">${renderIngCol(ev)}</td>
           ${stageCell}
         </tr>`;
+        }
+        // Multi-row: first <tr> carries the spanning time/step + stage cell.
+        return batches.map((b, bi) => `
+        <tr>${bi === 0 ? stepCell : ''}
+          <td class="bs-container">${b.equipHtml}</td>
+          <td class="bs-ings">${b.ingHtml}</td>
+          ${bi === 0 ? stageCell : ''}
+        </tr>`).join('');
       }).join('');
       return `
         <div class="bakesheet-day">
