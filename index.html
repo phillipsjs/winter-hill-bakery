@@ -6312,6 +6312,14 @@ ${notesHtml}
     if (eligible.length === 0) return null;
     return eligible.find(c => c.maxDoughGrams >= totalGrams) || eligible[eligible.length - 1];
   }
+  // Smallest proofing/dough container that holds totalGrams of bulk-fermenting dough.
+  function pickDoughContainer(totalGrams) {
+    const eligible = userContainers
+      .filter(c => c.processTag === 'any' || c.processTag === 'loaf')
+      .sort((a, b) => a.maxDoughGrams - b.maxDoughGrams);
+    if (eligible.length === 0) return null;
+    return eligible.find(c => c.maxDoughGrams >= totalGrams) || eligible[eligible.length - 1];
+  }
 
   function renderDoughContainerPlan() {
     const card = document.getElementById('container-card');
@@ -8592,7 +8600,7 @@ ${notesHtml}
       const muffinShapeStart = addMinutes(muffinFridgeIn, -totalMuffinShapeMin);
       const muffinBulkStart = addMinutes(muffinShapeStart, -muffinAgg.bulkMin);
       muffinMixStart = addMinutes(muffinBulkStart, -SCHED.MUFFIN_MIX_ACTIVE_MIN);
-      muffinTimes = { muffinBakeStart, muffinOutFridge, muffinFridgeIn, muffinShapeStart };
+      muffinTimes = { muffinBakeStart, muffinOutFridge, muffinFridgeIn, muffinShapeStart, muffinBulkStart };
     }
 
     // Bagel sub-timeline (mirrors muffins). Bagels are boiled straight from the
@@ -9188,10 +9196,15 @@ ${notesHtml}
     if (totalMuffins > 0 && muffinTimes) {
       const muffinBulkHrLabel = (muffinAgg.bulkMin / 60).toFixed(muffinAgg.bulkMin % 60 === 0 ? 0 : 1);
       const muffinMixerName = (muffinRecipes.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
-      const muffinMixerParen = ` (mixer holds max ${SCHED.MUFFIN_MIXER_CAPACITY} muffins; all batches go into the same container for proofing)`;
+      const muffinMixerParen = ` (mixer holds max ${SCHED.MUFFIN_MIXER_CAPACITY} muffins; all batches go into the same container)`;
+      const muffinLevainNote = useSeparateLevains ? '(uses muffin-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
       const muffinMixDetail = muffinMixBatches > 1
-        ? `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix × ${muffinMixBatches} batches = ${SCHED.MUFFIN_MIX_ACTIVE_MIN * muffinMixBatches} min active${muffinMixerParen} · then ${muffinBulkHrLabel} hr bulk ferment ${useSeparateLevains ? '(uses muffin-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)'}`
-        : `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix · then ${muffinBulkHrLabel} hr bulk ferment ${useSeparateLevains ? '(uses muffin-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)'}`;
+        ? `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix × ${muffinMixBatches} batches = ${SCHED.MUFFIN_MIX_ACTIVE_MIN * muffinMixBatches} min active${muffinMixerParen} · ${muffinLevainNote}`
+        : `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix · ${muffinLevainNote}`;
+      // Muffin dough bulk-ferments together in one container after mixing.
+      const muffinDoughG = muffinRecipes.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
+      const muffinBulkCont = pickDoughContainer(muffinDoughG);
+      const muffinBulkContainer = muffinBulkCont ? muffinBulkCont.name : 'dough tub';
       events.push({
         time: muffinMixStart,
         title: 'Mix muffin dough',
@@ -9200,6 +9213,12 @@ ${notesHtml}
         mixBatchCount: muffinMixBatches > 1 ? muffinMixBatches : undefined,
         equip: [muffinMixerName],
         equipStrip: muffinMixBatches > 1 ? muffinMixerParen : '',
+      });
+      events.push({
+        time: muffinTimes.muffinBulkStart,
+        title: 'Muffin dough bulk ferment',
+        detail: `${muffinBulkHrLabel} hr bulk ferment ${muffinLevainNote}`,
+        process: 'muffin', stage: 'proof', container: muffinBulkContainer,
       });
       const muffinShapeDetail = muffinRecipes.length === 1
         ? `${getRecipeSpec(muffinRecipes[0]).shapeMinPerUnit} min × ${totalMuffins} muffins = ${totalMuffinShapeMin} min total`
@@ -10813,9 +10832,13 @@ ${notesHtml}
       let m; while ((m = re.exec(String(s)))) out.push(m[1].trim());
       return out;
     };
+    const knownRecipeNames = new Set(allRecipeNames);
     const getEventRecipes = ev => {
       const set = new Set();
-      const add = n => { if (n) set.add(n); };
+      // Only ever record ACTUAL recipe names, so a non-recipe token parsed from a
+      // pan/container/equipment label (e.g. a "18×26" pan size) can never block the
+      // process fallback below and leave a step with no tag.
+      const add = n => { if (n && knownRecipeNames.has(n)) set.add(n); };
       if (Array.isArray(ev.mixBatchContents)) ev.mixBatchContents.forEach(b => (b.contents || []).forEach(c => add(c.recipe)));
       if (ev.container) parseQtyNames(ev.container).forEach(add);
       if (Array.isArray(ev.equip)) ev.equip.forEach(line => parseQtyNames(line).forEach(add));
@@ -10828,10 +10851,12 @@ ${notesHtml}
         if (col && col.recipeIds) col.recipeIds.forEach(id => { const r = ingData.byRecipe.find(x => x.id === id); if (r) add(r.name); });
       }
       if (!set.size && ev.process) {
-        const pt = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia' }[ev.process];
-        if (pt) ingData.byRecipe.filter(r => r.processType === pt).forEach(r => add(r.name));
+        const pts = {
+          loaf: ['sourdough-loaf'], muffin: ['sourdough-muffin'], bagel: ['bagel'], focaccia: ['focaccia'],
+          shared: ['sourdough-loaf', 'sourdough-muffin'], // loaf+muffin shared oven preheat
+        }[ev.process];
+        if (pts) ingData.byRecipe.filter(r => pts.includes(r.processType)).forEach(r => add(r.name));
       }
-      // Keep only real recipe names, in plan order.
       return allRecipeNames.filter(n => set.has(n));
     };
     const bsDetail = ev => {
