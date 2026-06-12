@@ -6110,6 +6110,17 @@ ${notesHtml}
     });
     return cap > 0 ? cap : tmplCap;
   }
+  // Distinct pan name(s) the given recipes are shaped/proofed/baked in (panned
+  // processes like muffins & focaccia). Empty when no pan is configured.
+  function panNamesForRecipesG(recs) {
+    const names = [];
+    const seen = new Set();
+    (recs || []).forEach(r => (r.preferredPanIds || []).forEach(pid => {
+      const pan = userPans.find(p => p.id === pid);
+      if (pan && panCoversRecipe(pan, r.id) && !seen.has(pan.name)) { seen.add(pan.name); names.push(pan.name); }
+    }));
+    return names;
+  }
   function chillContainerCandidatesG(r) {
     const prefIds = r.preferredContainerIds || [];
     return userContainers.filter(c => c.processTag === 'any' && (prefIds.length === 0 || prefIds.includes(c.id)));
@@ -9202,17 +9213,20 @@ ${notesHtml}
         process: 'muffin',
       });
       if (muffinColdProofHours > 0) {
+        // Muffins are shaped into their pans, so they cold-proof (and warm up) in the pan.
+        const muffinPanNames = panNamesForRecipesG(muffinRecipes);
+        const muffinContainer = muffinPanNames.length ? muffinPanNames.join(' + ') : 'muffin pan';
         events.push({
           time: muffinTimes.muffinFridgeIn,
           title: 'Muffins into fridge — cold proof',
           detail: `${muffinColdProofHours} hr in fridge`,
-          process: 'muffin',
+          process: 'muffin', container: muffinContainer,
         });
         events.push({
           time: muffinTimes.muffinOutFridge,
           title: 'Muffins out of fridge',
           detail: `${(muffinAgg.warmupMin / 60).toFixed(muffinAgg.warmupMin % 60 === 0 ? 0 : 1)} hr warm-up / final proof before bake`,
-          process: 'muffin',
+          process: 'muffin', container: muffinContainer,
         });
       }
     }
