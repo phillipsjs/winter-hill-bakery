@@ -704,6 +704,21 @@
     white-space: nowrap; width: 110px; }
   .bs-step strong { font-size: 0.88rem; }
   .bs-detail { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+  .bs-recipes { margin: 3px 0 1px; display: flex; flex-wrap: wrap; gap: 3px; }
+  .bs-recipe-tag {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.3;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #eef2f7;
+    color: #334155;
+    border: 1px solid #d8e0ea;
+  }
+  @media print {
+    .bs-recipe-tag { background: #eef2f7 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  }
   .bs-ings { width: 240px; }
   .bs-ings table { font-size: 0.78rem; margin: 0; }
   .bs-ings table td { padding: 1px 4px; border: none; }
@@ -10741,6 +10756,39 @@ ${notesHtml}
       if (ev.equipStripTitle) s = s.split(ev.equipStripTitle).join('');
       return s.replace(/\s+$/, '');
     };
+
+    // Which recipes a step touches, so each row says what it's for. Drawn from the
+    // structured data already on the event (per-container contents, deck/oven equip,
+    // ingredient breakdown), then the title, then the step's process as a fallback.
+    const allRecipeNames = ingData.byRecipe.map(r => r.name);
+    const parseQtyNames = (s) => {
+      const out = [];
+      if (!s) return out;
+      const re = /\d+\s*×\s*([^\n+|:]+?)(?=\s*(?:\+|\||$|\n))/g;
+      let m; while ((m = re.exec(String(s)))) out.push(m[1].trim());
+      return out;
+    };
+    const getEventRecipes = ev => {
+      const set = new Set();
+      const add = n => { if (n) set.add(n); };
+      if (Array.isArray(ev.mixBatchContents)) ev.mixBatchContents.forEach(b => (b.contents || []).forEach(c => add(c.recipe)));
+      if (ev.container) parseQtyNames(ev.container).forEach(add);
+      if (Array.isArray(ev.equip)) ev.equip.forEach(line => parseQtyNames(line).forEach(add));
+      if (ev.colDetails) Object.values(ev.colDetails).forEach(v => parseQtyNames(v).forEach(add));
+      const ings = getEventIngredients(ev);
+      if (ings && ings.type === 'byRecipe') ings.recipes.forEach(r => add(r.name));
+      if (!set.size) allRecipeNames.forEach(n => { if (ev.title && ev.title.includes(n)) add(n); });
+      if (!set.size && ev.columnKey) {
+        const col = (_scheduleResult.sideColumns || []).find(c => c.key === ev.columnKey);
+        if (col && col.recipeIds) col.recipeIds.forEach(id => { const r = ingData.byRecipe.find(x => x.id === id); if (r) add(r.name); });
+      }
+      if (!set.size && ev.process) {
+        const pt = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia' }[ev.process];
+        if (pt) ingData.byRecipe.filter(r => r.processType === pt).forEach(r => add(r.name));
+      }
+      // Keep only real recipe names, in plan order.
+      return allRecipeNames.filter(n => set.has(n));
+    };
     const bsDetail = ev => {
       let s = ev.detail || '';
       if (ev.equipStrip) (Array.isArray(ev.equipStrip) ? ev.equipStrip : [ev.equipStrip])
@@ -10821,10 +10869,15 @@ ${notesHtml}
         }
         const titleText = bsTitle(ev);
         const detailText = bsDetail(ev);
+        const recipeNames = getEventRecipes(ev);
+        const recipesLabel = (allRecipeNames.length > 1 && recipeNames.length)
+          ? `<div class="bs-recipes">${recipeNames.map(n => `<span class="bs-recipe-tag">${escapeHtml(n)}</span>`).join('')}</div>`
+          : '';
         const stepCell = `
           <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}</td>
           <td class="bs-step"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
             <strong>${escapeHtml(titleText)}</strong>
+            ${recipesLabel}
             ${detailText ? `<div class="bs-detail">${escapeHtml(detailText)}</div>` : ''}
           </td>`;
         if (!batches) {
