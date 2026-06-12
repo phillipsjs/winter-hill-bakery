@@ -11355,7 +11355,7 @@ ${notesHtml}
   }
   const defaultBaketimeInput = document.getElementById('bake-time-default-input');
   if (defaultBaketimeInput) {
-    defaultBaketimeInput.value = localStorage.getItem(DEFAULT_BAKETIME_KEY) || 'morning';
+    defaultBaketimeInput.value = localStorage.getItem(DEFAULT_BAKETIME_KEY) || '';
     defaultBaketimeInput.addEventListener('change', () => {
       localStorage.setItem(DEFAULT_BAKETIME_KEY, defaultBaketimeInput.value);
       renderSchedule();
