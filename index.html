@@ -8481,6 +8481,19 @@ ${notesHtml}
           contents: (c.contents || []).map(x => ({ recipe: x.recipe, count: x.count })),
         }))
       : null;
+    // Oven naming for the bake sheet's Equipment column. A single-oven kitchen
+    // labels its decks "Deck N" (no oven name), so name it explicitly here; a
+    // multi-oven kitchen already names each deck, so derive the set actually used.
+    const singleOvenName = userOvens.length === 1 ? userOvens[0].name : '';
+    const ovenNamesFromPlan = (batches) => {
+      const slots = ovenDeckSlots();
+      const set = new Set();
+      (batches || []).forEach(pb => (pb || []).forEach((deck, di) => {
+        if (deck && deck.items && deck.items.length && slots[di]) set.add(slots[di].ovenName);
+      }));
+      const names = [...set];
+      return names.length ? names : (singleOvenName ? [singleOvenName] : []);
+    };
     const muffinMixBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
     const bagelMixBatches = totalBagels > 0 ? Math.ceil(totalBagels / SCHED.BAGEL_MIXER_CAPACITY) : 0;
     const focacciaMixBatches = totalFocaccia > 0 ? 1 : 0;
@@ -8553,7 +8566,7 @@ ${notesHtml}
         for (let b = 0; b < focacciaBatches; b++) {
           const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
           const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : [], equipStrip: focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '' });
+          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '' });
           cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
         }
         events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
@@ -8980,7 +8993,7 @@ ${notesHtml}
         title: muffinSlot && !showsSeparatePreheats ? 'Turn on oven' : 'Turn on oven (bread)',
         detail: fmtPreheat(loafPreheat),
         process: muffinSlot && !showsSeparatePreheats ? 'shared' : 'loaf',
-        equip: loafSlot && loafSlot.ovenName ? [loafSlot.ovenName] : [],
+        equip: ovenNamesFromPlan(muffinSlot && !showsSeparatePreheats ? [...ovenPlan, ...muffinOvenPlan] : ovenPlan),
       });
     }
     if (muffinSlot && showsSeparatePreheats) {
@@ -8989,7 +9002,7 @@ ${notesHtml}
         title: 'Turn on oven (muffins)',
         detail: fmtPreheat(muffinPreheat),
         process: 'muffin',
-        equip: muffinSlot && muffinSlot.ovenName ? [muffinSlot.ovenName] : [],
+        equip: ovenNamesFromPlan(muffinOvenPlan),
       });
     }
     // Bagel oven preheat: the first bagel bake is one boil+top cycle after the
@@ -9002,7 +9015,7 @@ ${notesHtml}
         title: 'Turn on oven (bagels)',
         detail: fmtPreheat(bagelPreheat),
         process: 'bagel',
-        equip: bagelSlot && bagelSlot.ovenName ? [bagelSlot.ovenName] : [],
+        equip: (bagelSlot && bagelSlot.ovenName ? [bagelSlot.ovenName] : (singleOvenName ? [singleOvenName] : [])),
       });
     }
 
@@ -9033,7 +9046,7 @@ ${notesHtml}
         time: bakeStart,
         title: `Bake ${b + 1} of ${breadBatches}${kindSuffix}`,
         detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${loafAgg.bakeTempF}°F${reheatSuffix}${planLines}`,
-        process: 'loaf', colDetails: bakeColDetails, equip: deckEquip, equipStrip: planLines,
+        process: 'loaf', colDetails: bakeColDetails, equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
       });
     }
 
@@ -9052,7 +9065,7 @@ ${notesHtml}
           time: bakeStart,
           title: `Bake ${b + 1} of ${muffinBatches} — muffins into oven`,
           detail: `${SCHED.OVEN_LOAD_MIN} min load · ${muffinAgg.bakeMin} min bake · ${muffinAgg.bakeTempF}°F${reheatSuffix}${planLines}`,
-          process: 'muffin', equip: deckEquip, equipStrip: planLines,
+          process: 'muffin', equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
         });
         muffinCumOffset += muffinAgg.bakeMin + (b < muffinBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
@@ -9083,7 +9096,7 @@ ${notesHtml}
           time: bakeStart,
           title: `Bake batch ${b + 1} of ${bagelBatches} — bagels into oven`,
           detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake · ${bagelAgg.bakeTempF}°F${bagelOvenTag}`,
-          process: 'bagel', equip: bagelOvenName ? [bagelOvenName] : [], equipStrip: bagelOvenTag,
+          process: 'bagel', equip: bagelOvenName ? [bagelOvenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: bagelOvenTag,
         });
       }
     }
@@ -9231,7 +9244,7 @@ ${notesHtml}
       for (let b = 0; b < focacciaBatches; b++) {
         const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
         const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : [], equipStrip: focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '' });
+        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '' });
         cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
       events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
@@ -9302,7 +9315,7 @@ ${notesHtml}
       if (!g.slot) continue;
       const slot = g.slot;
       const ovenTag = slot.ovenName ? ` · ${slot.ovenName}` : '';
-      const ovenEquip = slot.ovenName ? [slot.ovenName] : [];
+      const ovenEquip = slot.ovenName ? [slot.ovenName] : (singleOvenName ? [singleOvenName] : []);
       const chilling = g.chillHr > 0;
       const chillMin = g.chillHr * 60;
       const fmtChillLabel = (hr) => hr < 1 ? `${Math.round(hr * 60)} min` : `${hr} hr`;
@@ -9376,7 +9389,7 @@ ${notesHtml}
       if (!g.slot) continue;
       const slot = g.slot;
       const ovenTag = slot.ovenName ? ` · ${slot.ovenName}` : '';
-      const ovenEquip = slot.ovenName ? [slot.ovenName] : [];
+      const ovenEquip = slot.ovenName ? [slot.ovenName] : (singleOvenName ? [singleOvenName] : []);
       const WEIGH = SCHED.WEIGH_MIN_PER_RECIPE;
       const proofMin = g.cold ? g.coldHr * 60 : g.warmMin;
       const enrichedPreheat = ovenPreheatMin(userOvens.find(o => o.id === slot.ovenId), g.temp) ?? SIDE_PREHEAT_MIN;
@@ -10554,10 +10567,14 @@ ${notesHtml}
       });
       // Determine each batch's per-recipe unit counts.
       let batchSpecs = null;
-      if (Array.isArray(ev.mixBatchContents) && ev.mixBatchContents.length > 1) {
-        // Loaf: one mix per proofing container, with that container's contents.
-        batchSpecs = ev.mixBatchContents.map(b => ({
-          label: b.label,
+      // Loaf path: one mix per proofing container. The containers themselves live in
+      // the Equipment column (aligned by batch number), so here we label each set
+      // generically ("Batch N of M") and never collapse — each is a distinct vessel.
+      const perContainer = Array.isArray(ev.mixBatchContents) && ev.mixBatchContents.length > 1;
+      if (perContainer) {
+        const n = ev.mixBatchContents.length;
+        batchSpecs = ev.mixBatchContents.map((b, i) => ({
+          label: `Batch ${i + 1} of ${n}`,
           parts: (b.contents || [])
             .filter(c => perUnit[c.recipe])
             .map(c => ({ name: c.recipe, count: c.count })),
@@ -10582,10 +10599,12 @@ ${notesHtml}
         return recipeBlockHtml(p.name, p.count, rows);
       }).join('');
 
-      // If every batch is identical, show one batch and a "repeat" note.
+      // Mixer-limited batches (muffin/bagel) are the same mix repeated, so if every
+      // batch is identical, show it once with a "repeat" note. Per-container loaf
+      // batches always show separately so each lines up with its container.
       const sig = spec => JSON.stringify(spec.parts.map(p => [p.name, p.count]));
       const allSame = batchSpecs.every(b => sig(b) === sig(batchSpecs[0]));
-      if (allSame) {
+      if (allSame && !perContainer) {
         return `<div class="bs-batch-note">Per batch &middot; repeat ${batchSpecs.length}&times;</div>${renderBatch(batchSpecs[0])}`;
       }
       return batchSpecs.map((spec, i) =>
@@ -10637,8 +10656,15 @@ ${notesHtml}
     // events also carry the exact fragments to strip from their title/detail here.
     const getEventEquipment = ev => {
       const lines = [];
-      const cont = getEventContainer(ev);
-      if (cont && cont !== 'a container') lines.push(cont);
+      // Per-container mix steps: list one container per batch, numbered to line up
+      // with the "Batch N" ingredient sets. The contents live in the ingredients
+      // column, so show only the vessel here.
+      if (Array.isArray(ev.mixBatchContents) && ev.mixBatchContents.length > 1) {
+        ev.mixBatchContents.forEach((b, i) => lines.push(`Batch ${i + 1}: ${b.label}`));
+      } else {
+        const cont = getEventContainer(ev);
+        if (cont && cont !== 'a container') lines.push(cont);
+      }
       if (Array.isArray(ev.equip)) ev.equip.forEach(e => { if (e) lines.push(e); });
       return lines.join('\n');
     };
