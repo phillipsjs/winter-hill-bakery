@@ -6121,6 +6121,16 @@ ${notesHtml}
     }));
     return names;
   }
+  // Total unit capacity of the configured pans for these recipes (quantity × per-pan).
+  // 0 when no real pan is configured.
+  function panCapacityForRecipesG(recs) {
+    let cap = 0;
+    (recs || []).forEach(r => (r.preferredPanIds || []).forEach(pid => {
+      const pan = userPans.find(p => p.id === pid);
+      if (pan && panCoversRecipe(pan, r.id)) cap += (pan.quantity || 1) * getPanCapacityForRecipe(pan, r.id);
+    }));
+    return cap;
+  }
   function chillContainerCandidatesG(r) {
     const prefIds = r.preferredContainerIds || [];
     return userContainers.filter(c => c.processTag === 'any' && (prefIds.length === 0 || prefIds.includes(c.id)));
@@ -8556,6 +8566,10 @@ ${notesHtml}
       autolyseStart = addMinutes(mixTime, -(loafAgg.autolyseMin + (containerInfo.length - 1) * SCHED.AUTOLYSE_ACTIVE_MIN));
     }
     const numContainers = containerInfo.length;
+    // Each loaf proofing container is tied up from mix until shaping begins.
+    if (mixTime && shapePhaseStart) {
+      containerInfo.forEach(c => addClaim('container', 'Loaf bulk ferment', c.containerName, 1, mixTime, shapePhaseStart));
+    }
     // Per-container batch breakdown for the bake sheet, so batched mixing steps can
     // show ingredients per batch (one mix per container) instead of overall totals.
     const loafBatchContents = numContainers > 1
@@ -8735,6 +8749,27 @@ ${notesHtml}
     }
 
     const events = [];
+    // Time-bounded equipment claims for cross-process conflict detection. Each claim
+    // ties up `count` of a named resource (proofing container / banneton pool / pan)
+    // from start→end. A post-pass sweeps these per resource and warns when concurrent
+    // demand exceeds what's owned. Only configured resources (known capacity) are
+    // tracked — generic fallbacks are skipped.
+    const equipClaims = [];
+    const addClaim = (pool, role, name, count, start, end, capacityOverride) => {
+      if (!name || !count || count <= 0) return;
+      const s = start instanceof Date ? start.getTime() : +start;
+      const e = end instanceof Date ? end.getTime() : +end;
+      if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) return;
+      let capacity = capacityOverride;
+      if (capacity == null) {
+        if (pool === 'container') { const c = userContainers.find(x => x.name === name); capacity = c ? c.quantity : null; }
+        else if (pool === 'banneton') { capacity = userBannetons.reduce((a, b) => a + (b.quantity || 0), 0) || null; }
+        else if (pool === 'pan') { const p = userPans.find(x => x.name === name); capacity = p ? p.quantity : null; }
+      }
+      capacity = Number(capacity);
+      if (!Number.isFinite(capacity) || capacity <= 0) return; // unconfigured → can't deconflict
+      equipClaims.push({ pool, role, name, count: Number(count), startMs: s, endMs: e, capacity });
+    };
     const autoNote = (opt) => {
       if (opt.kind === 'medium') return ' (medium ratio chosen to avoid a late-night refresh)';
       if (opt.kind === 'slow')   return ' (slower ratio chosen to avoid a late-night refresh)';
@@ -8814,6 +8849,8 @@ ${notesHtml}
         process: loafLevainProcess,
         container: sharedLevainCont ? sharedLevainCont.name : '', equipStrip: levainContStr(sharedLevainCont),
       });
+      addClaim('container', 'Levain Build 1', sharedLevainB1Cont && sharedLevainB1Cont.name, 1, levainBuild1EarliestStart, levainBuild2EarliestStart);
+      addClaim('container', 'Levain Build 2', sharedLevainCont && sharedLevainCont.name, 1, levainBuild2EarliestStart, loafLevainAnchor);
     }
     if (useSeparateLevains && muffinBuild1Opt && muffinBuild2Opt) {
       const mb1Note = muffinBuild1Opt.manual ? ' (manually selected)' : autoNote(muffinBuild1Opt);
@@ -8834,6 +8871,8 @@ ${notesHtml}
         process: 'muffin',
         container: muffinLevainCont ? muffinLevainCont.name : '', equipStrip: levainContStr(muffinLevainCont),
       });
+      addClaim('container', 'Levain Build 1 (muffins)', muffinLevainB1Cont && muffinLevainB1Cont.name, 1, muffinLevainBuild1EarliestStart, muffinLevainBuild2EarliestStart);
+      addClaim('container', 'Levain Build 2 (muffins)', muffinLevainCont && muffinLevainCont.name, 1, muffinLevainBuild2EarliestStart, muffinMixStart);
     }
     if (useBagelSeparateLevain && bagelBuild1Opt && bagelBuild2Opt) {
       const bb1Note = bagelBuild1Opt.manual ? ' (manually selected)' : autoNote(bagelBuild1Opt);
@@ -8854,6 +8893,8 @@ ${notesHtml}
         process: 'bagel',
         container: bagelLevainCont ? bagelLevainCont.name : '', equipStrip: levainContStr(bagelLevainCont),
       });
+      addClaim('container', 'Levain Build 1 (bagels)', bagelLevainB1Cont && bagelLevainB1Cont.name, 1, bagelLevainBuild1EarliestStart, bagelLevainBuild2EarliestStart);
+      addClaim('container', 'Levain Build 2 (bagels)', bagelLevainCont && bagelLevainCont.name, 1, bagelLevainBuild2EarliestStart, bagelMixStart);
     }
     if (totalLoaves > 0) {
     // Compact container label appended to bulk-ferment step details
@@ -9058,6 +9099,8 @@ ${notesHtml}
           detail: `${fmtColdProof(cpMs)} cold proof`,
           process: 'loaf', columnKey: c.colKey, container: suffix ? `${containerLabel}: ${contentsLabel}` : '', equipStripTitle: suffix,
         });
+        // Each loaf occupies one banneton while it cold-proofs in the fridge.
+        addClaim('banneton', 'Loaf cold proof', '(bannetons)', c.totalLoaves || 0, fridgeTime, bakeStart);
       }
     }
     const loafColdProofRange = containerColdProofMs.length > 0
@@ -9233,6 +9276,7 @@ ${notesHtml}
         detail: `${muffinBulkHrLabel} hr bulk ferment ${muffinLevainNote}`,
         process: 'muffin', stage: 'proof', container: muffinBulkContainer,
       });
+      addClaim('container', 'Muffin bulk ferment', muffinBulkCont && muffinBulkCont.name, 1, muffinTimes.muffinBulkStart, muffinTimes.muffinShapeStart);
       const muffinShapeDetail = muffinRecipes.length === 1
         ? `${getRecipeSpec(muffinRecipes[0]).shapeMinPerUnit} min × ${totalMuffins} muffins = ${totalMuffinShapeMin} min total`
         : muffinRecipes
@@ -9260,6 +9304,11 @@ ${notesHtml}
           detail: `${(muffinAgg.warmupMin / 60).toFixed(muffinAgg.warmupMin % 60 === 0 ? 0 : 1)} hr warm-up / final proof before bake`,
           process: 'muffin', container: muffinContainer,
         });
+        // Muffins occupy their pans from cold proof through the bake.
+        if (muffinPanNames.length) {
+          addClaim('pan', 'Muffin pan', muffinContainer, totalMuffins, muffinTimes.muffinFridgeIn,
+            (muffinSlot && muffinSlot.lastBakeEnd) || muffinTimes.muffinBakeStart, panCapacityForRecipesG(muffinRecipes));
+        }
       }
     }
 
@@ -9310,6 +9359,10 @@ ${notesHtml}
           detail: `${bagelColdProofHours} hr in fridge · boiled straight from cold`,
           process: 'bagel', container: bagelContainer,
         });
+        if (bagelPanNames.length) {
+          addClaim('pan', 'Bagel pan', bagelContainer, totalBagels, bagelTimes.bagelFridgeIn,
+            (bagelSlot && bagelSlot.lastBakeEnd) || bagelTimes.bagelFridgeIn, panCapacityForRecipesG(bagelRecipes));
+        }
       }
     }
 
@@ -9470,6 +9523,7 @@ ${notesHtml}
               detail: `${unitsLabel} · chill at least ${fmtChillLabel(p.chillHr)} · use ${contLabel}`,
               process: 'simple', columnKey: g.key, stage: 'chill', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}`,
             });
+            addClaim('container', `Chill ${r.name}`, p.containerName, 1, addMinutes(mt, simpleTmpl.mixMin), shapeStart);
           }
           simpleMixIdx++;
         });
@@ -9537,6 +9591,7 @@ ${notesHtml}
         if (p.cold) {
           const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
           events.push({ time: proofStart, title: `Final proof — cold (overnight) — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.coldHr} hr in the fridge · use ${contLabel}`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}` });
+          addClaim('container', `Cold proof ${r.name}`, p.containerName, 1, proofStart, bakeStart);
         } else {
           events.push({ time: proofStart, title: `Final proof — warm — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.warmMin} min warm`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false });
         }
@@ -9608,6 +9663,7 @@ ${notesHtml}
       mixBatches: totalMixBatches,
       loafContainerInfo: containerInfo.slice(),
       levainContainerInfo,
+      equipClaims,
     };
   }
 
@@ -9789,13 +9845,14 @@ ${notesHtml}
   function mergeLoafGroupResults(results) {
     const base = results[0].res;
     const fmtDl = (ms) => ms ? new Date(ms).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
-    const out = { ...base, events: [], warnings: [], loafColumns: [], totalLoaves: 0, batches: 0 };
+    const out = { ...base, events: [], warnings: [], loafColumns: [], totalLoaves: 0, batches: 0, equipClaims: [] };
     let mixBatches = 0;
     const seenWarn = new Set();
     results.forEach(({ res, gi, group }) => {
       out.totalLoaves += res.totalLoaves || 0;
       out.batches += res.batches || 0;
       mixBatches += res.mixBatches || 0;
+      if (Array.isArray(res.equipClaims)) out.equipClaims.push(...res.equipClaims);
       const prefix = `g${gi}~`;
       const dlLabel = group.combined ? ' · one dough (staggered)' : ` · ${fmtDl(group.ms)}`;
       const singleDough = !(res.loafColumns && res.loafColumns.length);
@@ -9829,6 +9886,51 @@ ${notesHtml}
     out.events.sort((a, b) => a.time - b.time);
     out.mixBatches = mixBatches;
     return out;
+  }
+
+  // Cross-process equipment conflicts: sweep each resource's time-bounded claims and
+  // warn when concurrent demand exceeds what's owned. A container freed earlier in the
+  // day is free to be reused later — only genuine time overlaps count.
+  function detectEquipmentConflicts(claims) {
+    if (!Array.isArray(claims) || !claims.length) return [];
+    const byKey = new Map();
+    claims.forEach(c => {
+      const key = c.pool + '|' + c.name;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(c);
+    });
+    const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    const warnings = [];
+    byKey.forEach((group, key) => {
+      const capacity = Math.max(...group.map(c => c.capacity));
+      const pts = [];
+      group.forEach(c => { pts.push({ t: c.startMs, d: c.count, c }); pts.push({ t: c.endMs, d: -c.count, c }); });
+      pts.sort((a, b) => a.t - b.t || a.d - b.d); // releases before claims at the same instant
+      let cur = 0; const active = new Set();
+      let peak = 0, peakT = null, peakRoles = null;
+      pts.forEach(p => {
+        if (p.d > 0) { cur += p.d; active.add(p.c); } else { cur += p.d; active.delete(p.c); }
+        if (cur > capacity && cur > peak) {
+          peak = cur; peakT = p.t;
+          peakRoles = [...new Set([...active].map(x => x.role))];
+        }
+      });
+      if (peak > capacity) {
+        const [pool, name] = key.split('|');
+        const rolesStr = peakRoles && peakRoles.length ? ` — ${peakRoles.join(', ')}` : '';
+        const when = `around ${fmt.format(new Date(peakT))}`;
+        let msg;
+        if (pool === 'banneton') {
+          msg = `⚠ Not enough bannetons — ${peak} loaves cold-proofing at once but you have ${capacity}, ${when}.`;
+        } else if (pool === 'pan') {
+          msg = `⚠ Pan “${name}” over capacity — ${peak} items on it at once but it holds ${capacity}, ${when}.`;
+        } else {
+          msg = `⚠ Container “${name}” is double-booked — ${peak} needed at the same time${rolesStr}, but you have ${capacity}, ${when}.`;
+        }
+        warnings.push({ msg, issue: 'equip-conflict' });
+      }
+    });
+    return warnings;
   }
 
   function updateProcessRowVisibility() {
@@ -10333,6 +10435,9 @@ ${notesHtml}
         issue: 'past-deadline',
       });
     }
+
+    const equipWarns = detectEquipmentConflicts(result.equipClaims);
+    if (equipWarns.length) { result.warnings = result.warnings || []; result.warnings.push(...equipWarns); }
 
     let html = '';
     if (result.warnings && result.warnings.length) {
