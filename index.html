@@ -9122,6 +9122,20 @@ ${notesHtml}
       }).filter(Boolean);
       return parts.length ? parts.join(' · ') : '';
     };
+    // Loaves leave the bulk-proofing container at final shape and cold-proof in bannetons,
+    // not the tub — so the final-shape and into-fridge steps surface the banneton(s) (named
+    // when the user has configured eligible ones, else a generic label) plus the loaves
+    // going into them (keeping per-container recipe tags intact).
+    const loafNameToId = new Map(loafRecipes.map(r => [r.name, r.id]));
+    const bannetonLabelFor = (contents) => {
+      const ids = new Set((contents || []).map(l => loafNameToId.get(l.recipe)).filter(Boolean));
+      const names = [...new Set(userBannetons
+        .filter(b => !b.recipeIds || b.recipeIds.length === 0 || b.recipeIds.some(id => ids.has(id)))
+        .map(b => b.name))];
+      const contentsLabel = (contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+      const head = names.length ? names.join(' / ') : 'Bannetons';
+      return contentsLabel ? `${head}: ${contentsLabel}` : head;
+    };
     const containerFridgeInTimes = [];
     let cursorTime = shapePhaseStart;
     for (let i = 0; i < containerInfo.length; i++) {
@@ -9161,7 +9175,7 @@ ${notesHtml}
         time: finalShapeStartT,
         title: `Final shape${suffix}`,
         detail: `${shapeBreakdown(c, 'final')} = ${shape.finalShapeMin} min total`,
-        process: 'loaf', columnKey: c.colKey, container: shapeContainer, equipStripTitle: suffix,
+        process: 'loaf', columnKey: c.colKey, container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
       });
 
       cursorTime = containerEndT;
@@ -9196,7 +9210,7 @@ ${notesHtml}
           time: fridgeTime,
           title: `Into fridge${suffix}`,
           detail: `${fmtColdProof(cpMs)} cold proof`,
-          process: 'loaf', columnKey: c.colKey, container: suffix ? `${containerLabel}: ${contentsLabel}` : '', equipStripTitle: suffix,
+          process: 'loaf', columnKey: c.colKey, container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
         });
         // Each loaf occupies one banneton while it cold-proofs in the fridge.
         addClaim('banneton', 'Loaf cold proof', '(bannetons)', c.totalLoaves || 0, fridgeTime, bakeStart);

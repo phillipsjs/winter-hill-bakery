@@ -102,6 +102,7 @@ const exportsTail = `
   buildScheduleAcrossLoafGroups, getEventStage,
   __sr: () => _scheduleResult,
   __setPlan: (p) => { plan = p; },
+  __setBannetons: (b) => { userBannetons = b; },
   __recipes: () => recipes,
 };`;
 
@@ -261,6 +262,36 @@ weighOk &= expectWeigh({ [SEED.muffin]: 12 }, 'muffin');
 weighOk &= expectWeigh({ [SEED.bagel]: 10 }, 'bagel');
 weighOk &= expectWeigh({ [SEED.focaccia]: 2 }, 'focaccia');
 allOk &= weighOk;
+
+// ---- banneton assertions: loaves final-shape & cold-proof in bannetons, not the tub ----
+console.log('\nBanneton assertions:');
+function loafContainerFor(title) {
+  const ev = api.__sr().events.find(e => e.process === 'loaf' && e.title.startsWith(title));
+  return ev ? (ev.container || '') : null;
+}
+function setupLoafRun(bannetons) {
+  api.__setBannetons(bannetons || []);
+  seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+}
+let bannetonOk = true;
+function check(label, cond) { console.log(`  [banneton] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+
+// Generic (no bannetons configured): label should say "Banneton…" and keep the recipe name.
+setupLoafRun([]);
+const fsGen = loafContainerFor('Final shape');
+const frGen = loafContainerFor('Into fridge');
+bannetonOk &= check(`final shape uses bannetons (got "${fsGen}")`, /banneton/i.test(fsGen) && /Batard/.test(fsGen));
+bannetonOk &= check(`into fridge uses bannetons (got "${frGen}")`, /banneton/i.test(frGen) && /Batard/.test(frGen));
+
+// Named banneton eligible for the loaf: its name should appear instead of the generic word.
+setupLoafRun([{ id: 'b1', name: '9 inch round', quantity: 12, recipeIds: [] }]);
+const fsNamed = loafContainerFor('Final shape');
+bannetonOk &= check(`named banneton shown (got "${fsNamed}")`, fsNamed.includes('9 inch round'));
+allOk &= bannetonOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
