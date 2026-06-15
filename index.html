@@ -991,6 +991,7 @@
           <div class="row" id="r-oven-cap-row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
           <div class="row" id="r-deck-cap-row"><label style="width:160px">Deck capacity</label><input type="number" id="r-deck-cap" min="0" step="1" /> <span class="muted">per deck — kept in sync</span></div>
           <div class="row" id="r-batch-size-row" style="display:none"><label style="width:160px">Batch size</label><input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" style="width:90px;flex:none" /> <span class="muted">units/batch — blank auto-fits</span></div>
+          <div id="r-capacity-equip" style="margin-top:14px"></div>
         </div>
       </details>
 
@@ -7459,22 +7460,25 @@ ${notesHtml}
       html += '</div>';
     }
 
+    // Mixer + oven preference render into the "Capacity & batching" section (they're
+    // about which equipment runs the bake), not the proofing-vessel section.
+    let capHtml = '';
     if (!isLevain) {
       const relevantMixers = userMixers.filter(function(m) { return m.recipeCapacities && Object.keys(m.recipeCapacities).length > 0; });
-      html += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Mixer</div>';
+      capHtml += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Mixer</div>';
       if (userMixers.length === 0) {
-        html += '<span class="muted" style="font-size:0.9rem">No mixers added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'mixer\')">+ Add to Kitchen</button>';
+        capHtml += '<span class="muted" style="font-size:0.9rem">No mixers added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'mixer\')">+ Add to Kitchen</button>';
       } else if (relevantMixers.length === 0) {
-        html += '<span class="muted" style="font-size:0.9rem">No mixer capacities set for any recipe yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'mixer\')">Set up in Kitchen</button>';
+        capHtml += '<span class="muted" style="font-size:0.9rem">No mixer capacities set for any recipe yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'mixer\')">Set up in Kitchen</button>';
       } else {
-        html += '<div style="display:flex;flex-direction:column;gap:6px">';
+        capHtml += '<div style="display:flex;flex-direction:column;gap:6px">';
         relevantMixers.forEach(function(m) {
           var caps = m.recipeCapacities || {};
           var isChecked = prefMixers.indexOf(m.id) >= 0 || (editingId && editingId in caps);
           var cap = (editingId && caps[editingId] != null) ? caps[editingId] : '';
           var chk = isChecked ? ' checked' : '';
           var hideStyle = isChecked ? '' : ';display:none';
-          html += '<div class="r-recipe-mixer-row" style="display:flex;align-items:center;gap:8px">'
+          capHtml += '<div class="r-recipe-mixer-row" style="display:flex;align-items:center;gap:8px">'
             + '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem;min-width:180px">'
             + '<input type="checkbox" class="r-pref-mixer" value="' + escapeAttr(m.id) + '"' + chk + ' onchange="onRecipeMixerCheck(this)" />'
             + escapeHtml(m.name) + ' <span class="muted" style="font-size:0.8rem">(qty ' + m.quantity + ')</span>'
@@ -7483,27 +7487,29 @@ ${notesHtml}
             + '<span class="muted r-mixer-cap-label" style="font-size:0.85rem' + hideStyle + '">per batch</span>'
             + '</div>';
         });
-        html += '</div>';
+        capHtml += '</div>';
       }
-      html += '</div>';
+      capHtml += '</div>';
     }
 
     if (!isLevain) {
-      html += '<div><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Oven</div>';
+      capHtml += '<div><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Oven</div>';
       if (userOvens.length === 0) {
-        html += '<span class="muted" style="font-size:0.9rem">No ovens added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'oven\')">+ Add to Kitchen</button>';
+        capHtml += '<span class="muted" style="font-size:0.9rem">No ovens added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'oven\')">+ Add to Kitchen</button>';
       } else {
-        html += '<select id="r-pref-oven" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>';
+        capHtml += '<select id="r-pref-oven" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>';
         userOvens.forEach(function(o) {
           var sel = o.id === prefOven ? ' selected' : '';
-          html += '<option value="' + escapeAttr(o.id) + '"' + sel + '>' + escapeHtml(o.name) + '</option>';
+          capHtml += '<option value="' + escapeAttr(o.id) + '"' + sel + '>' + escapeHtml(o.name) + '</option>';
         });
-        html += '</select>';
+        capHtml += '</select>';
       }
-      html += '</div>';
+      capHtml += '</div>';
     }
 
     el.innerHTML = html;
+    const capEl = document.getElementById('r-capacity-equip');
+    if (capEl) capEl.innerHTML = capHtml;
   }
 
   function openKitchenEquipmentForm(type) {
