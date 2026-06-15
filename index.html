@@ -5555,7 +5555,16 @@ ${notesHtml}
       localStorage.setItem(BAGEL_INTRODUCED_KEY, '1');
     }
     ensureLevainFirst(list);
-    return list.map(r => ({ ...r, processType: getProcessType(r) }));
+    // Migrate to the stage model: any recipe without a stage list gets one derived
+    // from its process template + saved overrides (so legacy recipes are editable as
+    // stages and the scheduler keeps reading the same derived params).
+    return list.map(r => {
+      const withType = { ...r, processType: getProcessType(r) };
+      if (withType.processType !== 'levain' && (!Array.isArray(withType.stages) || withType.stages.length === 0)) {
+        withType.stages = stagesFromRecipe(withType);
+      }
+      return withType;
+    });
   }
   function saveRecipes() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
@@ -7790,6 +7799,9 @@ ${notesHtml}
     }
 
     const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ...stepFields, ...overrides };
+    // Keep the stage list in sync with the saved params (the stage editor will become
+    // the source of truth in a later step; until then stages are derived from the form).
+    if (processType !== 'levain') base.stages = stagesFromRecipe(base);
 
     let recipeId;
     if (editingId) {

@@ -401,6 +401,11 @@ stageModelOk &= checkStg('override coldProofHr=12-16 survives', vParams.coldProo
 const noCp = api.paramsFromStages(api.stagesFromRecipe({ ...loaf, coldProofHr: '0' }), 'sourdough-loaf');
 stageModelOk &= checkStg('coldProofHr=0 (none) survives', noCp.coldProofHr === '0');
 
+// 4) Migration on load: every non-levain recipe in memory now carries a stage list.
+const loaded = api.__recipes().filter(r => api.getProcessType(r) !== 'levain');
+const allHaveStages = loaded.length > 0 && loaded.every(r => Array.isArray(r.stages) && r.stages.length > 0);
+stageModelOk &= checkStg(`migration: all ${loaded.length} loaded recipes carry stages`, allHaveStages);
+
 allOk &= stageModelOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
