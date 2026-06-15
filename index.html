@@ -8459,6 +8459,57 @@ ${notesHtml}
     // Loaf backbone. Only computed when there are loaves to anchor it — a
     // muffin-only or bagel-only plan leaves these null/empty and emits no loaf
     // steps; the secondary processes schedule off their own slots.
+    // Time-bounded equipment claims for cross-process conflict detection. Each claim
+    // ties up `count` of a named resource (proofing container / banneton pool / pan)
+    // from start→end. A post-pass sweeps these per resource and warns when concurrent
+    // demand exceeds what's owned. Only configured resources (known capacity) are
+    // tracked — generic fallbacks are skipped. Defined here (before the loaf prep
+    // cascade, the first user) so its const binding is initialized in time.
+    const equipClaims = [];
+    const addClaim = (pool, role, name, count, start, end, capacityOverride, opts) => {
+      if (!name || !count || count <= 0) return;
+      const s = start instanceof Date ? start.getTime() : +start;
+      const e = end instanceof Date ? end.getTime() : +end;
+      if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) return;
+      let capacity = capacityOverride;
+      if (capacity == null) {
+        if (pool === 'container') { const c = userContainers.find(x => x.name === name); capacity = c ? c.quantity : null; }
+        else if (pool === 'banneton') { capacity = userBannetons.reduce((a, b) => a + (b.quantity || 0), 0) || null; }
+        else if (pool === 'pan') { const p = userPans.find(x => x.name === name); capacity = p ? p.quantity : null; }
+      }
+      capacity = Number(capacity);
+      if (!Number.isFinite(capacity) || capacity <= 0) return; // unconfigured → can't deconflict
+      const claim = { pool, role, name, count: Number(count), startMs: s, endMs: e, capacity };
+      // Container claims may carry alternatives + a display-relabel callback so the
+      // allocator can move them off a double-booked container (Phase 2).
+      if (opts && opts.candidates && opts.candidates.length) {
+        claim.candidates = opts.candidates.slice();
+        if (!claim.candidates.some(x => x.name === name)) claim.candidates.unshift({ name, quantity: capacity });
+        claim.relabel = opts.relabel;
+      }
+      equipClaims.push(claim);
+    };
+    // Time-aware container allocator: reserve fixed claims, then move each reassignable
+    // claim onto its current container if a free instance exists in its window, else onto
+    // the smallest eligible alternative that's free, else leave it (detection then warns).
+    const allocateContainers = () => {
+      const occ = new Map();
+      const overlaps = (name, s, e) => (occ.get(name) || []).filter(iv => iv.start < e && s < iv.end).length;
+      const reserve = (name, s, e) => { if (!occ.has(name)) occ.set(name, []); occ.get(name).push({ start: s, end: e }); };
+      equipClaims.filter(c => c.pool === 'container' && !(c.candidates && c.candidates.length))
+        .forEach(c => reserve(c.name, c.startMs, c.endMs));
+      equipClaims.filter(c => c.pool === 'container' && c.candidates && c.candidates.length)
+        .sort((a, b) => a.startMs - b.startMs)
+        .forEach(c => {
+          const current = c.candidates.find(x => x.name === c.name);
+          const order = current ? [current, ...c.candidates.filter(x => x !== current)] : c.candidates;
+          let chosen = order.find(cand => overlaps(cand.name, c.startMs, c.endMs) < cand.quantity);
+          if (!chosen) chosen = current || c.candidates[0];
+          if (chosen.name !== c.name) { if (c.relabel) c.relabel(chosen.name); c.name = chosen.name; c.capacity = chosen.quantity; }
+          reserve(chosen.name, c.startMs, c.endMs);
+        });
+      equipClaims.forEach(c => { delete c.candidates; delete c.relabel; });
+    };
     let firstBakeStart = null, lastBakeEnd = null, packageReady = null;
     let loafBakeStartTimes = [];
     let fridgeIn = null;
@@ -8760,56 +8811,6 @@ ${notesHtml}
     }
 
     const events = [];
-    // Time-bounded equipment claims for cross-process conflict detection. Each claim
-    // ties up `count` of a named resource (proofing container / banneton pool / pan)
-    // from start→end. A post-pass sweeps these per resource and warns when concurrent
-    // demand exceeds what's owned. Only configured resources (known capacity) are
-    // tracked — generic fallbacks are skipped.
-    const equipClaims = [];
-    const addClaim = (pool, role, name, count, start, end, capacityOverride, opts) => {
-      if (!name || !count || count <= 0) return;
-      const s = start instanceof Date ? start.getTime() : +start;
-      const e = end instanceof Date ? end.getTime() : +end;
-      if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) return;
-      let capacity = capacityOverride;
-      if (capacity == null) {
-        if (pool === 'container') { const c = userContainers.find(x => x.name === name); capacity = c ? c.quantity : null; }
-        else if (pool === 'banneton') { capacity = userBannetons.reduce((a, b) => a + (b.quantity || 0), 0) || null; }
-        else if (pool === 'pan') { const p = userPans.find(x => x.name === name); capacity = p ? p.quantity : null; }
-      }
-      capacity = Number(capacity);
-      if (!Number.isFinite(capacity) || capacity <= 0) return; // unconfigured → can't deconflict
-      const claim = { pool, role, name, count: Number(count), startMs: s, endMs: e, capacity };
-      // Container claims may carry alternatives + a display-relabel callback so the
-      // allocator can move them off a double-booked container (Phase 2).
-      if (opts && opts.candidates && opts.candidates.length) {
-        claim.candidates = opts.candidates.slice();
-        if (!claim.candidates.some(x => x.name === name)) claim.candidates.unshift({ name, quantity: capacity });
-        claim.relabel = opts.relabel;
-      }
-      equipClaims.push(claim);
-    };
-    // Time-aware container allocator: reserve fixed claims, then move each reassignable
-    // claim onto its current container if a free instance exists in its window, else onto
-    // the smallest eligible alternative that's free, else leave it (detection then warns).
-    const allocateContainers = () => {
-      const occ = new Map();
-      const overlaps = (name, s, e) => (occ.get(name) || []).filter(iv => iv.start < e && s < iv.end).length;
-      const reserve = (name, s, e) => { if (!occ.has(name)) occ.set(name, []); occ.get(name).push({ start: s, end: e }); };
-      equipClaims.filter(c => c.pool === 'container' && !(c.candidates && c.candidates.length))
-        .forEach(c => reserve(c.name, c.startMs, c.endMs));
-      equipClaims.filter(c => c.pool === 'container' && c.candidates && c.candidates.length)
-        .sort((a, b) => a.startMs - b.startMs)
-        .forEach(c => {
-          const current = c.candidates.find(x => x.name === c.name);
-          const order = current ? [current, ...c.candidates.filter(x => x !== current)] : c.candidates;
-          let chosen = order.find(cand => overlaps(cand.name, c.startMs, c.endMs) < cand.quantity);
-          if (!chosen) chosen = current || c.candidates[0];
-          if (chosen.name !== c.name) { if (c.relabel) c.relabel(chosen.name); c.name = chosen.name; c.capacity = chosen.quantity; }
-          reserve(chosen.name, c.startMs, c.endMs);
-        });
-      equipClaims.forEach(c => { delete c.candidates; delete c.relabel; });
-    };
     const autoNote = (opt) => {
       if (opt.kind === 'medium') return ' (medium ratio chosen to avoid a late-night refresh)';
       if (opt.kind === 'slow')   return ' (slower ratio chosen to avoid a late-night refresh)';
