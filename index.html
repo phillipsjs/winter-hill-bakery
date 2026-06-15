@@ -2440,6 +2440,21 @@
     return out;
   }
 
+  // Post-bake durations (cool, glaze) from a recipe's stages after its bake — so the
+  // side-group scheduler's finish (and the slot's package-ready time) honor edits to the
+  // cool/glaze stages. Returns null for a missing stage (caller falls back to template).
+  function postBakeFromStages(recipe) {
+    const stages = (Array.isArray(recipe.stages) && recipe.stages.length) ? recipe.stages : stagesFromRecipe(recipe);
+    const bakeIdx = stages.findIndex(s => s.type === 'bake');
+    const post = bakeIdx >= 0 ? stages.slice(bakeIdx + 1) : [];
+    const cool = post.find(s => s.type === 'cool');
+    const glaze = post.find(s => s.type === 'glaze');
+    return {
+      coolMin: cool ? (Number(cool.duration.min) || 0) : null,
+      glazeMin: glaze ? (Number(glaze.duration.min) || 0) : null,
+    };
+  }
+
   const SEED_RECIPES = [
     {
       id: 'seed-levain',
@@ -8581,6 +8596,14 @@ ${notesHtml}
           g.glazeMin = recsG.filter(r => r.glazeEnabled).reduce((m, r) => Math.max(m, Number(r.glazeMin) || tmpl.glazeMin), 0) || tmpl.glazeMin;
           g.postBakeMin = tmpl.coolMin + (g.glaze ? g.glazeMin : 0);
         }
+        // Cool/glaze come from the recipe's post-bake stages (stage editor is the source
+        // of truth), so editing those durations flows into the finish + package-ready time.
+        const pb = recsG.map(postBakeFromStages);
+        g.coolMin = Math.max(0, ...pb.map(x => x.coolMin != null ? x.coolMin : tmpl.coolMin));
+        const glazers = pb.filter(x => x.glazeMin != null);
+        g.glaze = glazers.length > 0;
+        g.glazeMin = g.glaze ? Math.max(...glazers.map(x => x.glazeMin || tmpl.glazeMin)) : 0;
+        g.postBakeMin = g.coolMin + (g.glaze ? g.glazeMin : 0);
         g.slot = computeSideSlot(deadline, g.bakeTime, g.totalMin, g.postBakeMin, g.label, key);
         sideGroups.push(g);
       });

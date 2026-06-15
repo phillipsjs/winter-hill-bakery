@@ -535,6 +535,26 @@ enrR.stages.find(s => s.type === 'bulk').duration.min += 60; // +60 min bulk
 const t1 = weighBefore(p2events('enriched'));
 const shiftedMin = Math.round((t0 - t1) / 60000);
 p2Ok &= p2(`bulk +60 min shifts chain ~60 min earlier (got ${shiftedMin})`, shiftedMin === 60);
+
+// Post-bake cool/glaze are now stage-driven. Package-ready is deadline-anchored, so a
+// longer cool shifts the BAKE earlier (more cooling before the deadline) and the cool
+// step's duration updates.
+const firstBake = (es) => es.filter(e => /^Bake /.test(e.title)).sort((a, b) => a.time - b.time)[0].time.getTime();
+const coolDetail = (es) => (es.find(e => /out — cool/.test(e.title)) || {}).detail || '';
+// reset enriched bulk back so only cool changes between the two renders
+enrR.stages.find(s => s.type === 'bulk').duration.min -= 60;
+let eePre = p2events('enriched');
+const bakeBefore = firstBake(eePre);
+enrR.stages.find(s => s.type === 'cool').duration.min += 30; // +30 min cool
+let eePost = p2events('enriched');
+const bakeShift = Math.round((bakeBefore - firstBake(eePost)) / 60000);
+p2Ok &= p2(`cool +30 min shifts the bake ~30 min earlier (got ${bakeShift})`, bakeShift === 30);
+p2Ok &= p2(`cool step duration reflects the edit (got "${coolDetail(eePost)}")`, /50 min/.test(coolDetail(eePost)));
+// Adding a glaze stage adds a glaze step + extends package-ready.
+const hasGlazeBefore = p2events('enriched').some(e => /Glaze/.test(e.title));
+enrR.stages.push({ id: 'p2-g', type: 'glaze', label: 'Glaze / ice', duration: { kind: 'fixed', min: 10 } });
+const afterGlaze = p2events('enriched');
+p2Ok &= p2('adding a glaze stage adds a Glaze step', !hasGlazeBefore && afterGlaze.some(e => /Glaze/.test(e.title)));
 allOk &= p2Ok;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
