@@ -6366,8 +6366,16 @@ ${notesHtml}
       { key: 'muffin', label: 'Muffin levain', info: levainInfo.muffin },
       { key: 'bagel',  label: 'Bagel levain',  info: levainInfo.bagel },
     ].filter(e => e.info);
+    // The plan calls for a levain (a sourdough process with a real levain) but no
+    // schedule has been built yet, so the vessel sizes aren't known. Show the Levain
+    // section anyway with a note that it fills in once the schedule is set.
+    const planHasLevain = recipes.some(r => (plan[r.id] || 0) > 0
+      && ['sourdough-loaf', 'sourdough-muffin', 'bagel'].includes(getProcessType(r))
+      && r.leavening !== 'commercial-yeast');
+    const levainPending = levainEntries.length === 0 && planHasLevain;
+    const levainSectionShown = levainEntries.length > 0 || levainPending;
 
-    if (groups.length === 0 && levainEntries.length === 0) {
+    if (groups.length === 0 && !levainSectionShown) {
       card.style.display = 'none';
       return;
     }
@@ -6405,11 +6413,16 @@ ${notesHtml}
         <div><strong>Levain</strong> <span class="muted" style="font-size:0.8rem">— for levain builds</span></div>
         ${blocks}
       </div>`;
+    } else if (levainPending) {
+      html += `<div style="margin-top:0">
+        <div><strong>Levain</strong> <span class="muted" style="font-size:0.8rem">— for levain builds</span></div>
+        <div class="muted" style="font-size:0.85rem;margin-top:4px">Levain vessel sizes depend on the schedule — they'll appear here once you set the bake schedule.</div>
+      </div>`;
     }
 
     // Dough proofing / chilling containers (after levain).
     if (groups.length > 0) {
-      const sepStyle = levainEntries.length > 0
+      const sepStyle = levainSectionShown
         ? 'border-top:1px solid var(--border);margin:12px 0 0;padding-top:12px;'
         : 'margin-top:0;';
       html += `<p style="${sepStyle}">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
