@@ -7654,6 +7654,23 @@ ${notesHtml}
     const ms = 5 * 60 * 1000;
     return new Date(Math.round(date.getTime() / ms) * ms);
   }
+  // Display ordering for the schedule + bake sheet. Events that land on the same
+  // displayed (5-min-rounded) clock time are clustered by dough/recipe so a step for
+  // one recipe can't slip between two steps of another (e.g. a boule preshape appearing
+  // between a batard's preshape and its into-fridge step at the same time). Across
+  // different displayed times — and always across days — strict chronological order holds.
+  function displayClusterKey(ev) {
+    return ev.columnKey || ev.process || '';
+  }
+  function displayEventOrder(a, b) {
+    if (a.time.toDateString() !== b.time.toDateString()) return a.time - b.time;
+    const ra = roundToFiveMin(a.time).getTime();
+    const rb = roundToFiveMin(b.time).getTime();
+    if (ra !== rb) return ra - rb;
+    const ka = displayClusterKey(a), kb = displayClusterKey(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
+    return a.time - b.time;
+  }
   function getQuietHours() {
     const windows = loadKitchenWindows();
     if (windows.length > 0) return { start: windows[0].start, end: windows[0].end };
@@ -10486,8 +10503,9 @@ ${notesHtml}
 
     // Re-sort: events may be out of order after anchor shifts or after the
     // final cooling/package-ready events were pushed in buildSchedule.
-    // Without this, day grouping can split or duplicate days.
-    result.events.sort((a, b) => a.time - b.time);
+    // Without this, day grouping can split or duplicate days. Use the display order
+    // so same-recipe steps at the same clock time stay contiguous.
+    result.events.sort(displayEventOrder);
     const groups = [];
     let currentKey = null;
     for (const ev of result.events) {
@@ -11232,8 +11250,9 @@ ${notesHtml}
       });
     };
 
-    // Group events by day
-    const sorted = [..._scheduleResult.events].sort((a, b) => a.time - b.time);
+    // Group events by day (same display order as the schedule tab — same-recipe steps
+    // at the same clock time stay contiguous).
+    const sorted = [..._scheduleResult.events].sort(displayEventOrder);
     const groups = [];
     let curKey = null;
     for (const ev of sorted) {

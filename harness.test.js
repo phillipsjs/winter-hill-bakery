@@ -293,5 +293,42 @@ const fsNamed = loafContainerFor('Final shape');
 bannetonOk &= check(`named banneton shown (got "${fsNamed}")`, fsNamed.includes('9 inch round'));
 allOk &= bannetonOk;
 
+// ---- contiguity assertions: same-recipe steps cluster within each displayed time ----
+// _scheduleResult.events is already in display order (renderSchedule sorts in place).
+console.log('\nContiguity assertions:');
+function clusterContiguityOk(events) {
+  const round5 = (t) => Math.round(t.getTime() / 300000) * 300000;
+  let i = 0;
+  while (i < events.length) {
+    const day = events[i].time.toDateString(), rt = round5(events[i].time);
+    let j = i;
+    while (j < events.length && events[j].time.toDateString() === day && round5(events[j].time) === rt) j++;
+    // Within this displayed-time bucket, each cluster key must form one contiguous run.
+    const seen = new Set(); let last = null;
+    for (let k = i; k < j; k++) {
+      const key = events[k].columnKey || events[k].process || '';
+      if (key !== last) { if (seen.has(key)) return false; seen.add(key); last = key; }
+    }
+    i = j;
+  }
+  return true;
+}
+function expectContiguous(name, plan, recipeDeadlines) {
+  api.__setBannetons([]);
+  seedPlan(plan); api.__setPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  if (recipeDeadlines) localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify(recipeDeadlines));
+  else localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const ok = clusterContiguityOk(api.__sr().events);
+  console.log(`  [contig] ${ok ? 'PASS' : 'FAIL'} — ${name}`);
+  return ok;
+}
+let contigOk = true;
+contigOk &= expectContiguous('two loaf doughs (batard + boule)', { [SEED.batard]: 8, [SEED.boule]: 8 });
+contigOk &= expectContiguous('loaf + muffin + bagel', { [SEED.batard]: 8, [SEED.muffin]: 12, [SEED.bagel]: 10 });
+allOk &= contigOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
