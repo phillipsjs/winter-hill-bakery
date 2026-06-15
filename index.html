@@ -8527,6 +8527,7 @@ ${notesHtml}
     const PRESHAPE_RATIO = SCHED.PRESHAPE_MIN_PER_LOAF /
       (SCHED.PRESHAPE_MIN_PER_LOAF + SCHED.FINAL_SHAPE_MIN_PER_LOAF);
     const loafSpecByName = new Map(loafRecipes.map(r => [r.name, getRecipeSpec(r)]));
+    const loafWeightByName = new Map(loafRecipes.map(r => [r.name, Number(r.loafWeight) || 0]));
     const perUnitFor = (recipeName) => {
       const spec = loafSpecByName.get(recipeName);
       return spec
@@ -9081,6 +9082,16 @@ ${notesHtml}
         return `${formatMin(each)} min × ${item.count} ${label}`;
       }).join(' + ');
     };
+    const weightBreakdown = (c) => {
+      const single = (c.contents || []).length === 1;
+      const parts = (c.contents || []).map(item => {
+        const g = loafWeightByName.get(item.recipe) || 0;
+        if (!g) return null;
+        const label = single ? '' : ` ${item.recipe}`;
+        return `${formatGrams(g)} each${label}`;
+      }).filter(Boolean);
+      return parts.length ? parts.join(' · ') : '';
+    };
     const containerFridgeInTimes = [];
     let cursorTime = shapePhaseStart;
     for (let i = 0; i < containerInfo.length; i++) {
@@ -9098,7 +9109,8 @@ ${notesHtml}
         : `container ${i + 1} of ${numContainers}`;
       const suffix = (numContainers > 1 || c.containerName) ? ` (${containerLabel}: ${contentsLabel})` : '';
       const shapeContainer = suffix ? `${containerLabel}: ${contentsLabel}` : '';
-      const preshapeBaseDetail = `${shapeBreakdown(c, 'preshape')} = ${shape.preshapeMin} min total`;
+      const wb = weightBreakdown(c);
+      const preshapeBaseDetail = `${wb ? `Weigh & divide: ${wb} · ` : ''}${shapeBreakdown(c, 'preshape')} = ${shape.preshapeMin} min total`;
       events.push({
         time: preshapeStartT,
         title: `Start preshape${suffix}`,
