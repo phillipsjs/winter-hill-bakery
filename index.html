@@ -10174,7 +10174,10 @@ ${notesHtml}
       inp.addEventListener('input', () => {
         const map = loadRecipeDeadlines();
         const id = inp.dataset.recipeDeadline;
-        if (inp.value) map[id] = inp.value; else delete map[id];
+        const def = (document.getElementById('deadline-default-input') || {}).value || '';
+        // Only store a real override — a value equal to the default just inherits it,
+        // so it stays linked to the default rather than caching a duplicate.
+        if (inp.value && inp.value !== def) map[id] = inp.value; else delete map[id];
         saveRecipeDeadlines(map);
         renderSchedule();
         renderTotals();
@@ -11614,8 +11617,19 @@ ${notesHtml}
   if (defaultDeadlineInput) {
     defaultDeadlineInput.value = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
     defaultDeadlineInput.addEventListener('input', () => {
-      if (defaultDeadlineInput.value) localStorage.setItem(DEFAULT_DEADLINE_KEY, defaultDeadlineInput.value);
+      const oldDefault = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
+      const newDefault = defaultDeadlineInput.value;
+      if (newDefault) localStorage.setItem(DEFAULT_DEADLINE_KEY, newDefault);
       else localStorage.removeItem(DEFAULT_DEADLINE_KEY);
+      // A per-recipe override that just matches the default is tracking it, not a real
+      // override — drop those so they follow the new default instead of staying cached
+      // at the old value. (Genuinely different overrides are kept.)
+      const map = loadRecipeDeadlines();
+      let changed = false;
+      Object.keys(map).forEach(id => {
+        if (map[id] === oldDefault || map[id] === newDefault) { delete map[id]; changed = true; }
+      });
+      if (changed) saveRecipeDeadlines(map);
       renderRecipeDeadlines();
       renderSchedule();
       renderTotals();
