@@ -99,7 +99,7 @@ function seedPlan(p) { localStorageStub.setItem(PLAN_KEY, JSON.stringify(p)); }
 const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
-  buildScheduleAcrossLoafGroups,
+  buildScheduleAcrossLoafGroups, getEventStage,
   __sr: () => _scheduleResult,
   __setPlan: (p) => { plan = p; },
   __recipes: () => recipes,
@@ -192,6 +192,18 @@ function run(name, plan, deadlineDate, recipeDeadlines) {
   return ok;
 }
 
+// ---- staging assertions: cold proof = chill, bulk ferment = its own proof step ----
+function stageOf(title) {
+  const ev = api.__sr().events.find(e => e.title === title || e.title.startsWith(title));
+  return ev ? api.getEventStage(ev) : null;
+}
+function expectStage(name, title, want) {
+  const got = stageOf(title);
+  const ok = got === want;
+  console.log(`  [${name}] ${ok ? 'PASS' : 'FAIL'} — "${title}" stage=${got} (want ${want})`);
+  return ok;
+}
+
 const tomorrow8 = new Date(); tomorrow8.setDate(tomorrow8.getDate() + 1); tomorrow8.setHours(8, 0, 0, 0);
 
 console.log('Running schedule/levain consistency scenarios:');
@@ -210,5 +222,22 @@ allOk &= run('loaf + muffin (far-apart deadlines → separate)',
   { [SEED.batard]: 8, [SEED.muffin]: 12 }, tomorrow8,
   { [SEED.muffin]: fmtLocal(twoDaysLater8) });
 
+console.log('\nStaging assertions (loaf + muffin + bagel):');
+seedPlan({ [SEED.batard]: 8, [SEED.muffin]: 12, [SEED.bagel]: 10 });
+api.__setPlan({ [SEED.batard]: 8, [SEED.muffin]: 12, [SEED.bagel]: 10 });
+els['deadline-default-input'].value = fmtLocal(tomorrow8);
+['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+api.renderSchedule();
+let stageOk = true;
+stageOk &= expectStage('stage', 'Bulk ferment', 'proof');                 // loaf bulk ferment (own step)
+stageOk &= expectStage('stage', 'Muffin dough bulk ferment', 'proof');    // muffin bulk ferment
+stageOk &= expectStage('stage', 'Bagel dough bulk ferment', 'proof');     // bagel bulk ferment
+stageOk &= expectStage('stage', 'Into fridge', 'chill');                  // loaf cold proof
+stageOk &= expectStage('stage', 'Muffins into fridge', 'chill');          // muffin cold proof
+stageOk &= expectStage('stage', 'Bagels into fridge', 'chill');           // bagel cold proof
+stageOk &= expectStage('stage', 'Muffins out of fridge', 'proof');        // warm-up final proof
+
+allOk &= stageOk;
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

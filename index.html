@@ -9074,9 +9074,21 @@ ${notesHtml}
         time: foldTime,
         title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}`,
         detail: (isLast
-          ? `${activeStr} · then ${(loafAgg.bulkMin / 60).toFixed(loafAgg.bulkMin % 60 === 0 ? 0 : 1)} hr bulk ferment`
+          ? `${activeStr} · last fold, then bulk ferment`
           : `${activeStr} · next fold in ${SCHED.FOLD_INTERVAL_MIN} min`) + sharedContainerStr,
         process: 'loaf', colDetails: prepColDetails, equipStrip: sharedContainerStr,
+      });
+    }
+    // Bulk ferment as its own (proof-stage) step: the warm rise from the last fold to
+    // shaping. Previously folded into the last fold's detail.
+    if (loafAgg.bulkMin > 0) {
+      const loafBulkHrLabel = (loafAgg.bulkMin / 60).toFixed(loafAgg.bulkMin % 60 === 0 ? 0 : 1);
+      events.push({
+        time: lastFoldTime,
+        timeEnd: shapePhaseStart,
+        title: 'Bulk ferment',
+        detail: `${loafBulkHrLabel} hr warm bulk ferment until ready to shape` + sharedContainerStr,
+        process: 'loaf', stage: 'proof', colDetails: prepColDetails, equipStrip: sharedContainerStr,
       });
     }
     } // end if (totalLoaves > 0) loaf prep events
@@ -9425,8 +9437,8 @@ ${notesHtml}
       const bagelMixerName = (bagelRecipes.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
       const bagelMixerParen = ` (mixer holds max ${SCHED.BAGEL_MIXER_CAPACITY} bagels; all batches go into the same container for proofing)`;
       const bagelMixDetail = bagelMixBatches > 1
-        ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${bagelMixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * bagelMixBatches} min active${bagelMixerParen} · then ${bagelBulkHrLabel} hr bulk ferment ${bagelLevainNote}`
-        : `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix · then ${bagelBulkHrLabel} hr bulk ferment ${bagelLevainNote}`;
+        ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${bagelMixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * bagelMixBatches} min active${bagelMixerParen} ${bagelLevainNote}`
+        : `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix ${bagelLevainNote}`;
       events.push({
         time: bagelMixStart,
         title: 'Mix bagel dough',
@@ -9436,6 +9448,22 @@ ${notesHtml}
         equip: [bagelMixerName],
         equipStrip: bagelMixBatches > 1 ? bagelMixerParen : '',
       });
+      // Bulk ferment as its own (proof-stage) step, between mixing and shaping.
+      if (bagelAgg.bulkMin > 0) {
+        const bagelDoughG = bagelRecipes.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
+        const bagelBulkCont = pickDoughContainer(bagelDoughG);
+        const bagelBulkContainer = bagelBulkCont ? bagelBulkCont.name : 'dough tub';
+        events.push({
+          time: bagelTimes.bagelBulkStart,
+          timeEnd: bagelTimes.bagelShapeStart,
+          title: 'Bagel dough bulk ferment',
+          detail: `${bagelBulkHrLabel} hr bulk ferment ${bagelLevainNote}`,
+          process: 'bagel', stage: 'proof', container: bagelBulkContainer,
+        });
+        const bagelBulkEv = events[events.length - 1];
+        addClaim('container', 'Bagel bulk ferment', bagelBulkCont && bagelBulkCont.name, 1, bagelTimes.bagelBulkStart, bagelTimes.bagelShapeStart, null,
+          bagelBulkCont ? { candidates: containerCandidates(['any', 'loaf'], bagelDoughG), relabel: (newName) => { bagelBulkEv.container = newName; } } : null);
+      }
       const bagelShapeDetail = bagelRecipes.length === 1
         ? `${getRecipeSpec(bagelRecipes[0]).shapeMinPerUnit} min × ${totalBagels} bagels = ${totalBagelShapeMin} min total`
         : bagelRecipes
@@ -9707,7 +9735,7 @@ ${notesHtml}
         events.push({ time: shapeStart, title: `Shape ${r.name}${suffix}`, detail: `${shapeMin} min · ${unitsLabel}`, process: 'enriched', columnKey: g.key, stage: 'shape', activeStep: true });
         if (p.cold) {
           const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
-          const coldEv = { time: proofStart, title: `Final proof — cold (overnight) — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.coldHr} hr in the fridge · use ${contLabel}`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}` };
+          const coldEv = { time: proofStart, title: `Final proof — cold (overnight) — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.coldHr} hr in the fridge · use ${contLabel}`, process: 'enriched', columnKey: g.key, stage: 'chill', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}` };
           events.push(coldEv);
           addClaim('container', `Cold proof ${r.name}`, p.containerName, 1, proofStart, bakeStart, null,
             p.containerName ? {
@@ -10114,8 +10142,10 @@ ${notesHtml}
     if (/^(Start autolyse|Mix in salt|Mix muffin|Mix bagel|Mix focaccia|Mix simple|Mix & knead)/.test(t)) return 'mix';
     if (/^Stretch & fold/.test(t)) return 'fold';
     if (/^(Start preshape|Bench rest|Final shape|Shape muffins|Shape bagels|Shape focaccia|Shape \/ portion|Shape enriched)/.test(t)) return 'shape';
-    if (/^Chill \/ rest/.test(t)) return 'chill';
-    if (/^(Into fridge|Muffins into fridge|Bagels into fridge|Muffins out of fridge|Pan rise|Final proof|Bulk rise)/.test(t)) return 'proof';
+    // Cold proof (anything going into / sitting in the fridge) is a chill stage.
+    if (/^(Chill \/ rest|Into fridge|Muffins into fridge|Bagels into fridge)/.test(t)) return 'chill';
+    // Warm/room-temp proofing — bulk ferment, warm-up out of the fridge, pan/final rise.
+    if (/^(Bulk ferment|Muffins out of fridge|Pan rise|Final proof|Bulk rise)/.test(t)) return 'proof';
     if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
@@ -11042,9 +11072,10 @@ ${notesHtml}
         const info = isMuffin ? levainContInfo.muffin : isBagel ? levainContInfo.bagel : levainContInfo.shared;
         return info ? info.name : '';
       }
-      // Bulk ferment events (loaf)
+      // Bulk ferment events (loaf) — autolyse/mix/folds and the bulk-ferment step all
+      // sit in the same dough container.
       if (ev.process !== 'loaf' || loafContainers.length === 0) return '';
-      if (!/autolyse|Autolyse|Mix in salt|Stretch & fold/.test(t)) return '';
+      if (!/autolyse|Autolyse|Mix in salt|Stretch & fold|Bulk ferment/.test(t)) return '';
       if (loafContainers.length === 1) {
         return loafContainers[0].containerName || '';
       }
