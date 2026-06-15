@@ -6380,17 +6380,22 @@ ${notesHtml}
       return;
     }
 
-    const hasUserContainers = userContainers.some(c => c.processTag === 'any' || c.processTag === 'loaf');
+    const hasProofingContainers = userContainers.some(c => c.processTag === 'any' || c.processTag === 'loaf');
+    const hasLevainContainers = userContainers.some(c => c.processTag === 'any' || c.processTag === 'levain');
     const totalContainers = groups.reduce((s, g) => s + g.containers.length, 0);
     const totalDough = groups.reduce((s, g) => s + g.totalDough, 0);
 
     let html = '';
 
-    if (!hasUserContainers) {
-      html += `<div style="margin-bottom:12px;padding:8px 12px;background:var(--accent-light,#e8f4e8);border-radius:6px;font-size:0.875rem">
-        No proofing containers configured — using a generic default.
-        <a href="#" onclick="showTab('ingredients');setTimeout(function(){showContainerAddForm();document.getElementById('container-add-form').scrollIntoView({behavior:'smooth',block:'start'});},120);return false" style="margin-left:4px">Add your containers →</a>
-      </div>`;
+    // Surface unconfigured-container notes per type so the levain isn't silently
+    // defaulted — call out levain containers separately when the plan needs a levain.
+    const addContainersLink = `<a href="#" onclick="showTab('ingredients');setTimeout(function(){showContainerAddForm();document.getElementById('container-add-form').scrollIntoView({behavior:'smooth',block:'start'});},120);return false" style="margin-left:4px">Add your containers →</a>`;
+    const noteBox = (text) => `<div style="margin-bottom:12px;padding:8px 12px;background:var(--accent-light,#e8f4e8);border-radius:6px;font-size:0.875rem">${text}${addContainersLink}</div>`;
+    if (groups.length > 0 && !hasProofingContainers) {
+      html += noteBox('No proofing containers configured — using a generic default.');
+    }
+    if (levainSectionShown && !hasLevainContainers) {
+      html += noteBox('No levain containers configured — using a generic default.');
     }
 
     // Levain build vessels first — they're built (and needed) before any dough proofing
