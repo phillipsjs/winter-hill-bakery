@@ -7722,6 +7722,7 @@ ${notesHtml}
     /^Into fridge/,
   ];
   const ACTIVE_MUFFIN_TITLE_PATTERNS = [
+    /^Weigh ingredients/,
     /^Mix muffin/,
     /^Shape muffins/,
     /^Muffins into fridge/,
@@ -7730,6 +7731,7 @@ ${notesHtml}
   // Bagel boil/top/bake steps are anchored to the chosen bake window (like
   // loaf/muffin bakes), so only the pre-fridge prep counts as awake-time work.
   const ACTIVE_BAGEL_TITLE_PATTERNS = [
+    /^Weigh ingredients/,
     /^Mix bagel/,
     /^Shape bagels/,
     /^Bagels into fridge/,
@@ -9361,6 +9363,20 @@ ${notesHtml}
       });
     }
     if (totalMuffins > 0 && muffinTimes) {
+      // Weigh ingredients before mixing — finishing in time for the mill step (if any
+      // flour is milled) or the mix otherwise.
+      const muffinWeighDuration = muffinRecipes.length * SCHED.WEIGH_MIN_PER_RECIPE;
+      const muffinWeighEnd = millingFloursMuffin.size > 0
+        ? addMinutes(muffinMixStart, -SCHED.MILL_ACTIVE_MIN)
+        : muffinMixStart;
+      events.push({
+        time: addMinutes(muffinWeighEnd, -muffinWeighDuration),
+        title: 'Weigh ingredients',
+        detail: muffinRecipes.length > 1
+          ? `${SCHED.WEIGH_MIN_PER_RECIPE} min × ${muffinRecipes.length} recipes = ${muffinWeighDuration} min active`
+          : `${SCHED.WEIGH_MIN_PER_RECIPE} min active`,
+        process: 'muffin',
+      });
       const muffinBulkHrLabel = (muffinAgg.bulkMin / 60).toFixed(muffinAgg.bulkMin % 60 === 0 ? 0 : 1);
       const muffinMixerName = (muffinRecipes.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
       const muffinMixerParen = ` (mixer holds max ${SCHED.MUFFIN_MIXER_CAPACITY} muffins; all batches go into the same container)`;
@@ -9435,6 +9451,20 @@ ${notesHtml}
       });
     }
     if (totalBagels > 0 && bagelTimes) {
+      // Weigh ingredients before mixing — finishing in time for the mill step (if any
+      // flour is milled) or the mix otherwise.
+      const bagelWeighDuration = bagelRecipes.length * SCHED.WEIGH_MIN_PER_RECIPE;
+      const bagelWeighEnd = millingFloursBagel.size > 0
+        ? addMinutes(bagelMixStart, -SCHED.MILL_ACTIVE_MIN)
+        : bagelMixStart;
+      events.push({
+        time: addMinutes(bagelWeighEnd, -bagelWeighDuration),
+        title: 'Weigh ingredients',
+        detail: bagelRecipes.length > 1
+          ? `${SCHED.WEIGH_MIN_PER_RECIPE} min × ${bagelRecipes.length} recipes = ${bagelWeighDuration} min active`
+          : `${SCHED.WEIGH_MIN_PER_RECIPE} min active`,
+        process: 'bagel',
+      });
       const bagelBulkHrLabel = (bagelAgg.bulkMin / 60).toFixed(bagelAgg.bulkMin % 60 === 0 ? 0 : 1);
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
       const bagelMixerName = (bagelRecipes.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';

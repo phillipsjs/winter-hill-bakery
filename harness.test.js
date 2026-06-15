@@ -239,5 +239,28 @@ stageOk &= expectStage('stage', 'Bagels into fridge', 'chill');           // bag
 stageOk &= expectStage('stage', 'Muffins out of fridge', 'proof');        // warm-up final proof
 
 allOk &= stageOk;
+
+// ---- weigh-step assertions: every process emits a weigh-ingredients step ----
+console.log('\nWeigh-step assertions:');
+function hasWeighFor(proc) {
+  return api.__sr().events.some(e => e.process === proc && /^Weigh /.test(e.title));
+}
+function expectWeigh(plan, proc) {
+  seedPlan(plan); api.__setPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const ok = hasWeighFor(proc);
+  console.log(`  [weigh] ${ok ? 'PASS' : 'FAIL'} — ${proc} has a weigh step`);
+  return ok;
+}
+let weighOk = true;
+weighOk &= expectWeigh({ [SEED.batard]: 8 }, 'loaf');
+weighOk &= expectWeigh({ [SEED.muffin]: 12 }, 'muffin');
+weighOk &= expectWeigh({ [SEED.bagel]: 10 }, 'bagel');
+weighOk &= expectWeigh({ [SEED.focaccia]: 2 }, 'focaccia');
+allOk &= weighOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
