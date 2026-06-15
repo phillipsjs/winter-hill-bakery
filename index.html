@@ -6556,6 +6556,28 @@ ${notesHtml}
     };
   }
 
+  // The levain build ratios + shared-vs-separate split, as actually rendered by the
+  // schedule tab. _scheduleResult is refreshed by renderSchedule() before the levain
+  // card / bake sheet render, so prefer it — it's the authoritative decision. Only
+  // fall back to getSelectedLevainRatios() (which rebuilds with a different muffin
+  // cold-proof / deadline derivation, and can disagree) when no schedule exists yet.
+  function effectiveLevainRatios() {
+    const sr = _scheduleResult;
+    if (sr && sr.build2Opt) {
+      return {
+        build1: sr.build1Opt,
+        build2: sr.build2Opt,
+        useSeparateLevains: !!sr.useSeparateLevains,
+        muffinBuild1: sr.muffinBuild1Opt || null,
+        muffinBuild2: sr.muffinBuild2Opt || null,
+        useBagelSeparateLevain: !!sr.useBagelSeparateLevain,
+        bagelBuild1: sr.bagelBuild1Opt || null,
+        bagelBuild2: sr.bagelBuild2Opt || null,
+      };
+    }
+    return getSelectedLevainRatios();
+  }
+
   function renderLevainPlan(aggregate, levainByProcess) {
     const levainCard = document.getElementById('levain-card');
     const levainOut = document.getElementById('levain-output');
@@ -6571,7 +6593,7 @@ ${notesHtml}
     }
 
     const BUFFER = 1.10;
-    const ratios = getSelectedLevainRatios();
+    const ratios = effectiveLevainRatios();
 
     const buildHtml = (levainGrams, build1Ratio, build2Ratio) => {
       const bufferedTotal = levainGrams * BUFFER;
@@ -10826,7 +10848,7 @@ ${notesHtml}
 
   function computeBakeSheetIngredientData() {
     const BUFFER = 1.10;
-    const ratios = getSelectedLevainRatios();
+    const ratios = effectiveLevainRatios();
 
     const byRecipe = recipes
       .filter(r => isInPlan(r.id) && (plan[r.id] || 0) > 0)
