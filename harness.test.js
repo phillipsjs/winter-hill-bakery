@@ -434,5 +434,64 @@ allOk &= editorOk;
 
 allOk &= stageModelOk;
 
+// 6) Schedule invariance: a no-op edit→save (stages → params) must not move the
+//    schedule for any process (this is the bug the user hit when editing the bagel).
+console.log('\nSchedule-invariance (no-op edit/save):');
+let invarOk = true;
+function bagelLikeMerge(r) {
+  const pt = api.getProcessType(r);
+  const params = api.paramsFromStages(api.stagesFromRecipe(r), pt);
+  const out = { ...r };
+  ['bakeMin', 'coldProofHr', 'warmupMin', 'autolyseMin', 'bulkMin', 'foldsCount', 'shapeMinPerUnit'].forEach(f => {
+    if (f in params) out[f] = params[f] === '' ? null : params[f];
+  });
+  out.bakeTempF = (params.bakeTempF === '' || params.bakeTempF == null) ? null : Number(params.bakeTempF);
+  if (pt === 'simple') out.chillWindow = params.chillWindow || '';
+  if (pt === 'enriched') {
+    out.finalProofMode = params.finalProofMode || 'warm';
+    out.finalProofWarmMin = (params.finalProofWarmMin === '' || params.finalProofWarmMin == null) ? null : Number(params.finalProofWarmMin);
+    out.finalProofColdWindow = params.finalProofColdWindow || '8-12';
+    out.glazeEnabled = !!params.glazeEnabled;
+    out.glazeMin = (params.glazeMin === '' || params.glazeMin == null) ? null : Number(params.glazeMin);
+  }
+  return out;
+}
+function scheduleSig(planObj, recipeMut) {
+  const recs = api.__recipes();
+  // apply recipeMut to a clone of the recipes array (mutate in place by id)
+  if (recipeMut) Object.keys(recipeMut).forEach(id => {
+    const idx = recs.findIndex(r => r.id === id);
+    if (idx >= 0) recs[idx] = recipeMut[id];
+  });
+  api.__setPlan(planObj);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setBannetons([]);
+  api.renderSchedule();
+  const sr = api.__sr();
+  if (!sr) return '(none)';
+  return sr.events.map(e => `${e.process}|${e.title}@${e.time && e.time.getTime ? Math.round(e.time.getTime() / 60000) : '?'}`).join('\n');
+}
+[
+  ['loaf', { 'seed-sourdough-batard': 8 }, 'seed-sourdough-batard'],
+  ['muffin', { 'seed-english-muffins': 12 }, 'seed-english-muffins'],
+  ['bagel', { 'seed-sourdough-bagels': 10 }, 'seed-sourdough-bagels'],
+  ['focaccia', { 'seed-focaccia': 2 }, 'seed-focaccia'],
+].forEach(([label, plan, id]) => {
+  const orig = api.__recipes().find(r => r.id === id);
+  if (!orig) { console.log(`  [invar] SKIP — ${label} (seed not present)`); return; }
+  const before = scheduleSig(plan, null);
+  const after = scheduleSig(plan, { [id]: bagelLikeMerge(orig) });
+  const ok = before === after;
+  invarOk &= ok;
+  console.log(`  [invar] ${ok ? 'PASS' : 'FAIL'} — ${label}: no-op edit leaves schedule unchanged`);
+  if (!ok) {
+    const b = before.split('\n'), a = after.split('\n');
+    for (let i = 0; i < Math.max(b.length, a.length); i++) if (b[i] !== a[i]) { console.log(`      @${i}: ${b[i]} => ${a[i]}`); break; }
+  }
+});
+allOk &= invarOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
