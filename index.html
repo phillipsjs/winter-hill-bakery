@@ -10164,12 +10164,23 @@ ${notesHtml}
     const saved = loadRecipeDeadlines();
     const defaultStr = (document.getElementById('deadline-default-input') || {}).value || '';
     const defLabel = defaultStr ? new Date(defaultStr).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'no default set';
+    const hasOverrides = inPlan.some(r => saved[r.id]);
     list.innerHTML = inPlan.map(r => `
       <div class="row" style="align-items:center; gap:10px; margin-bottom:6px">
         <label style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(r.name)}</label>
         <input type="datetime-local" data-recipe-deadline="${r.id}" value="${saved[r.id] || ''}" />
       </div>`).join('') +
-      `<div class="muted" style="font-size:12px; margin-top:4px">Blank rows use the default deadline (${escapeHtml(defLabel)}).</div>`;
+      `<div style="display:flex; align-items:center; gap:10px; margin-top:4px">
+        <span class="muted" style="font-size:12px; flex:1">Blank rows use the default deadline (${escapeHtml(defLabel)}).</span>
+        ${hasOverrides ? `<button type="button" id="clear-recipe-deadlines-btn" class="secondary tiny">Clear all</button>` : ''}
+      </div>`;
+    const clearBtn = document.getElementById('clear-recipe-deadlines-btn');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+      saveRecipeDeadlines({});
+      renderRecipeDeadlines();
+      renderSchedule();
+      renderTotals();
+    });
     list.querySelectorAll('input[data-recipe-deadline]').forEach(inp => {
       inp.addEventListener('input', () => {
         const map = loadRecipeDeadlines();
