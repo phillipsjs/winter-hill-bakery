@@ -6443,9 +6443,12 @@ ${notesHtml}
     out.innerHTML = html;
     const containerSummaryEl = document.getElementById('container-summary');
     if (containerSummaryEl) {
+      // Lead with the grand total (proofing/chilling + levain vessels), then break it down.
+      const grandTotal = totalContainers + levainContainerCount;
       const parts = [];
-      if (totalContainers > 0) parts.push(`${totalContainers} container${totalContainers > 1 ? 's' : ''} · ${formatGrams(totalDough)} dough`);
-      if (levainContainerCount > 0) parts.push(`${levainContainerCount} levain vessel${levainContainerCount > 1 ? 's' : ''}`);
+      if (grandTotal > 0) parts.push(`${grandTotal} container${grandTotal > 1 ? 's' : ''}`);
+      if (levainContainerCount > 0) parts.push(`${levainContainerCount} for levain`);
+      if (totalContainers > 0) parts.push(`${formatGrams(totalDough)} dough`);
       containerSummaryEl.textContent = parts.join(' · ');
     }
     const titleEl = document.getElementById('container-card-title');
