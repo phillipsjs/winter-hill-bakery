@@ -9944,153 +9944,93 @@ ${notesHtml}
     // slot, so recipes sharing a dough but with different deadlines split apart. ---
     const sideColumns = sideGroups.map(g => ({ key: g.key, process: g.process, label: g.label, recipeIds: g.recipeIds, total: g.total }));
 
-    // --- Simple-bake step events, per side group (mix → [chill per batch] → shape →
-    // bake → cool → ready). Each group is its own column + oven slot + deadline. ---
-    for (const g of simpleGroups) {
-      if (!g.slot) continue;
-      const slot = g.slot;
-      const ovenTag = slot.ovenName ? ` · ${slot.ovenName}` : '';
-      const ovenEquip = slot.ovenName ? [slot.ovenName] : (singleOvenName ? [singleOvenName] : []);
-      const chilling = g.chillHr > 0;
-      const chillMin = g.chillHr * 60;
-      const fmtChillLabel = (hr) => hr < 1 ? `${Math.round(hr * 60)} min` : `${hr} hr`;
-      const shapeStart = addMinutes(slot.firstBakeStart, -g.shapeMin);
-      // Each batch is weighed, mixed, then goes straight into its OWN container in the
-      // fridge. Chill is a MINIMUM, so only the last batch needs the full chill before
-      // shaping. Back up from shape by chill + per-batch prep (weigh + mix).
-      const WEIGH = SCHED.WEIGH_MIN_PER_RECIPE;
-      const perBatchPrep = WEIGH + simpleTmpl.mixMin;
-      const mixEndTarget = chilling ? addMinutes(shapeStart, -chillMin) : shapeStart;
-      const prepStart = addMinutes(mixEndTarget, -g.numBatches * perBatchPrep);
-      let simpleMixIdx = 0;
-      g.batchPlan.forEach(p => {
-        const r = p.recipe;
-        const unit = r.unit || 'item';
-        p.perBatch.forEach((batchUnits, b) => {
-          const batchSuffix = p.numBatches > 1 ? ` — batch ${b + 1} of ${p.numBatches}` : '';
-          const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
-          const t0 = addMinutes(prepStart, simpleMixIdx * perBatchPrep);
-          events.push({
-            time: t0, title: `Weigh out ${r.name}${batchSuffix} ingredients`,
-            detail: `${unitsLabel} · ${WEIGH} min`,
-            process: 'simple', columnKey: g.key, stage: 'prep', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits),
-          });
-          const mt = addMinutes(t0, WEIGH);
-          const simpleMixer = mixerForRecipeG(r);
-          events.push({
-            time: mt, title: `Mix ${r.name}${batchSuffix}`,
-            detail: `${unitsLabel} · ${simpleTmpl.mixMin} min active${p.chillHr > 0 ? ' · then into the fridge' : ''}`,
-            process: 'simple', columnKey: g.key, stage: 'mix', activeStep: true,
-            equip: simpleMixer ? [simpleMixer.name] : [],
-          });
-          if (p.chillHr > 0) {
-            // This batch's own container (one container per batch).
-            const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
-            const chillEv = {
-              time: addMinutes(mt, simpleTmpl.mixMin),
-              title: `Chill ${r.name} dough — into fridge${batchSuffix}`,
-              detail: `${unitsLabel} · chill at least ${fmtChillLabel(p.chillHr)} · use ${contLabel}`,
-              process: 'simple', columnKey: g.key, stage: 'chill', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}`,
-            };
-            events.push(chillEv);
-            const chillGrams = batchUnits * (r.loafWeight || 0);
-            addClaim('container', `Chill ${r.name}`, p.containerName, 1, addMinutes(mt, simpleTmpl.mixMin), shapeStart, null,
-              p.containerName ? {
-                candidates: containerCandidates(['any'], chillGrams, true),
-                relabel: (newType) => {
-                  const newLabel = p.numBatches > 1 ? `${newType} #${b + 1}` : newType;
-                  chillEv.container = newLabel;
-                  if (chillEv.detail) chillEv.detail = chillEv.detail.split(`· use ${contLabel}`).join(`· use ${newLabel}`);
-                  chillEv.equipStrip = ` · use ${newLabel}`;
-                },
-              } : null);
-          }
-          simpleMixIdx++;
-        });
-      });
-      events.push({ time: shapeStart, title: `Shape / portion ${g.label}`, detail: `${Math.round(g.shapeMin)} min · ${g.total} item${g.total === 1 ? '' : 's'}${chilling ? ' (chilled)' : ''}`, process: 'simple', columnKey: g.key, stage: 'shape', activeStep: true });
-      const simplePreheat = ovenPreheatMin(userOvens.find(o => o.id === slot.ovenId), g.temp) ?? SIDE_PREHEAT_MIN;
-      events.push({ time: addMinutes(slot.firstBakeStart, -simplePreheat), title: `Turn on oven to ${g.temp}°F`, detail: `~${simplePreheat} min preheat${ovenTag}`, process: 'simple', columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
-      // Bake the sequenced jobs (ordered by temp). Between two different-temp bakes a
-      // "Set oven to N°F" step occupies the temp-change buffer before the next bake.
-      let cum = 0;
-      g.bakeSeq.jobs.forEach((j) => {
-        const r = j.recipe;
-        const unit = r.unit || 'item';
-        if (j.tempChange) {
-          events.push({ time: addMinutes(slot.firstBakeStart, cum), title: `Set oven to ${j.temp}°F`, detail: `~${j.gapBefore} min temp change${ovenTag}`, process: 'simple', columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+    // --- Generic stage-walking emitter for the simple/other family. Each side group is
+    // its own column + oven slot + deadline. The oven sequence (bakeSeq) drives bake
+    // order + temp changes; each batch's pre-bake dough chain is walked backward from its
+    // bake start over the recipe's stages, so custom-shaped recipes schedule. Cool / glaze
+    // / package stay group-level. ---
+    const sidePreheatFor = (slot, temp) => ovenPreheatMin(userOvens.find(o => o.id === slot.ovenId), temp) ?? SIDE_PREHEAT_MIN;
+    const fmtStageDur = (min) => min >= 60
+      ? `${(min / 60) % 1 === 0 ? (min / 60) : (min / 60).toFixed(1)} hr`
+      : `${Math.round(min)} min`;
+    const stageDurationMin = (s, batchUnits) => {
+      const d = s.duration || {};
+      switch (d.kind) {
+        case 'perUnit': return Math.max(1, Math.round(batchUnits * (Number(d.minPerUnit) || 0)));
+        case 'countInterval': return (Number(d.count) || 0) * (Number(d.intervalMin) || 0);
+        case 'range': {
+          const hr = d.auto ? (d.minHr != null ? Number(d.minHr) : 8)
+            : (((Number(d.minHr) || 0) + (Number(d.maxHr) || 0)) / 2);
+          return Math.round(hr * 60);
         }
-        cum += j.gapBefore;
-        const bs = addMinutes(slot.firstBakeStart, cum);
-        const batchSuffix = j.p.numBatches > 1 ? ` — batch ${j.batchIndex + 1} of ${j.p.numBatches}` : '';
-        events.push({ time: bs, timeEnd: addMinutes(bs, j.bakeMin), title: `Bake ${r.name}${batchSuffix}`, detail: `${j.units} ${unit}${j.units === 1 ? '' : 's'} · ${j.bakeMin} min · ${j.temp}°F${ovenTag}`, process: 'simple', columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
-        cum += j.bakeMin;
-      });
-      events.push({ time: slot.lastBakeEnd, title: `${g.label} out — cool`, detail: `${g.coolMin} min cool`, process: 'simple', columnKey: g.key, stage: 'done', activeStep: false });
-      events.push({ time: slot.packageReady, title: 'Package & ready for sale', detail: '', process: 'simple', columnKey: g.key, stage: 'done', activeStep: false });
-    }
-
-    // --- Enriched step events, per side group (mix+knead → bulk → shape → final proof →
-    // bake → cool → [glaze] → ready). Each group is its own column + oven slot + deadline. ---
-    for (const g of enrichedGroups) {
+        default: return Number(d.min) || 0;
+      }
+    };
+    for (const g of sideGroups) {
       if (!g.slot) continue;
       const slot = g.slot;
       const ovenTag = slot.ovenName ? ` · ${slot.ovenName}` : '';
       const ovenEquip = slot.ovenName ? [slot.ovenName] : (singleOvenName ? [singleOvenName] : []);
-      const WEIGH = SCHED.WEIGH_MIN_PER_RECIPE;
-      const proofMin = g.cold ? g.coldHr * 60 : g.warmMin;
-      const enrichedPreheat = ovenPreheatMin(userOvens.find(o => o.id === slot.ovenId), g.temp) ?? SIDE_PREHEAT_MIN;
-      events.push({ time: addMinutes(slot.firstBakeStart, -enrichedPreheat), title: `Turn on oven to ${g.temp}°F`, detail: `~${enrichedPreheat} min preheat${ovenTag}`, process: 'enriched', columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
-      // Pipeline: bakes run sequentially (ordered by temp); each batch's full chain
-      // (weigh → mix → bulk → shape → final proof) backs up from its OWN bake, so every
-      // batch bulks/proofs the same time and each goes into its own cold-proof container.
-      // A "Set oven to N°F" step fills the temp-change buffer before a different-temp bake.
+      const preheat = sidePreheatFor(slot, g.temp);
+      events.push({ time: addMinutes(slot.firstBakeStart, -preheat), title: `Turn on oven to ${g.temp}°F`, detail: `~${preheat} min preheat${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
       let cum = 0;
       g.bakeSeq.jobs.forEach((j) => {
-        const p = j.p;
-        const r = j.recipe;
+        const r = j.recipe, p = j.p, b = j.batchIndex, batchUnits = j.units;
         const unit = r.unit || 'unit';
-        const batchUnits = j.units;
-        const b = j.batchIndex;
         const suffix = p.numBatches > 1 ? ` — batch ${b + 1} of ${p.numBatches}` : '';
         const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
         if (j.tempChange) {
-          events.push({ time: addMinutes(slot.firstBakeStart, cum), title: `Set oven to ${j.temp}°F`, detail: `~${j.gapBefore} min temp change${ovenTag}`, process: 'enriched', columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+          events.push({ time: addMinutes(slot.firstBakeStart, cum), title: `Set oven to ${j.temp}°F`, detail: `~${j.gapBefore} min temp change${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
         }
         cum += j.gapBefore;
         const bakeStart = addMinutes(slot.firstBakeStart, cum);
-        const shapeMin = Math.max(1, Math.round(batchUnits * p.shapePerUnit));
-        const proofStart = addMinutes(bakeStart, -proofMin);
-        const shapeStart = addMinutes(proofStart, -shapeMin);
-        const bulkStart = addMinutes(shapeStart, -g.bulkMin);
-        const mixStart = addMinutes(bulkStart, -enrichedTmpl.mixMin);
-        events.push({ time: addMinutes(mixStart, -WEIGH), title: `Weigh out ${r.name}${suffix} ingredients`, detail: `${unitsLabel} · ${WEIGH} min`, process: 'enriched', columnKey: g.key, stage: 'prep', activeStep: true, batchIngredients: ingsForUnits(r, batchUnits) });
-        events.push({ time: mixStart, title: `Mix & knead ${r.name}${suffix}`, detail: `${unitsLabel} · ${enrichedTmpl.mixMin} min active · then ${g.bulkMin} min bulk`, process: 'enriched', columnKey: g.key, stage: 'mix', activeStep: true, equip: mixerForRecipeG(r) ? [mixerForRecipeG(r).name] : [] });
-        events.push({ time: bulkStart, title: `Bulk rise — ${r.name}${suffix}`, detail: `${g.bulkMin} min warm rise`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false });
-        events.push({ time: shapeStart, title: `Shape ${r.name}${suffix}`, detail: `${shapeMin} min · ${unitsLabel}`, process: 'enriched', columnKey: g.key, stage: 'shape', activeStep: true });
-        if (p.cold) {
-          const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
-          const coldEv = { time: proofStart, title: `Final proof — cold (overnight) — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.coldHr} hr in the fridge · use ${contLabel}`, process: 'enriched', columnKey: g.key, stage: 'chill', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}` };
-          events.push(coldEv);
-          addClaim('container', `Cold proof ${r.name}`, p.containerName, 1, proofStart, bakeStart, null,
-            p.containerName ? {
-              candidates: containerCandidates(['any'], batchUnits * (r.loafWeight || 0), true),
-              relabel: (newType) => {
-                const newLabel = p.numBatches > 1 ? `${newType} #${b + 1}` : newType;
-                coldEv.container = newLabel;
-                if (coldEv.detail) coldEv.detail = coldEv.detail.split(`· use ${contLabel}`).join(`· use ${newLabel}`);
-                coldEv.equipStrip = ` · use ${newLabel}`;
-              },
-            } : null);
-        } else {
-          events.push({ time: proofStart, title: `Final proof — warm — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.warmMin} min warm`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false });
+        // Pre-bake dough chain: walk the recipe's stages before the bake, backward from
+        // the bake start, so each batch's chain ends exactly when its bake begins.
+        const stages = (Array.isArray(r.stages) && r.stages.length) ? r.stages : stagesFromRecipe(r);
+        const bakeIdx = stages.findIndex(s => s.type === 'bake');
+        const preStages = bakeIdx >= 0 ? stages.slice(0, bakeIdx) : stages;
+        let cursor = bakeStart;
+        for (let i = preStages.length - 1; i >= 0; i--) {
+          const s = preStages[i];
+          const dur = stageDurationMin(s, batchUnits);
+          const start = addMinutes(cursor, -dur);
+          const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
+          const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, activeStep: !!pal.active };
+          if (s.type === 'weigh') {
+            ev.batchIngredients = ingsForUnits(r, batchUnits);
+          } else if (s.type === 'mix') {
+            const mx = mixerForRecipeG(r);
+            if (mx) ev.equip = [mx.name];
+          }
+          if (s.type === 'chill') {
+            const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
+            ev.container = contLabel;
+            ev.equipStrip = ` · use ${contLabel}`;
+            ev.detail = `${unitsLabel} · ${fmtStageDur(dur)} in the fridge · use ${contLabel}`;
+            events.push(ev);
+            const grams = batchUnits * (r.loafWeight || 0);
+            addClaim('container', `Cold proof ${r.name}`, p.containerName, 1, start, cursor, null,
+              p.containerName ? {
+                candidates: containerCandidates(['any'], grams, true),
+                relabel: (newType) => {
+                  const nl = p.numBatches > 1 ? `${newType} #${b + 1}` : newType;
+                  ev.container = nl;
+                  if (ev.detail) ev.detail = ev.detail.split(`· use ${contLabel}`).join(`· use ${nl}`);
+                  ev.equipStrip = ` · use ${nl}`;
+                },
+              } : null);
+          } else {
+            events.push(ev);
+          }
+          cursor = start;
         }
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${j.bakeMin} min · ${j.temp}°F${ovenTag}`, process: 'enriched', columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${j.bakeMin} min · ${j.temp}°F${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
         cum += j.bakeMin;
       });
-      events.push({ time: slot.lastBakeEnd, title: `${g.label} out — cool`, detail: `${g.coolMin} min cool`, process: 'enriched', columnKey: g.key, stage: 'done', activeStep: false });
-      if (g.glaze) events.push({ time: addMinutes(slot.lastBakeEnd, g.coolMin), title: `Glaze / ice ${g.label}`, detail: `${g.glazeMin} min`, process: 'enriched', columnKey: g.key, stage: 'done', activeStep: true });
-      events.push({ time: slot.packageReady, title: 'Package & ready for sale', detail: '', process: 'enriched', columnKey: g.key, stage: 'done', activeStep: false });
+      // Group-level finish: cool, optional glaze, package-ready.
+      events.push({ time: slot.lastBakeEnd, title: `${g.label} out — cool`, detail: `${g.coolMin} min cool`, process: g.process, columnKey: g.key, stage: 'done', activeStep: false });
+      if (g.glaze) events.push({ time: addMinutes(slot.lastBakeEnd, g.coolMin), title: `Glaze / ice ${g.label}`, detail: `${g.glazeMin} min`, process: g.process, columnKey: g.key, stage: 'done', activeStep: true });
+      events.push({ time: slot.packageReady, title: 'Package & ready for sale', detail: '', process: g.process, columnKey: g.key, stage: 'done', activeStep: false });
     }
 
     // Late-night warnings for simple/enriched (computed here, after their steps exist).

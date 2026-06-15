@@ -493,5 +493,49 @@ function scheduleSig(planObj, recipeMut) {
 });
 allOk &= invarOk;
 
+// 7) Phase 2: the simple/other family schedules by WALKING stages[], so custom-shaped
+//    recipes actually schedule.
+console.log('\nPhase 2 — generic stage-walking scheduler:');
+let p2Ok = true;
+function p2(label, cond) { console.log(`  [phase2] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+const recsP2 = api.__recipes();
+const simpleR = { id: 'p2-simple', name: 'Test Cookies', processType: 'simple', unit: 'cookie', loafWeight: 40, leavening: 'none',
+  ingredients: [{ name: 'All purpose flour', pct: 100, flourType: 'anchor' }, { name: 'Butter', pct: 60 }, { name: 'Sugar', pct: 55 }],
+  stages: api.stageTemplateFor('simple') };
+const enrR = { id: 'p2-enr', name: 'Test Rolls', processType: 'enriched', unit: 'roll', loafWeight: 90, leavening: 'commercial-yeast',
+  ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }, { name: 'Milk', pct: 55 }, { name: 'Butter', pct: 20 }],
+  stages: api.stageTemplateFor('enriched') };
+recsP2.push(simpleR, enrR);
+function p2events(proc) {
+  api.__setPlan({ 'p2-simple': 24, 'p2-enr': 12 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  return api.__sr().events.filter(e => e.process === proc);
+}
+let se = p2events('simple');
+const sBake = se.find(e => /^Bake /.test(e.title));
+const sMix = se.find(e => e.stage === 'mix');
+p2Ok &= p2('simple schedules (has Bake + Package)', !!sBake && se.some(e => e.title === 'Package & ready for sale'));
+p2Ok &= p2('simple has a pre-bake mix before the first bake', !!sMix && !!sBake && sMix.time < sBake.time);
+let ee = p2events('enriched');
+p2Ok &= p2('enriched schedules (bulk + final proof + bake)', ee.some(e => /Bulk/.test(e.title)) && ee.some(e => /Final proof/.test(e.title)) && ee.some(e => /^Bake /.test(e.title)));
+
+// Custom stage: insert a "Second proof" before the bake → a new step appears.
+const bakeI = enrR.stages.findIndex(s => s.type === 'bake');
+enrR.stages.splice(bakeI, 0, { id: 'p2-x', type: 'rest', label: 'Second proof', duration: { kind: 'fixed', min: 45 } });
+ee = p2events('enriched');
+p2Ok &= p2('custom stage appears in schedule ("Second proof")', ee.some(e => /Second proof/.test(e.title) && e.stage === 'proof'));
+
+// Duration change: doubling the bulk shifts the pre-bake chain earlier by the delta.
+const weighBefore = (es) => es.filter(e => e.stage === 'prep').sort((a, b) => a.time - b.time)[0].time.getTime();
+const t0 = weighBefore(p2events('enriched'));
+enrR.stages.find(s => s.type === 'bulk').duration.min += 60; // +60 min bulk
+const t1 = weighBefore(p2events('enriched'));
+const shiftedMin = Math.round((t0 - t1) / 60000);
+p2Ok &= p2(`bulk +60 min shifts chain ~60 min earlier (got ${shiftedMin})`, shiftedMin === 60);
+allOk &= p2Ok;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
