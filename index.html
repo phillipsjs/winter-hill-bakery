@@ -9425,9 +9425,12 @@ ${notesHtml}
         detail: muffinMixDetail,
         process: 'muffin',
         mixBatchCount: muffinMixBatches > 1 ? muffinMixBatches : undefined,
+        // Dough is mixed straight into the bulk-ferment container, so surface it here too.
+        container: muffinBulkContainer,
         equip: [muffinMixerName],
         equipStrip: muffinMixBatches > 1 ? muffinMixerParen : '',
       });
+      const muffinMixEv = events[events.length - 1];
       events.push({
         time: muffinTimes.muffinBulkStart,
         title: 'Muffin dough bulk ferment',
@@ -9436,7 +9439,7 @@ ${notesHtml}
       });
       const muffinBulkEv = events[events.length - 1];
       addClaim('container', 'Muffin bulk ferment', muffinBulkCont && muffinBulkCont.name, 1, muffinTimes.muffinBulkStart, muffinTimes.muffinShapeStart, null,
-        muffinBulkCont ? { candidates: containerCandidates(['any', 'loaf'], muffinDoughG), relabel: (newName) => { muffinBulkEv.container = newName; } } : null);
+        muffinBulkCont ? { candidates: containerCandidates(['any', 'loaf'], muffinDoughG), relabel: (newName) => { muffinBulkEv.container = newName; muffinMixEv.container = newName; } } : null);
       const muffinShapeDetail = muffinRecipes.length === 1
         ? `${getRecipeSpec(muffinRecipes[0]).shapeMinPerUnit} min × ${totalMuffins} muffins = ${totalMuffinShapeMin} min total`
         : muffinRecipes
@@ -9503,20 +9506,24 @@ ${notesHtml}
       const bagelMixDetail = bagelMixBatches > 1
         ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${bagelMixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * bagelMixBatches} min active${bagelMixerParen} ${bagelLevainNote}`
         : `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix ${bagelLevainNote}`;
+      // Dough is mixed straight into the bulk-ferment container, so compute it up front
+      // and surface it on both the mix and the bulk-ferment steps.
+      const bagelDoughG = bagelRecipes.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
+      const bagelBulkCont = pickDoughContainer(bagelDoughG);
+      const bagelBulkContainer = bagelBulkCont ? bagelBulkCont.name : 'dough tub';
       events.push({
         time: bagelMixStart,
         title: 'Mix bagel dough',
         detail: bagelMixDetail,
         process: 'bagel',
         mixBatchCount: bagelMixBatches > 1 ? bagelMixBatches : undefined,
+        container: bagelBulkContainer,
         equip: [bagelMixerName],
         equipStrip: bagelMixBatches > 1 ? bagelMixerParen : '',
       });
+      const bagelMixEv = events[events.length - 1];
       // Bulk ferment as its own (proof-stage) step, between mixing and shaping.
       if (bagelAgg.bulkMin > 0) {
-        const bagelDoughG = bagelRecipes.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
-        const bagelBulkCont = pickDoughContainer(bagelDoughG);
-        const bagelBulkContainer = bagelBulkCont ? bagelBulkCont.name : 'dough tub';
         events.push({
           time: bagelTimes.bagelBulkStart,
           timeEnd: bagelTimes.bagelShapeStart,
@@ -9526,7 +9533,7 @@ ${notesHtml}
         });
         const bagelBulkEv = events[events.length - 1];
         addClaim('container', 'Bagel bulk ferment', bagelBulkCont && bagelBulkCont.name, 1, bagelTimes.bagelBulkStart, bagelTimes.bagelShapeStart, null,
-          bagelBulkCont ? { candidates: containerCandidates(['any', 'loaf'], bagelDoughG), relabel: (newName) => { bagelBulkEv.container = newName; } } : null);
+          bagelBulkCont ? { candidates: containerCandidates(['any', 'loaf'], bagelDoughG), relabel: (newName) => { bagelBulkEv.container = newName; bagelMixEv.container = newName; } } : null);
       }
       const bagelShapeDetail = bagelRecipes.length === 1
         ? `${getRecipeSpec(bagelRecipes[0]).shapeMinPerUnit} min × ${totalBagels} bagels = ${totalBagelShapeMin} min total`

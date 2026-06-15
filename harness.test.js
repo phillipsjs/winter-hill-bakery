@@ -330,5 +330,27 @@ contigOk &= expectContiguous('two loaf doughs (batard + boule)', { [SEED.batard]
 contigOk &= expectContiguous('loaf + muffin + bagel', { [SEED.batard]: 8, [SEED.muffin]: 12, [SEED.bagel]: 10 });
 allOk &= contigOk;
 
+// ---- container assertions: muffin/bagel mix + bulk-ferment steps surface a container ----
+console.log('\nMix/proof container assertions:');
+function eventContainer(title) {
+  const ev = api.__sr().events.find(e => e.title === title || e.title.startsWith(title));
+  return ev ? (ev.container || '') : null;
+}
+function expectContainer(name, plan, titles) {
+  api.__setBannetons([]);
+  seedPlan(plan); api.__setPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  let ok = true;
+  titles.forEach(t => { const c = eventContainer(t); const good = !!c; ok = ok && good; console.log(`  [container] ${good ? 'PASS' : 'FAIL'} — ${name}: "${t}" → ${c || '(none)'}`); });
+  return ok;
+}
+let contOk = true;
+contOk &= expectContainer('muffin', { [SEED.muffin]: 24 }, ['Mix muffin dough', 'Muffin dough bulk ferment']);
+contOk &= expectContainer('bagel', { [SEED.bagel]: 20 }, ['Mix bagel dough', 'Bagel dough bulk ferment']);
+allOk &= contOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
