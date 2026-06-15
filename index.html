@@ -6330,6 +6330,17 @@ ${notesHtml}
     if (eligible.length === 0) return null;
     return eligible.find(c => c.maxDoughGrams >= totalGrams) || eligible[eligible.length - 1];
   }
+  // Eligible+fitting containers for a role, smallest first, as {name, quantity}. Used by
+  // the conflict allocator to find an alternative when a container is double-booked.
+  // `chilling` dough doesn't rise, so it can fill past the proofing fill-factor headroom.
+  function containerCandidates(tags, grams, chilling) {
+    const div = chilling ? CONTAINER_FILL_FACTOR : 1;
+    return userContainers
+      .filter(c => tags.includes(c.processTag))
+      .filter(c => (c.maxDoughGrams / div) >= grams)
+      .sort((a, b) => a.maxDoughGrams - b.maxDoughGrams)
+      .map(c => ({ name: c.name, quantity: Number(c.quantity) || 1 }));
+  }
 
   function renderDoughContainerPlan() {
     const card = document.getElementById('container-card');
@@ -8755,7 +8766,7 @@ ${notesHtml}
     // demand exceeds what's owned. Only configured resources (known capacity) are
     // tracked — generic fallbacks are skipped.
     const equipClaims = [];
-    const addClaim = (pool, role, name, count, start, end, capacityOverride) => {
+    const addClaim = (pool, role, name, count, start, end, capacityOverride, opts) => {
       if (!name || !count || count <= 0) return;
       const s = start instanceof Date ? start.getTime() : +start;
       const e = end instanceof Date ? end.getTime() : +end;
@@ -8768,7 +8779,36 @@ ${notesHtml}
       }
       capacity = Number(capacity);
       if (!Number.isFinite(capacity) || capacity <= 0) return; // unconfigured → can't deconflict
-      equipClaims.push({ pool, role, name, count: Number(count), startMs: s, endMs: e, capacity });
+      const claim = { pool, role, name, count: Number(count), startMs: s, endMs: e, capacity };
+      // Container claims may carry alternatives + a display-relabel callback so the
+      // allocator can move them off a double-booked container (Phase 2).
+      if (opts && opts.candidates && opts.candidates.length) {
+        claim.candidates = opts.candidates.slice();
+        if (!claim.candidates.some(x => x.name === name)) claim.candidates.unshift({ name, quantity: capacity });
+        claim.relabel = opts.relabel;
+      }
+      equipClaims.push(claim);
+    };
+    // Time-aware container allocator: reserve fixed claims, then move each reassignable
+    // claim onto its current container if a free instance exists in its window, else onto
+    // the smallest eligible alternative that's free, else leave it (detection then warns).
+    const allocateContainers = () => {
+      const occ = new Map();
+      const overlaps = (name, s, e) => (occ.get(name) || []).filter(iv => iv.start < e && s < iv.end).length;
+      const reserve = (name, s, e) => { if (!occ.has(name)) occ.set(name, []); occ.get(name).push({ start: s, end: e }); };
+      equipClaims.filter(c => c.pool === 'container' && !(c.candidates && c.candidates.length))
+        .forEach(c => reserve(c.name, c.startMs, c.endMs));
+      equipClaims.filter(c => c.pool === 'container' && c.candidates && c.candidates.length)
+        .sort((a, b) => a.startMs - b.startMs)
+        .forEach(c => {
+          const current = c.candidates.find(x => x.name === c.name);
+          const order = current ? [current, ...c.candidates.filter(x => x !== current)] : c.candidates;
+          let chosen = order.find(cand => overlaps(cand.name, c.startMs, c.endMs) < cand.quantity);
+          if (!chosen) chosen = current || c.candidates[0];
+          if (chosen.name !== c.name) { if (c.relabel) c.relabel(chosen.name); c.name = chosen.name; c.capacity = chosen.quantity; }
+          reserve(chosen.name, c.startMs, c.endMs);
+        });
+      equipClaims.forEach(c => { delete c.candidates; delete c.relabel; });
     };
     const autoNote = (opt) => {
       if (opt.kind === 'medium') return ' (medium ratio chosen to avoid a late-night refresh)';
@@ -8829,6 +8869,13 @@ ${notesHtml}
       bagel:  bagelLevainCont  ? { name: bagelLevainCont.name,  grams: bagelLevainTotal  } : null,
     };
     const levainContStr = (cont) => cont ? ` · use ${cont.name}` : '';
+    // Relabel a "· use X" event (levain/chill/cold-proof) when its container is reassigned.
+    const useRelabel = (ev) => (newName) => {
+      const old = ev.container;
+      ev.container = newName;
+      if (old && ev.detail) ev.detail = ev.detail.split(`· use ${old}`).join(`· use ${newName}`);
+      ev.equipStrip = ` · use ${newName}`;
+    };
 
     // Shared levain build only applies to sourdough processes. Skip entirely for a
     // commercial-only plan (focaccia / simple / enriched), which has no valid anchor.
@@ -8849,8 +8896,11 @@ ${notesHtml}
         process: loafLevainProcess,
         container: sharedLevainCont ? sharedLevainCont.name : '', equipStrip: levainContStr(sharedLevainCont),
       });
-      addClaim('container', 'Levain Build 1', sharedLevainB1Cont && sharedLevainB1Cont.name, 1, levainBuild1EarliestStart, levainBuild2EarliestStart);
-      addClaim('container', 'Levain Build 2', sharedLevainCont && sharedLevainCont.name, 1, levainBuild2EarliestStart, loafLevainAnchor);
+      const sB1Ev = events[events.length - 2], sB2Ev = events[events.length - 1];
+      addClaim('container', 'Levain Build 1', sharedLevainB1Cont && sharedLevainB1Cont.name, 1, levainBuild1EarliestStart, levainBuild2EarliestStart, null,
+        sharedLevainB1Cont ? { candidates: containerCandidates(['any', 'levain'], build1Grams(sharedLevainTotal, build2Opt)), relabel: useRelabel(sB1Ev) } : null);
+      addClaim('container', 'Levain Build 2', sharedLevainCont && sharedLevainCont.name, 1, levainBuild2EarliestStart, loafLevainAnchor, null,
+        sharedLevainCont ? { candidates: containerCandidates(['any', 'levain'], sharedLevainTotal), relabel: useRelabel(sB2Ev) } : null);
     }
     if (useSeparateLevains && muffinBuild1Opt && muffinBuild2Opt) {
       const mb1Note = muffinBuild1Opt.manual ? ' (manually selected)' : autoNote(muffinBuild1Opt);
@@ -8871,8 +8921,11 @@ ${notesHtml}
         process: 'muffin',
         container: muffinLevainCont ? muffinLevainCont.name : '', equipStrip: levainContStr(muffinLevainCont),
       });
-      addClaim('container', 'Levain Build 1 (muffins)', muffinLevainB1Cont && muffinLevainB1Cont.name, 1, muffinLevainBuild1EarliestStart, muffinLevainBuild2EarliestStart);
-      addClaim('container', 'Levain Build 2 (muffins)', muffinLevainCont && muffinLevainCont.name, 1, muffinLevainBuild2EarliestStart, muffinMixStart);
+      const mB1Ev = events[events.length - 2], mB2Ev = events[events.length - 1];
+      addClaim('container', 'Levain Build 1 (muffins)', muffinLevainB1Cont && muffinLevainB1Cont.name, 1, muffinLevainBuild1EarliestStart, muffinLevainBuild2EarliestStart, null,
+        muffinLevainB1Cont ? { candidates: containerCandidates(['any', 'levain'], build1Grams(muffinLevainTotal, muffinBuild2Opt)), relabel: useRelabel(mB1Ev) } : null);
+      addClaim('container', 'Levain Build 2 (muffins)', muffinLevainCont && muffinLevainCont.name, 1, muffinLevainBuild2EarliestStart, muffinMixStart, null,
+        muffinLevainCont ? { candidates: containerCandidates(['any', 'levain'], muffinLevainTotal), relabel: useRelabel(mB2Ev) } : null);
     }
     if (useBagelSeparateLevain && bagelBuild1Opt && bagelBuild2Opt) {
       const bb1Note = bagelBuild1Opt.manual ? ' (manually selected)' : autoNote(bagelBuild1Opt);
@@ -8893,8 +8946,11 @@ ${notesHtml}
         process: 'bagel',
         container: bagelLevainCont ? bagelLevainCont.name : '', equipStrip: levainContStr(bagelLevainCont),
       });
-      addClaim('container', 'Levain Build 1 (bagels)', bagelLevainB1Cont && bagelLevainB1Cont.name, 1, bagelLevainBuild1EarliestStart, bagelLevainBuild2EarliestStart);
-      addClaim('container', 'Levain Build 2 (bagels)', bagelLevainCont && bagelLevainCont.name, 1, bagelLevainBuild2EarliestStart, bagelMixStart);
+      const gB1Ev = events[events.length - 2], gB2Ev = events[events.length - 1];
+      addClaim('container', 'Levain Build 1 (bagels)', bagelLevainB1Cont && bagelLevainB1Cont.name, 1, bagelLevainBuild1EarliestStart, bagelLevainBuild2EarliestStart, null,
+        bagelLevainB1Cont ? { candidates: containerCandidates(['any', 'levain'], build1Grams(bagelLevainTotal, bagelBuild2Opt)), relabel: useRelabel(gB1Ev) } : null);
+      addClaim('container', 'Levain Build 2 (bagels)', bagelLevainCont && bagelLevainCont.name, 1, bagelLevainBuild2EarliestStart, bagelMixStart, null,
+        bagelLevainCont ? { candidates: containerCandidates(['any', 'levain'], bagelLevainTotal), relabel: useRelabel(gB2Ev) } : null);
     }
     if (totalLoaves > 0) {
     // Compact container label appended to bulk-ferment step details
@@ -9276,7 +9332,9 @@ ${notesHtml}
         detail: `${muffinBulkHrLabel} hr bulk ferment ${muffinLevainNote}`,
         process: 'muffin', stage: 'proof', container: muffinBulkContainer,
       });
-      addClaim('container', 'Muffin bulk ferment', muffinBulkCont && muffinBulkCont.name, 1, muffinTimes.muffinBulkStart, muffinTimes.muffinShapeStart);
+      const muffinBulkEv = events[events.length - 1];
+      addClaim('container', 'Muffin bulk ferment', muffinBulkCont && muffinBulkCont.name, 1, muffinTimes.muffinBulkStart, muffinTimes.muffinShapeStart, null,
+        muffinBulkCont ? { candidates: containerCandidates(['any', 'loaf'], muffinDoughG), relabel: (newName) => { muffinBulkEv.container = newName; } } : null);
       const muffinShapeDetail = muffinRecipes.length === 1
         ? `${getRecipeSpec(muffinRecipes[0]).shapeMinPerUnit} min × ${totalMuffins} muffins = ${totalMuffinShapeMin} min total`
         : muffinRecipes
@@ -9517,13 +9575,24 @@ ${notesHtml}
           if (p.chillHr > 0) {
             // This batch's own container (one container per batch).
             const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
-            events.push({
+            const chillEv = {
               time: addMinutes(mt, simpleTmpl.mixMin),
               title: `Chill ${r.name} dough — into fridge${batchSuffix}`,
               detail: `${unitsLabel} · chill at least ${fmtChillLabel(p.chillHr)} · use ${contLabel}`,
               process: 'simple', columnKey: g.key, stage: 'chill', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}`,
-            });
-            addClaim('container', `Chill ${r.name}`, p.containerName, 1, addMinutes(mt, simpleTmpl.mixMin), shapeStart);
+            };
+            events.push(chillEv);
+            const chillGrams = batchUnits * (r.loafWeight || 0);
+            addClaim('container', `Chill ${r.name}`, p.containerName, 1, addMinutes(mt, simpleTmpl.mixMin), shapeStart, null,
+              p.containerName ? {
+                candidates: containerCandidates(['any'], chillGrams, true),
+                relabel: (newType) => {
+                  const newLabel = p.numBatches > 1 ? `${newType} #${b + 1}` : newType;
+                  chillEv.container = newLabel;
+                  if (chillEv.detail) chillEv.detail = chillEv.detail.split(`· use ${contLabel}`).join(`· use ${newLabel}`);
+                  chillEv.equipStrip = ` · use ${newLabel}`;
+                },
+              } : null);
           }
           simpleMixIdx++;
         });
@@ -9590,8 +9659,18 @@ ${notesHtml}
         events.push({ time: shapeStart, title: `Shape ${r.name}${suffix}`, detail: `${shapeMin} min · ${unitsLabel}`, process: 'enriched', columnKey: g.key, stage: 'shape', activeStep: true });
         if (p.cold) {
           const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
-          events.push({ time: proofStart, title: `Final proof — cold (overnight) — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.coldHr} hr in the fridge · use ${contLabel}`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}` });
-          addClaim('container', `Cold proof ${r.name}`, p.containerName, 1, proofStart, bakeStart);
+          const coldEv = { time: proofStart, title: `Final proof — cold (overnight) — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.coldHr} hr in the fridge · use ${contLabel}`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false, container: contLabel, equipStrip: ` · use ${contLabel}` };
+          events.push(coldEv);
+          addClaim('container', `Cold proof ${r.name}`, p.containerName, 1, proofStart, bakeStart, null,
+            p.containerName ? {
+              candidates: containerCandidates(['any'], batchUnits * (r.loafWeight || 0), true),
+              relabel: (newType) => {
+                const newLabel = p.numBatches > 1 ? `${newType} #${b + 1}` : newType;
+                coldEv.container = newLabel;
+                if (coldEv.detail) coldEv.detail = coldEv.detail.split(`· use ${contLabel}`).join(`· use ${newLabel}`);
+                coldEv.equipStrip = ` · use ${newLabel}`;
+              },
+            } : null);
         } else {
           events.push({ time: proofStart, title: `Final proof — warm — ${r.name}${suffix}`, detail: `${unitsLabel} · ${g.warmMin} min warm`, process: 'enriched', columnKey: g.key, stage: 'proof', activeStep: false });
         }
@@ -9649,6 +9728,7 @@ ${notesHtml}
       }
     });
 
+    allocateContainers();
     events.sort((a, b) => a.time - b.time);
     return {
       totalLoaves, totalMuffins, totalBagels, totalFocaccia, totalSimple, totalEnriched, batches, events, warnings,
