@@ -102,6 +102,9 @@ const exportsTail = `
   buildScheduleAcrossLoafGroups, getEventStage,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
+  startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
+  stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
+  __editorStages: () => _editorStages,
   __sr: () => _scheduleResult,
   __setPlan: (p) => { plan = p; },
   __setBannetons: (b) => { userBannetons = b; },
@@ -405,6 +408,29 @@ stageModelOk &= checkStg('coldProofHr=0 (none) survives', noCp.coldProofHr === '
 const loaded = api.__recipes().filter(r => api.getProcessType(r) !== 'levain');
 const allHaveStages = loaded.length > 0 && loaded.every(r => Array.isArray(r.stages) && r.stages.length > 0);
 stageModelOk &= checkStg(`migration: all ${loaded.length} loaded recipes carry stages`, allHaveStages);
+
+// 5) Editor smoke test: the stage-editor functions don't throw under the stub DOM.
+console.log('\nStage-editor smoke test:');
+let editorOk = true;
+function smoke(label, fn) {
+  let ok = true;
+  try { fn(); } catch (e) { ok = false; console.log(`    ${e && e.message || e}`); }
+  console.log(`  [editor] ${ok ? 'PASS' : 'FAIL'} — ${label}`);
+  return ok;
+}
+editorOk &= smoke('startNewRecipe()', () => api.startNewRecipe());
+editorOk &= smoke('stageEditorReset/Add/Move/Remove', () => {
+  api.stageEditorReset(); api.stageEditorAdd(); api.stageEditorMove(0, 1); api.stageEditorRemove(0);
+});
+api.SEED_RECIPES.filter(r => api.getProcessType(r) !== 'levain').forEach(r => {
+  editorOk &= smoke(`editRecipe(${r.name})`, () => { api.editRecipe(r.id); });
+  // after editRecipe, the editor stages should be a non-empty clone
+  editorOk &= smoke(`  → editorStages populated for ${r.name}`, () => {
+    const st = api.__editorStages();
+    if (!Array.isArray(st) || !st.length) throw new Error('empty editor stages');
+  });
+});
+allOk &= editorOk;
 
 allOk &= stageModelOk;
 

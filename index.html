@@ -658,6 +658,16 @@
   .schedule-row[data-stage="chill"]::before,  .schedule-event[data-stage="chill"]::before,  .stage-group[data-stage="chill"]::before  { background: #4F6A73; color: #eef4f6; }
   .schedule-row[data-stage="bake"]::before,   .schedule-event[data-stage="bake"]::before,   .stage-group[data-stage="bake"]::before   { background: #5E3413; color: #fbf6ec; }
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #1F4D2E; color: #fbf6ec; }
+  /* Recipe stage editor */
+  .stage-editor { display: flex; flex-direction: column; gap: 6px; }
+  .stage-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; }
+  .stage-badge { font-size: 0.72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; text-transform: capitalize; }
+  .stage-row input.stage-label { flex: 1; min-width: 110px; }
+  .stage-row .stage-dur { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+  .stage-row .stage-dur input { width: 60px; }
+  .stage-move { display: inline-flex; flex-direction: column; gap: 1px; }
+  .stage-move button { padding: 0 7px; font-size: 0.7rem; line-height: 1.5; }
+  .stage-del { padding: 2px 8px; font-size: 0.85rem; line-height: 1.2; }
   button.schedule-highlight-btn {
     background: transparent;
     color: inherit;
@@ -965,57 +975,22 @@
       <div id="r-flour-summary" class="muted" style="font-size:0.85rem;margin-top:8px"></div>
 
       <hr class="sep" />
-      <details id="r-recipe-settings" open>
-        <summary>Recipe settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
-        <div class="scheduler-overrides">
-          <div class="row"><label style="width:160px">Cold proof</label>
-            <select id="r-cold-proof" class="settings-select" style="flex:none;width:auto">
-              <option value="">— use process default —</option>
-              <option value="0">None (bake after shape)</option>
-              <option value="2-6">2–6 hours</option>
-              <option value="4-8">4–8 hours</option>
-              <option value="6-10">6–10 hours</option>
-              <option value="8-12">8–12 hours</option>
-              <option value="10-14">10–14 hours</option>
-              <option value="12-16">12–16 hours</option>
-              <option value="14-18">14–18 hours</option>
-              <option value="16-20">16–20 hours</option>
-              <option value="18-22">18–22 hours</option>
-              <option value="20-24">20–24 hours</option>
-              <option value="22-26">22–26 hours</option>
-              <option value="24-28">24–28 hours</option>
-              <option value="26-30">26–30 hours</option>
-              <option value="28-32">28–32 hours</option>
-              <option value="30-34">30–34 hours</option>
-              <option value="32-36">32–36 hours</option>
-              <option value="34-38">34–38 hours</option>
-              <option value="36-40">36–40 hours</option>
-              <option value="38-42">38–42 hours</option>
-              <option value="40-44">40–44 hours</option>
-              <option value="42-46">42–46 hours</option>
-              <option value="44-48">44–48 hours</option>
-            </select>
-          </div>
-          <div class="row"><label style="width:160px">Autolyse</label><input type="number" id="r-autolyse" min="0" step="5" /> <span class="muted">min</span></div>
-          <div class="row"><label style="width:160px">Warm-up before bake</label><input type="number" id="r-warmup" min="0" step="5" /> <span class="muted">min</span></div>
-          <div class="row"><label style="width:160px">Bulk ferment</label><input type="number" id="r-bulk" min="0" step="5" /> <span class="muted">min</span></div>
-          <div class="row"><label style="width:160px">Stretch &amp; folds</label><input type="number" id="r-folds" min="0" step="1" /> <span class="muted">count</span></div>
-          <div class="row"><label style="width:160px">Shape time per unit</label><input type="number" id="r-shape-per" min="0" step="0.5" /> <span class="muted">min</span></div>
+      <details id="r-stages-settings" open>
+        <summary>Steps &amp; timing <span class="muted" style="font-size:0.85rem">(the recipe's stages — reorder, retime, add or remove)</span></summary>
+        <div id="r-stages-list" class="stage-editor"></div>
+        <div class="row" style="gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <select id="r-stage-add-type" class="settings-select" style="flex:none;width:auto"></select>
+          <button type="button" class="secondary tiny" onclick="stageEditorAdd()">+ Add step</button>
+          <button type="button" class="secondary tiny" onclick="stageEditorReset()" style="margin-left:auto">Reset to template</button>
         </div>
       </details>
 
-      <details id="r-steps-settings" open style="display:none">
-        <summary>Process steps <span class="muted" style="font-size:0.85rem">(optional steps for this recipe)</span></summary>
-        <div id="r-steps-content" class="scheduler-overrides"></div>
-      </details>
-
       <details id="r-oven-settings">
-        <summary>Oven settings <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
+        <summary>Capacity &amp; batching <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
         <div class="scheduler-overrides">
           <div class="row" id="r-oven-cap-row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
           <div class="row" id="r-deck-cap-row"><label style="width:160px">Deck capacity</label><input type="number" id="r-deck-cap" min="0" step="1" /> <span class="muted">per deck — kept in sync</span></div>
-          <div class="row"><label style="width:160px">Bake temp</label><input type="number" id="r-bake-temp" min="0" step="5" /> <span class="muted">°F</span></div>
-          <div class="row"><label style="width:160px">Bake time</label><input type="number" id="r-bake-min" min="0" step="1" /> <span class="muted">min</span></div>
+          <div class="row" id="r-batch-size-row" style="display:none"><label style="width:160px">Batch size</label><input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" style="width:90px;flex:none" /> <span class="muted">units/batch — blank auto-fits</span></div>
         </div>
       </details>
 
@@ -2260,6 +2235,14 @@
     glaze:    { stage: 'done',   active: true,  kind: 'fixed',         label: 'Glaze / ice' },
     rest:     { stage: 'proof',  active: false, kind: 'fixed',         label: 'Rest' },
     step:     { stage: 'prep',   active: true,  kind: 'fixed',         label: 'Step' },
+  };
+  // Badge colors for the stage editor — mirror the schedule stage colors.
+  const STAGE_COLORS = {
+    prep:   { bg: '#ECDCB6', fg: '#4a3618' }, levain: { bg: '#E3C98C', fg: '#4a3618' },
+    mix:    { bg: '#D6AE63', fg: '#4a3618' }, fold:   { bg: '#C28C40', fg: '#3a2a12' },
+    shape:  { bg: '#A86E2B', fg: '#fbf6ec' }, proof:  { bg: '#8F5A22', fg: '#fbf6ec' },
+    chill:  { bg: '#4F6A73', fg: '#eef4f6' }, bake:   { bg: '#5E3413', fg: '#fbf6ec' },
+    done:   { bg: '#1F4D2E', fg: '#fbf6ec' },
   };
   // Default stage list per process — the numbers mirror PROCESS_TEMPLATES so a recipe
   // with no overrides derives back to identical scheduler params.
@@ -7207,34 +7190,16 @@ ${notesHtml}
   }
 
   // ---- editor ----
-  const OVERRIDE_FIELD_TO_INPUT = {
-    bakeMin: 'r-bake-min',
-    ovenCapacity: 'r-oven-cap',
-    deckCapacity: 'r-deck-cap',
-    coldProofHr: 'r-cold-proof',
-    warmupMin: 'r-warmup',
-    autolyseMin: 'r-autolyse',
-    bulkMin: 'r-bulk',
-    foldsCount: 'r-folds',
-    shapeMinPerUnit: 'r-shape-per',
-  };
+  // Steps & timing now come from the stage editor; only oven/deck capacity remain as
+  // their own override inputs.
+  const CAPACITY_FIELD_TO_INPUT = { ovenCapacity: 'r-oven-cap', deckCapacity: 'r-deck-cap' };
 
   function applyOverridePlaceholders(processType) {
     const tmpl = PROCESS_TEMPLATES[processType] || PROCESS_TEMPLATES['sourdough-loaf'];
-    for (const field of SCHEDULER_OVERRIDE_FIELDS) {
-      const id = OVERRIDE_FIELD_TO_INPUT[field];
-      if (!id) continue;
-      const el = document.getElementById(id);
-      if (!el) continue;
-      if (el.tagName === 'SELECT') {
-        if (el.options[0]) el.options[0].text = `— use process default (${tmpl[field]} hr) —`;
-      } else {
-        el.placeholder = String(tmpl[field]);
-      }
-    }
-    // bake temp placeholder (not in SCHEDULER_OVERRIDE_FIELDS)
-    const tempEl = document.getElementById('r-bake-temp');
-    if (tempEl) tempEl.placeholder = String(tmpl.bakeTempF || '');
+    Object.keys(CAPACITY_FIELD_TO_INPUT).forEach(field => {
+      const el = document.getElementById(CAPACITY_FIELD_TO_INPUT[field]);
+      if (el && tmpl[field] != null) el.placeholder = String(tmpl[field]);
+    });
     const note = document.getElementById('r-process-note');
     if (note) {
       note.textContent = tmpl.schedulable
@@ -7255,15 +7220,9 @@ ${notesHtml}
     const processType = sel.value;
     const isLevain = processType === 'levain';
     const category = processCategory(processType);
-    // Bread ferment controls (autolyse/bulk/folds/cold-proof/shape) only apply to bread.
-    document.getElementById('r-recipe-settings').style.display = category === 'bread' ? '' : 'none';
+    document.getElementById('r-stages-settings').style.display = isLevain ? 'none' : '';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
-    // Oven/deck capacity only apply to deck-oven bread bakes; simple/enriched bake by
-    // pan capacity, so hide those rows for them (leaving Bake temp + Bake time).
-    ['r-oven-cap-row', 'r-deck-cap-row'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = category === 'bread' ? '' : 'none';
-    });
+    updateEditorCapacityRows(category);
     // Sourdough-vs-yeast choice only matters for the bread processes.
     document.getElementById('r-leavening-row').style.display = category === 'bread' ? '' : 'none';
     const weightLabel = document.getElementById('r-weight-label');
@@ -7280,6 +7239,9 @@ ${notesHtml}
       setUnitLabels(unitInput.value.trim() || tmpl.unit);
       applyOverridePlaceholders(processType);
     }
+    // Changing the process seeds the default stage list for that process.
+    _editorStages = isLevain ? [] : stageTemplateFor(processType);
+    renderStageEditor();
     const prefContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
     const prefBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
     const prefPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
@@ -7287,7 +7249,6 @@ ${notesHtml}
     const prefOvenEl = document.getElementById('r-pref-oven');
     const prefOvenId = prefOvenEl ? prefOvenEl.value : '';
     renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredMixerIds: prefMixerIds, preferredOvenId: prefOvenId });
-    renderProcessStepSettings(processType, {});
   }
 
   function onRecipePanCheck(checkbox) {
@@ -7310,69 +7271,110 @@ ${notesHtml}
     return '<option value="' + escapeAttr(value) + '"' + (String(current) === String(value) ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
   }
 
-  // Render the per-recipe optional process steps for simple/enriched types.
-  function renderProcessStepSettings(processType, recipe) {
-    const wrap = document.getElementById('r-steps-settings');
-    const el = document.getElementById('r-steps-content');
-    if (!wrap || !el) return;
-    if (processCategory(processType) !== 'other') { wrap.style.display = 'none'; el.innerHTML = ''; return; }
-    recipe = recipe || {};
-    let html = '';
-    if (processType === 'simple') {
-      const chill = recipe.chillWindow || '';
-      html += '<div class="row"><label style="width:170px">Chill / rest before baking</label>'
-        + '<select id="r-chill" class="settings-select" style="flex:none;width:auto">'
-        + selOpt('', 'None — bake after shaping', chill)
-        + selOpt('0.5', '30 minutes', chill)
-        + selOpt('1', '1 hour', chill)
-        + selOpt('2', '2 hours', chill)
-        + selOpt('8-12', 'Overnight (8–12 hr)', chill)
-        + '</select></div>';
-      const bso = recipe.batchSizeOverride != null ? recipe.batchSizeOverride : '';
-      html += '<div class="row"><label style="width:170px">Batch size</label>'
-        + '<input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" value="' + escapeAttr(String(bso)) + '" style="width:80px;flex:none" /> '
-        + '<span class="muted" style="font-size:0.8rem">units/batch — blank auto-fits to your mixer, container & oven</span></div>';
-    } else if (processType === 'enriched') {
-      const mode = recipe.finalProofMode || 'warm';
-      const warmMin = recipe.finalProofWarmMin != null ? recipe.finalProofWarmMin : '';
-      const coldWin = recipe.finalProofColdWindow || '8-12';
-      html += '<div class="row"><label style="width:170px">Final proof</label>'
-        + '<select id="r-final-proof-mode" class="settings-select" style="flex:none;width:auto" onchange="onFinalProofModeChange()">'
-        + selOpt('warm', 'Warm — same day', mode)
-        + selOpt('cold', 'Cold — overnight retard', mode)
-        + '</select></div>';
-      html += '<div class="row" id="r-final-proof-warm-row"><label style="width:170px">Warm proof time</label><input type="number" id="r-final-proof-warm" min="0" step="5" placeholder="60" value="' + escapeAttr(String(warmMin)) + '" /> <span class="muted">min</span></div>';
-      html += '<div class="row" id="r-final-proof-cold-row"><label style="width:170px">Cold proof window</label><select id="r-final-proof-cold" class="settings-select" style="flex:none;width:auto">'
-        + selOpt('8-12', '8–12 hours', coldWin) + selOpt('10-14', '10–14 hours', coldWin)
-        + selOpt('12-16', '12–16 hours', coldWin) + selOpt('14-18', '14–18 hours', coldWin)
-        + '</select></div>';
-      const glazeOn = !!recipe.glazeEnabled;
-      const glazeMin = recipe.glazeMin != null ? recipe.glazeMin : '';
-      html += '<div class="row"><label style="width:170px">Glaze / ice after baking</label><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="r-glaze-enabled" onchange="onGlazeToggle()"' + (glazeOn ? ' checked' : '') + ' /> add a glazing step</label></div>';
-      html += '<div class="row" id="r-glaze-min-row"><label style="width:170px">Glaze time</label><input type="number" id="r-glaze-min" min="0" step="1" placeholder="5" value="' + escapeAttr(String(glazeMin)) + '" /> <span class="muted">min</span></div>';
-      const bsoE = recipe.batchSizeOverride != null ? recipe.batchSizeOverride : '';
-      html += '<div class="row"><label style="width:170px">Batch size</label>'
-        + '<input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" value="' + escapeAttr(String(bsoE)) + '" style="width:80px;flex:none" /> '
-        + '<span class="muted" style="font-size:0.8rem">units/batch — blank auto-fits to your mixer, container & oven</span></div>';
+  // ---- stage editor (recipe builder revamp — Phase 1, task 3) ----------------
+  // The editable stage list is the source of truth in the editor; saveRecipe derives
+  // the flat scheduler params from it via paramsFromStages().
+  let _editorStages = [];
+  const STAGE_VESSEL_OPTIONS = [['', '—'], ['bulk-container', 'Dough tub'], ['banneton', 'Banneton'], ['pan', 'Pan'], ['sheet', 'Sheet / tray'], ['oven', 'Oven']];
+  const STAGE_VESSEL_TYPES = ['mix', 'autolyse', 'bulk', 'preshape', 'bench', 'shape', 'proof', 'chill', 'warmup', 'bake', 'cool'];
+
+  function _stageDurationHtml(s, i) {
+    const d = s.duration || {};
+    const numIn = (key, val, w) => `<input type="number" min="0" step="any" value="${val == null ? '' : val}" style="width:${w || 60}px" oninput="stageEditorSetDur(${i},'${key}',this.value)" />`;
+    switch (d.kind) {
+      case 'perUnit':
+        return `<span class="stage-dur">${numIn('minPerUnit', d.minPerUnit)} min/unit</span>`;
+      case 'countInterval':
+        return `<span class="stage-dur">${numIn('count', d.count, 52)} × ${numIn('intervalMin', d.intervalMin)} min apart</span>`;
+      case 'range':
+        if (d.auto) return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" checked onchange="stageEditorSetAuto(${i},false)" /> auto (scheduler picks)</label></span>`;
+        return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" onchange="stageEditorSetAuto(${i},true)" /> auto</label> ${numIn('minHr', d.minHr, 48)}–${numIn('maxHr', d.maxHr, 48)} hr</span>`;
+      case 'anchored':
+        return `<span class="stage-dur">${numIn('min', d.min)} min · <input type="number" min="0" step="5" value="${s.tempF == null ? '' : s.tempF}" style="width:60px" oninput="stageEditorSetTemp(${i},this.value)" />°F</span>`;
+      default:
+        return `<span class="stage-dur">${numIn('min', d.min)} min</span>`;
     }
-    el.innerHTML = html;
-    wrap.style.display = '';
-    if (processType === 'enriched') { onFinalProofModeChange(); onGlazeToggle(); }
   }
 
-  function onFinalProofModeChange() {
-    const mode = document.getElementById('r-final-proof-mode');
-    if (!mode) return;
-    const warmRow = document.getElementById('r-final-proof-warm-row');
-    const coldRow = document.getElementById('r-final-proof-cold-row');
-    if (warmRow) warmRow.style.display = mode.value === 'warm' ? '' : 'none';
-    if (coldRow) coldRow.style.display = mode.value === 'cold' ? '' : 'none';
+  function renderStageEditor() {
+    const list = document.getElementById('r-stages-list');
+    if (!list) return;
+    if (!_editorStages.length) {
+      list.innerHTML = '<p class="muted" style="font-size:0.85rem;margin:4px 0">No steps yet — add one below or reset to the process template.</p>';
+    } else {
+      list.innerHTML = _editorStages.map((s, i) => {
+        const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
+        const col = STAGE_COLORS[pal.stage] || STAGE_COLORS.prep;
+        const vessel = STAGE_VESSEL_TYPES.includes(s.type)
+          ? `<select class="settings-select" style="flex:none;width:auto;font-size:0.8rem" onchange="stageEditorSetVessel(${i},this.value)">${STAGE_VESSEL_OPTIONS.map(([v, l]) => `<option value="${v}"${(s.vessel || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
+          : '';
+        return `<div class="stage-row">
+          <span class="stage-move">
+            <button type="button" onclick="stageEditorMove(${i},-1)"${i === 0 ? ' disabled' : ''} title="Move up">▲</button>
+            <button type="button" onclick="stageEditorMove(${i},1)"${i === _editorStages.length - 1 ? ' disabled' : ''} title="Move down">▼</button>
+          </span>
+          <span class="stage-badge" style="background:${col.bg};color:${col.fg}">${escapeHtml(s.type)}</span>
+          <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
+          ${_stageDurationHtml(s, i)}
+          ${vessel}
+          <button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>
+        </div>`;
+      }).join('');
+    }
+    const addSel = document.getElementById('r-stage-add-type');
+    if (addSel && !addSel.dataset.filled) {
+      addSel.innerHTML = Object.keys(STAGE_PALETTE).map(t => `<option value="${t}">${escapeHtml(STAGE_PALETTE[t].label)}</option>`).join('');
+      addSel.dataset.filled = '1';
+    }
   }
 
-  function onGlazeToggle() {
-    const cb = document.getElementById('r-glaze-enabled');
-    const row = document.getElementById('r-glaze-min-row');
-    if (cb && row) row.style.display = cb.checked ? '' : 'none';
+  function _defaultStageOfType(type) {
+    const pal = STAGE_PALETTE[type] || STAGE_PALETTE.step;
+    const dur = pal.kind === 'perUnit' ? { kind: 'perUnit', minPerUnit: 2 }
+      : pal.kind === 'countInterval' ? { kind: 'countInterval', count: 3, intervalMin: 30 }
+      : pal.kind === 'range' ? { kind: 'range', auto: true }
+      : pal.kind === 'anchored' ? { kind: 'anchored', min: 20 }
+      : { kind: 'fixed', min: 15 };
+    const s = { id: newStageId(), type, label: pal.label, duration: dur };
+    if (pal.kind === 'anchored') s.tempF = 350;
+    return s;
+  }
+
+  function stageEditorMove(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= _editorStages.length) return;
+    const t = _editorStages[i]; _editorStages[i] = _editorStages[j]; _editorStages[j] = t;
+    renderStageEditor();
+  }
+  function stageEditorRemove(i) { _editorStages.splice(i, 1); renderStageEditor(); }
+  function stageEditorAdd() {
+    const sel = document.getElementById('r-stage-add-type');
+    _editorStages.push(_defaultStageOfType(sel ? sel.value : 'step'));
+    renderStageEditor();
+  }
+  function stageEditorReset() {
+    const pt = document.getElementById('r-process-type').value || 'sourdough-loaf';
+    _editorStages = stageTemplateFor(pt);
+    renderStageEditor();
+  }
+  function stageEditorSetLabel(i, v) { if (_editorStages[i]) _editorStages[i].label = v; }
+  function stageEditorSetVessel(i, v) { if (_editorStages[i]) { if (v) _editorStages[i].vessel = v; else delete _editorStages[i].vessel; } }
+  function stageEditorSetTemp(i, v) { if (_editorStages[i]) _editorStages[i].tempF = v === '' ? null : Number(v); }
+  function stageEditorSetAuto(i, auto) {
+    const s = _editorStages[i]; if (!s) return;
+    s.duration = auto ? { kind: 'range', auto: true } : { kind: 'range', minHr: 8, maxHr: 12 };
+    renderStageEditor();
+  }
+  function stageEditorSetDur(i, key, v) {
+    const s = _editorStages[i]; if (!s || !s.duration) return;
+    const n = v === '' ? 0 : Number(v);
+    s.duration[key] = Number.isFinite(n) ? n : 0;
+  }
+  // Show oven/deck capacity (deck-oven bread) or batch size (simple/enriched).
+  function updateEditorCapacityRows(category) {
+    ['r-oven-cap-row', 'r-deck-cap-row'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = category === 'bread' ? '' : 'none'; });
+    const bs = document.getElementById('r-batch-size-row');
+    if (bs) bs.style.display = category === 'other' ? '' : 'none';
   }
 
   function renderRecipeEquipment(processType, prefs) {
@@ -7555,6 +7557,7 @@ ${notesHtml}
     const seed = SEED_RECIPES.find(s => s.id === seedId);
     if (!seed) return;
     const copy = { ...seed, id: uid(), ingredients: seed.ingredients.map(i => ({ ...i })) };
+    if (getProcessType(copy) !== 'levain' && (!Array.isArray(copy.stages) || !copy.stages.length)) copy.stages = stagesFromRecipe(copy);
     recipes.push(copy);
     saveRecipes();
     renderRecipes();
@@ -7570,21 +7573,20 @@ ${notesHtml}
     document.getElementById('r-unit').value = 'loaf';
     setUnitLabels('loaf');
     document.getElementById('r-weight').value = 500;
-    document.getElementById('r-recipe-settings').style.display = '';
+    document.getElementById('r-stages-settings').style.display = '';
     document.getElementById('r-oven-settings').style.display = '';
+    updateEditorCapacityRows('bread');
     const wl = document.getElementById('r-weight-label');
     if (wl) wl.innerHTML = 'Weight per <span id="r-unit-label">loaf</span>';
     document.getElementById('r-ingredients').innerHTML = '';
-    for (const field of SCHEDULER_OVERRIDE_FIELDS) {
-      document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value = '';
-    }
-    document.getElementById('r-bake-temp').value = '';
+    ['r-oven-cap', 'r-deck-cap', 'r-batch-size'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     document.getElementById('r-leavening').value = 'sourdough';
     document.getElementById('r-leavening-row').style.display = '';
     const newEqEl = document.getElementById('r-equipment-settings');
     if (newEqEl) newEqEl.style.display = '';
     renderRecipeEquipment('sourdough-loaf', {});
-    renderProcessStepSettings('sourdough-loaf', {});
+    _editorStages = stageTemplateFor('sourdough-loaf');
+    renderStageEditor();
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows (default process is sourdough loaf → include levain)
     addIngredientRow({ name: 'Bread flour', pct: 100 });
@@ -7606,14 +7608,9 @@ ${notesHtml}
     document.getElementById('r-process-type').value = processType;
     const isLevain = processType === 'levain';
     const category = processCategory(processType);
-    document.getElementById('r-recipe-settings').style.display = category === 'bread' ? '' : 'none';
+    document.getElementById('r-stages-settings').style.display = isLevain ? 'none' : '';
     document.getElementById('r-oven-settings').style.display = isLevain ? 'none' : '';
-    // Oven/deck capacity only apply to deck-oven bread bakes; simple/enriched bake by
-    // pan capacity, so hide those rows for them (leaving Bake temp + Bake time).
-    ['r-oven-cap-row', 'r-deck-cap-row'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = category === 'bread' ? '' : 'none';
-    });
+    updateEditorCapacityRows(category);
     document.getElementById('r-leavening-row').style.display = category === 'bread' ? '' : 'none';
     const wl = document.getElementById('r-weight-label');
     const tmplUnit = PROCESS_TEMPLATES[processType] ? PROCESS_TEMPLATES[processType].unit : 'unit';
@@ -7626,13 +7623,11 @@ ${notesHtml}
     document.getElementById('r-weight').value = r.loafWeight;
     document.getElementById('r-ingredients').innerHTML = '';
     r.ingredients.forEach(i => addIngredientRow(i));
-    for (const field of SCHEDULER_OVERRIDE_FIELDS) {
-      const val = r[field];
-      document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value =
-        (val === undefined || val === null || val === '') ? '' : val;
-    }
-    document.getElementById('r-bake-temp').value =
-      (r.bakeTempF !== undefined && r.bakeTempF !== null) ? r.bakeTempF : '';
+    // Capacity inputs (oven/deck for bread, batch size for simple/enriched).
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val === undefined || val === null || val === '') ? '' : val; };
+    setVal('r-oven-cap', r.ovenCapacity);
+    setVal('r-deck-cap', r.deckCapacity);
+    setVal('r-batch-size', r.batchSizeOverride);
     document.getElementById('r-leavening').value = r.leavening || 'sourdough';
     document.getElementById('r-leavening-row').style.display = isLevain ? 'none' : '';
     renderRecipeEquipment(processType, {
@@ -7642,7 +7637,10 @@ ${notesHtml}
       preferredMixerIds: r.preferredMixerIds || [],
       preferredOvenId: r.preferredOvenId || null,
     });
-    renderProcessStepSettings(processType, r);
+    // Load the recipe's saved stages (or migrate on the fly), cloned for editing.
+    _editorStages = isLevain ? []
+      : (Array.isArray(r.stages) && r.stages.length ? r.stages.map(s => ({ ...s, duration: { ...s.duration } })) : stagesFromRecipe(r));
+    renderStageEditor();
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -7730,20 +7728,22 @@ ${notesHtml}
       if (!confirm('Your flours add up to ' + (Math.round(flourPctTotal * 10) / 10) + '%, not 100%.\n\nBaker’s percentages assume flour = 100%, so costs and ingredient weights may be off. Save anyway?')) return;
     }
 
+    // Steps & timing come from the stage editor → derived scheduler params.
+    const stageParams = (processType !== 'levain') ? paramsFromStages(_editorStages, processType) : {};
     const overrides = {};
-    for (const field of SCHEDULER_OVERRIDE_FIELDS) {
-      const raw = document.getElementById(OVERRIDE_FIELD_TO_INPUT[field]).value.trim();
+    ['bakeMin', 'coldProofHr', 'warmupMin', 'autolyseMin', 'bulkMin', 'foldsCount', 'shapeMinPerUnit'].forEach(f => {
+      if (f in stageParams) overrides[f] = stageParams[f] === '' ? null : stageParams[f];
+    });
+    // Oven/deck capacity still come from their own inputs.
+    for (const field of Object.keys(CAPACITY_FIELD_TO_INPUT)) {
+      const el = document.getElementById(CAPACITY_FIELD_TO_INPUT[field]);
+      const raw = el ? el.value.trim() : '';
       if (raw === '') { overrides[field] = null; continue; }
-      if (field === 'coldProofHr') { overrides[field] = raw; continue; }
       const num = Number(raw);
-      if (!Number.isFinite(num) || num < 0) {
-        alert(`Scheduler override "${field}" must be a non-negative number.`);
-        return;
-      }
+      if (!Number.isFinite(num) || num < 0) { alert(`"${field}" must be a non-negative number.`); return; }
       overrides[field] = num;
     }
-    const bakeTempRaw = document.getElementById('r-bake-temp').value.trim();
-    const bakeTempF = bakeTempRaw ? Number(bakeTempRaw) : null;
+    const bakeTempF = (stageParams.bakeTempF === '' || stageParams.bakeTempF == null) ? null : Number(stageParams.bakeTempF);
 
     // Preserve pantryId links from the existing recipe (matched by ingredient name).
     // Cost links are managed in the Prices tab, not the recipe editor.
@@ -7781,27 +7781,26 @@ ${notesHtml}
     const prefOvenEl = document.getElementById('r-pref-oven');
     const preferredOvenId = prefOvenEl ? (prefOvenEl.value || null) : null;
 
-    // Optional per-recipe process steps (simple / enriched). Fields exist only when rendered.
+    // Step-derived sub-fields for simple/enriched (chill window, final proof, glaze) +
+    // batch size from its own input.
     const stepFields = {};
-    const chillEl = document.getElementById('r-chill');
-    if (chillEl) stepFields.chillWindow = chillEl.value || '';
-    const batchSizeEl = document.getElementById('r-batch-size');
-    if (batchSizeEl) { const bs = parseInt(batchSizeEl.value, 10); stepFields.batchSizeOverride = (Number.isFinite(bs) && bs > 0) ? bs : null; }
-    const fpModeEl = document.getElementById('r-final-proof-mode');
-    if (fpModeEl) {
-      stepFields.finalProofMode = fpModeEl.value || 'warm';
-      const warmRaw = document.getElementById('r-final-proof-warm').value.trim();
-      stepFields.finalProofWarmMin = warmRaw === '' ? null : Number(warmRaw);
-      stepFields.finalProofColdWindow = document.getElementById('r-final-proof-cold').value || '8-12';
-      stepFields.glazeEnabled = document.getElementById('r-glaze-enabled').checked;
-      const glazeRaw = document.getElementById('r-glaze-min').value.trim();
-      stepFields.glazeMin = glazeRaw === '' ? null : Number(glazeRaw);
+    if (processType === 'simple') {
+      stepFields.chillWindow = stageParams.chillWindow || '';
+    } else if (processType === 'enriched') {
+      stepFields.finalProofMode = stageParams.finalProofMode || 'warm';
+      stepFields.finalProofWarmMin = (stageParams.finalProofWarmMin === '' || stageParams.finalProofWarmMin == null) ? null : Number(stageParams.finalProofWarmMin);
+      stepFields.finalProofColdWindow = stageParams.finalProofColdWindow || '8-12';
+      stepFields.glazeEnabled = !!stageParams.glazeEnabled;
+      stepFields.glazeMin = (stageParams.glazeMin === '' || stageParams.glazeMin == null) ? null : Number(stageParams.glazeMin);
+    }
+    if (processType === 'simple' || processType === 'enriched') {
+      const batchSizeEl = document.getElementById('r-batch-size');
+      if (batchSizeEl) { const bs = parseInt(batchSizeEl.value, 10); stepFields.batchSizeOverride = (Number.isFinite(bs) && bs > 0) ? bs : null; }
     }
 
     const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ...stepFields, ...overrides };
-    // Keep the stage list in sync with the saved params (the stage editor will become
-    // the source of truth in a later step; until then stages are derived from the form).
-    if (processType !== 'levain') base.stages = stagesFromRecipe(base);
+    // The edited stage list is the source of truth — persist it verbatim.
+    if (processType !== 'levain') base.stages = _editorStages.map(s => ({ ...s, duration: { ...s.duration } }));
 
     let recipeId;
     if (editingId) {
