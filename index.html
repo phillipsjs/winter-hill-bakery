@@ -6477,73 +6477,13 @@ ${notesHtml}
       build1: pickDefault('build1', build1Pref),
       build2: pickDefault('build2', build2Pref),
     };
-    const loafDeadlineStr = effectiveProcessDeadlineStr('sourdough-loaf');
-    const muffinDeadlineStr = effectiveProcessDeadlineStr('sourdough-muffin');
-    const effLoafStr = loafDeadlineStr || muffinDeadlineStr;
-    const effMuffinStr = muffinDeadlineStr || loafDeadlineStr;
-    if (!effLoafStr) return defaults;
-    const loafDeadline = new Date(effLoafStr);
-    if (isNaN(loafDeadline.getTime())) return defaults;
-    const muffinDeadline = effMuffinStr ? new Date(effMuffinStr) : loafDeadline;
-    if (isNaN(muffinDeadline.getTime())) return defaults;
-
-    const defBakeTime = (document.getElementById('bake-time-default-input') || {}).value || '';
-    const loafBakeTime = defBakeTime;
-    const muffinBakeTime = defBakeTime;
-    const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
-    const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
-    const bagelDeadlineStr = effectiveProcessDeadlineStr('bagel');
-    const bagelDeadline = bagelDeadlineStr ? new Date(bagelDeadlineStr) : (effMuffinStr ? muffinDeadline : loafDeadline);
-    const bagelBakeTime = defBakeTime;
-    const bagelColdProofRaw = document.getElementById('coldproof-bagel-input').value;
-    const bagelBatchSize = getBagelBatchSize();
-    const resolveColdProofWindow = (raw, fallbackMin) => {
-      const parsed = parseColdProofWindow(raw);
-      if (parsed) return parsed;
-      return { min: fallbackMin, max: fallbackMin + COLD_PROOF_WINDOW_WIDTH };
-    };
-    const bagelW = resolveColdProofWindow(bagelColdProofRaw, PROCESS_TEMPLATES.bagel.coldProofHr);
-    let loafColdProofHours;
-    let loafColdProofMaxHr;
-    if (loafColdProofRaw === '') {
-      // Default target ~16-20 hr; try shorter first (down to 8-12), then
-      // longer if no short window works. .find() picks the first candidate
-      // with no late-night active steps, and the reduce fallback tie-breaks
-      // toward earlier entries — so the search prefers 16, then 14, ..., 8,
-      // then 18, 20, ..., 44.
-      const candidates = [16, 14, 12, 10, 8, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44];
-      const trials = candidates.map(c => {
-        const trial = buildSchedule({
-          loafDeadline, muffinDeadline, bagelDeadline,
-          loafColdProofHours: c, muffinColdProofHours: SCHED.COLD_PROOF_HOURS, bagelColdProofHours: bagelW.min,
-          loafBakeTime, muffinBakeTime, bagelBakeTime,
-          loafColdProofMaxHr: c + COLD_PROOF_WINDOW_WIDTH, muffinColdProofMaxHr: SCHED.COLD_PROOF_HOURS + COLD_PROOF_WINDOW_WIDTH, bagelColdProofMaxHr: bagelW.max,
-          bagelBatchSize,
-        });
-        const lateCount = trial.totalLoaves === 0 ? 0 : lateNightActiveSteps(trial.events, 'loaf').length;
-        return { c, total: trial.totalLoaves, lateCount };
-      });
-      const noLate = trials.find(t => t.total === 0 || t.lateCount === 0);
-      loafColdProofHours = noLate
-        ? noLate.c
-        : trials.reduce((a, b) => (b.lateCount < a.lateCount ? b : a)).c;
-      loafColdProofMaxHr = loafColdProofHours + COLD_PROOF_WINDOW_WIDTH;
-    } else {
-      const w = resolveColdProofWindow(loafColdProofRaw, SCHED.COLD_PROOF_HOURS);
-      loafColdProofHours = w.min;
-      loafColdProofMaxHr = w.max;
-    }
-    const muffinW = resolveColdProofWindow(muffinColdProofRaw, loafColdProofHours);
-    const muffinColdProofHours = muffinW.min;
-    const muffinColdProofMaxHr = muffinW.max;
-
-    const result = buildSchedule({
-      loafDeadline, muffinDeadline, bagelDeadline,
-      loafColdProofHours, muffinColdProofHours, bagelColdProofHours: bagelW.min,
-      loafBakeTime, muffinBakeTime, bagelBakeTime,
-      loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr: bagelW.max,
-      bagelBatchSize,
-    });
+    // Use the SAME input derivation the schedule tab uses, then build through the SAME
+    // entry point (buildScheduleAcrossLoafGroups). This is only the fallback for when no
+    // schedule has been rendered yet — keeping it on the shared path means it can't drift
+    // from the schedule's shared-vs-separate levain decision.
+    const di = deriveScheduleInputs();
+    if (di.status !== 'ok') return defaults;
+    const result = buildScheduleAcrossLoafGroups(di.opts);
     return {
       build1: result.build1Opt || defaults.build1,
       build2: result.build2Opt || defaults.build2,
@@ -10245,20 +10185,6 @@ ${notesHtml}
     else localStorage.removeItem(RECIPE_DEADLINES_KEY);
   }
 
-  // Effective deadline (datetime-local string) for a process type = the earliest
-  // effective deadline among its in-plan recipes, where each recipe's effective
-  // deadline is its per-recipe override or, failing that, the shared default.
-  function effectiveProcessDeadlineStr(pt) {
-    const defEl = document.getElementById('deadline-default-input');
-    const defaultStr = (defEl && defEl.value) || '';
-    const recipeDeadlines = loadRecipeDeadlines();
-    const planNow = loadPlan();
-    const ds = recipes.filter(r => (planNow[r.id] || 0) > 0 && getProcessType(r) === pt)
-      .map(r => recipeDeadlines[r.id] || defaultStr).filter(Boolean);
-    if (!ds.length) return '';
-    return ds.reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
-  }
-
   // Populate the per-recipe deadline override list in the Schedule tab. Shows one
   // row per in-plan schedulable recipe; blank input = inherit the default deadline.
   function renderRecipeDeadlines() {
@@ -10315,21 +10241,17 @@ ${notesHtml}
     });
   }
 
-  function renderSchedule() {
-    if (suppressScheduleRender) return;
-    _scheduleResult = null;
-    updateProcessRowVisibility();
-    const out = document.getElementById('schedule-output');
-    // Deadlines come from one default + optional per-recipe overrides. A process's
-    // deadline is the earliest effective deadline among its in-plan recipes (per-recipe
-    // deadline SPLITTING into separate timelines is a later phase — for now mixed
-    // deadlines collapse to the earliest, with a warning).
+  // Single source of truth for the scheduler's inputs — effective per-process deadlines,
+  // bake times, and cold-proof windows (including the auto-search). renderSchedule() and
+  // the levain-ratio fallback both derive their buildSchedule opts from here so they can't
+  // drift (a prior drift made the levain card disagree with the schedule on shared-vs-
+  // separate levains). Returns a status the caller maps to UI messages, plus the opts and
+  // the cold-proof display values.
+  function deriveScheduleInputs() {
     const defaultDeadlineStr = document.getElementById('deadline-default-input').value;
     const defaultBakeTime = document.getElementById('bake-time-default-input').value;
     const recipeDeadlines = loadRecipeDeadlines();
     const effRecipeDeadline = (r) => recipeDeadlines[r.id] || defaultDeadlineStr;
-    // Effective deadline per in-plan recipe (override → default), passed to the scheduler
-    // so simple/enriched split into separate slots/columns when deadlines differ.
     const effRecipeDeadlines = {};
     recipes.forEach(r => { if ((plan[r.id] || 0) > 0) { const d = effRecipeDeadline(r); if (d) effRecipeDeadlines[r.id] = d; } });
     const procDeadlineStr = (pt) => {
@@ -10338,16 +10260,9 @@ ${notesHtml}
       return ds.reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
     };
     const hasPlanType = (pt) => recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) === pt);
-    const hasLoafPlan = hasPlanType('sourdough-loaf');
-    const hasMuffinPlan = hasPlanType('sourdough-muffin');
-    const hasBagelPlan = hasPlanType('bagel');
-    const hasFocacciaPlan = hasPlanType('focaccia');
-    const hasSimplePlan = hasPlanType('simple');
-    const hasEnrichedPlan = hasPlanType('enriched');
     const hasAnyPlan = recipes.some(r => (plan[r.id] || 0) > 0 && getProcessType(r) !== 'levain');
     if (hasAnyPlan && !defaultDeadlineStr && Object.values(recipeDeadlines).filter(Boolean).length === 0) {
-      out.innerHTML = '<p class="muted">Set a default deadline above to see the schedule.</p>';
-      return;
+      return { status: 'no-default' };
     }
     const effLoafDeadlineStr = procDeadlineStr('sourdough-loaf');
     const effMuffinDeadlineStr = procDeadlineStr('sourdough-muffin');
@@ -10355,16 +10270,15 @@ ${notesHtml}
     const effFocacciaDeadlineStr = procDeadlineStr('focaccia');
     const effSimpleDeadlineStr = procDeadlineStr('simple');
     const effEnrichedDeadlineStr = procDeadlineStr('enriched');
-    const needDeadline = (has, str, label) => {
-      if (has && !str) { out.innerHTML = `<p class="muted">Set a deadline for your ${label} to see the schedule.</p>`; return true; }
-      return false;
-    };
-    if (needDeadline(hasLoafPlan, effLoafDeadlineStr, 'loaves')) return;
-    if (needDeadline(hasMuffinPlan, effMuffinDeadlineStr, 'muffins')) return;
-    if (needDeadline(hasBagelPlan, effBagelDeadlineStr, 'bagels')) return;
-    if (needDeadline(hasFocacciaPlan, effFocacciaDeadlineStr, 'focaccia')) return;
-    if (needDeadline(hasSimplePlan, effSimpleDeadlineStr, 'simple bakes')) return;
-    if (needDeadline(hasEnrichedPlan, effEnrichedDeadlineStr, 'enriched dough')) return;
+    const missing = [
+      [hasPlanType('sourdough-loaf'), effLoafDeadlineStr, 'loaves'],
+      [hasPlanType('sourdough-muffin'), effMuffinDeadlineStr, 'muffins'],
+      [hasPlanType('bagel'), effBagelDeadlineStr, 'bagels'],
+      [hasPlanType('focaccia'), effFocacciaDeadlineStr, 'focaccia'],
+      [hasPlanType('simple'), effSimpleDeadlineStr, 'simple bakes'],
+      [hasPlanType('enriched'), effEnrichedDeadlineStr, 'enriched dough'],
+    ].find(([has, str]) => has && !str);
+    if (missing) return { status: 'need-deadline', label: missing[2] };
     const mkDate = (s) => s ? new Date(s) : null;
     const loafDeadline = mkDate(effLoafDeadlineStr);
     const muffinDeadline = mkDate(effMuffinDeadlineStr);
@@ -10373,8 +10287,7 @@ ${notesHtml}
     const simpleDeadline = mkDate(effSimpleDeadlineStr);
     const enrichedDeadline = mkDate(effEnrichedDeadlineStr);
     if ([loafDeadline, muffinDeadline, bagelDeadline, focacciaDeadline, simpleDeadline, enrichedDeadline].some(d => d && isNaN(d.getTime()))) {
-      out.innerHTML = '<p class="muted">Invalid deadline.</p>';
-      return;
+      return { status: 'invalid' };
     }
     const loafBakeTime = defaultBakeTime, muffinBakeTime = defaultBakeTime, bagelBakeTime = defaultBakeTime;
     const focacciaBakeTime = defaultBakeTime, simpleBakeTime = defaultBakeTime, enrichedBakeTime = defaultBakeTime;
@@ -10395,11 +10308,9 @@ ${notesHtml}
     };
     const findBestColdProof = (kind, otherFixed) => {
       // Candidate window lower bounds. The full window is min .. min + 4.
-      // Default target ~16-20 hr; try shorter first (down to 8-12), then
-      // longer if no short window works. .find() picks the first candidate
-      // with no late-night active steps, and the reduce fallback tie-breaks
-      // toward earlier entries — so the search prefers 16, then 14, ..., 8,
-      // then 18, 20, ..., 44.
+      // Default target ~16-20 hr; try shorter first (down to 8-12), then longer if no
+      // short window works. .find() picks the first candidate with no late-night active
+      // steps; the reduce fallback tie-breaks toward earlier entries.
       const candidates = [16, 14, 12, 10, 8, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44];
       const trials = candidates.map(c => {
         const loaf = kind === 'loaf' ? c : otherFixed;
@@ -10421,42 +10332,27 @@ ${notesHtml}
       return { min: pickedMin, max: pickedMin + COLD_PROOF_WINDOW_WIDTH };
     };
 
-    let loafColdProofWindow;
-    let loafColdProofAuto = false;
-    if (loafColdProofRaw === '') {
-      loafColdProofAuto = true;
-      loafColdProofWindow = findBestColdProof('loaf', SCHED.COLD_PROOF_HOURS);
-    } else {
-      loafColdProofWindow = clampColdProofWindow(loafColdProofRaw, SCHED.COLD_PROOF_HOURS);
-    }
+    let loafColdProofWindow, loafColdProofAuto = false;
+    if (loafColdProofRaw === '') { loafColdProofAuto = true; loafColdProofWindow = findBestColdProof('loaf', SCHED.COLD_PROOF_HOURS); }
+    else { loafColdProofWindow = clampColdProofWindow(loafColdProofRaw, SCHED.COLD_PROOF_HOURS); }
     const loafColdProofHours = loafColdProofWindow.min;
     const loafColdProofMaxHr = loafColdProofWindow.max;
 
-    let muffinColdProofWindow;
-    let muffinColdProofAuto = false;
-    if (muffinColdProofRaw === '') {
-      muffinColdProofAuto = true;
-      muffinColdProofWindow = findBestColdProof('muffin', loafColdProofHours);
-    } else {
-      muffinColdProofWindow = clampColdProofWindow(muffinColdProofRaw, SCHED.COLD_PROOF_HOURS);
-    }
+    let muffinColdProofWindow, muffinColdProofAuto = false;
+    if (muffinColdProofRaw === '') { muffinColdProofAuto = true; muffinColdProofWindow = findBestColdProof('muffin', loafColdProofHours); }
+    else { muffinColdProofWindow = clampColdProofWindow(muffinColdProofRaw, SCHED.COLD_PROOF_HOURS); }
     const muffinColdProofHours = muffinColdProofWindow.min;
     const muffinColdProofMaxHr = muffinColdProofWindow.max;
 
-    let bagelColdProofWindow;
-    let bagelColdProofAuto = false;
-    if (bagelColdProofRaw === '') {
-      bagelColdProofAuto = true;
-      bagelColdProofWindow = findBestColdProof('bagel', PROCESS_TEMPLATES.bagel.coldProofHr);
-    } else {
-      bagelColdProofWindow = clampColdProofWindow(bagelColdProofRaw, PROCESS_TEMPLATES.bagel.coldProofHr);
-    }
+    let bagelColdProofWindow, bagelColdProofAuto = false;
+    if (bagelColdProofRaw === '') { bagelColdProofAuto = true; bagelColdProofWindow = findBestColdProof('bagel', PROCESS_TEMPLATES.bagel.coldProofHr); }
+    else { bagelColdProofWindow = clampColdProofWindow(bagelColdProofRaw, PROCESS_TEMPLATES.bagel.coldProofHr); }
     const bagelColdProofHours = bagelColdProofWindow.min;
     const bagelColdProofMaxHr = bagelColdProofWindow.max;
 
-    let result;
-    try {
-      result = buildScheduleAcrossLoafGroups({
+    return {
+      status: 'ok',
+      opts: {
         loafDeadline, muffinDeadline, bagelDeadline, focacciaDeadline,
         loafColdProofHours, muffinColdProofHours, bagelColdProofHours,
         loafBakeTime, muffinBakeTime, bagelBakeTime, focacciaBakeTime,
@@ -10464,7 +10360,44 @@ ${notesHtml}
         bagelBatchSize,
         simpleDeadline, simpleBakeTime, enrichedDeadline, enrichedBakeTime,
         recipeDeadlines: effRecipeDeadlines,
-      });
+      },
+      loafColdProofAuto, muffinColdProofAuto, bagelColdProofAuto,
+      loafColdProofHours, loafColdProofMaxHr,
+      muffinColdProofHours, muffinColdProofMaxHr,
+      bagelColdProofHours, bagelColdProofMaxHr,
+    };
+  }
+
+  function renderSchedule() {
+    if (suppressScheduleRender) return;
+    _scheduleResult = null;
+    updateProcessRowVisibility();
+    const out = document.getElementById('schedule-output');
+    // Deadlines + cold-proof windows come from the shared derivation so the schedule and
+    // the levain card can't drift. The status maps to the same UI messages as before.
+    const di = deriveScheduleInputs();
+    if (di.status === 'no-default') {
+      out.innerHTML = '<p class="muted">Set a default deadline above to see the schedule.</p>';
+      return;
+    }
+    if (di.status === 'need-deadline') {
+      out.innerHTML = `<p class="muted">Set a deadline for your ${di.label} to see the schedule.</p>`;
+      return;
+    }
+    if (di.status === 'invalid') {
+      out.innerHTML = '<p class="muted">Invalid deadline.</p>';
+      return;
+    }
+    const {
+      loafColdProofAuto, muffinColdProofAuto, bagelColdProofAuto,
+      loafColdProofHours, loafColdProofMaxHr,
+      muffinColdProofHours, muffinColdProofMaxHr,
+      bagelColdProofHours, bagelColdProofMaxHr,
+    } = di;
+
+    let result;
+    try {
+      result = buildScheduleAcrossLoafGroups(di.opts);
     } catch (err) {
       console.error('Schedule build failed:', err);
       out.innerHTML = '<p class="muted">Couldn’t build the schedule: ' + escapeHtml((err && err.message) || String(err)) + '</p>';
