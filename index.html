@@ -826,10 +826,10 @@
       <details class="plan-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
-          <h2 id="container-card-title">Proofing containers</h2>
+          <h2 id="container-card-title">Containers</h2>
           <span id="container-summary" class="muted" style="font-size:0.85rem"></span>
         </summary>
-        <p class="muted" style="margin:8px 0 0">Containers for proofing sourdough or chilling cookie/scone dough. Recipes share a container only if their ingredient ratios are identical. Add your containers in the Kitchen tab to get accurate assignments.</p>
+        <p class="muted" style="margin:8px 0 0">Vessels for levain builds, proofing sourdough, and chilling cookie/scone dough. Recipes share a container only if their ingredient ratios are identical. Add your containers in the Kitchen tab to get accurate assignments.</p>
         <div id="container-output"></div>
       </details>
     </div>
@@ -6385,8 +6385,34 @@ ${notesHtml}
       </div>`;
     }
 
+    // Levain build vessels first — they're built (and needed) before any dough proofing
+    // or chilling. One block per active levain, listing the small Build 1 refresh vessel
+    // and the larger Build 2 vessel.
+    let levainContainerCount = 0;
+    if (levainEntries.length > 0) {
+      const blocks = levainEntries.map(e => {
+        const lines = [];
+        if (e.info.b1Name) {
+          lines.push(`${escapeHtml(e.info.b1Name)}: <strong>${formatGrams(e.info.b1Grams)}</strong> — Build 1 (first refresh)`);
+          levainContainerCount++;
+        }
+        lines.push(`${escapeHtml(e.info.name)}: <strong>${formatGrams(e.info.grams)}</strong> — Build 2 (final build)`);
+        levainContainerCount++;
+        return `<div style="margin-top:6px"><strong>${escapeHtml(e.label)}</strong></div>
+          <div style="margin-top:4px">${lines.join('<br>')}</div>`;
+      }).join('');
+      html += `<div style="margin-top:0">
+        <div><strong>Levain</strong> <span class="muted" style="font-size:0.8rem">— for levain builds</span></div>
+        ${blocks}
+      </div>`;
+    }
+
+    // Dough proofing / chilling containers (after levain).
     if (groups.length > 0) {
-      html += `<p style="margin-top:0">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
+      const sepStyle = levainEntries.length > 0
+        ? 'border-top:1px solid var(--border);margin:12px 0 0;padding-top:12px;'
+        : 'margin-top:0;';
+      html += `<p style="${sepStyle}">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
     }
 
     for (let gi = 0; gi < groups.length; gi++) {
@@ -6414,28 +6440,6 @@ ${notesHtml}
         ${warnHtml}
       </div>`;
     }
-    // Levain build vessels — one block per active levain (loaf / muffin / bagel),
-    // listing the small Build 1 refresh vessel and the larger Build 2 vessel.
-    let levainContainerCount = 0;
-    if (levainEntries.length > 0) {
-      const topStyle = groups.length > 0 ? 'border-top:1px solid var(--border);padding-top:12px;' : '';
-      const blocks = levainEntries.map(e => {
-        const lines = [];
-        if (e.info.b1Name) {
-          lines.push(`${escapeHtml(e.info.b1Name)}: <strong>${formatGrams(e.info.b1Grams)}</strong> — Build 1 (first refresh)`);
-          levainContainerCount++;
-        }
-        lines.push(`${escapeHtml(e.info.name)}: <strong>${formatGrams(e.info.grams)}</strong> — Build 2 (final build)`);
-        levainContainerCount++;
-        return `<div style="margin-top:6px"><strong>${escapeHtml(e.label)}</strong></div>
-          <div style="margin-top:4px">${lines.join('<br>')}</div>`;
-      }).join('');
-      html += `<div style="margin-top:12px;${topStyle}">
-        <div><strong>Levain</strong> <span class="muted" style="font-size:0.8rem">— for levain builds</span></div>
-        ${blocks}
-      </div>`;
-    }
-
     out.innerHTML = html;
     const containerSummaryEl = document.getElementById('container-summary');
     if (containerSummaryEl) {
@@ -6445,15 +6449,7 @@ ${notesHtml}
       containerSummaryEl.textContent = parts.join(' · ');
     }
     const titleEl = document.getElementById('container-card-title');
-    if (titleEl) {
-      const anyChill = groups.some(g => g.isChilling);
-      const anyProof = groups.some(g => !g.isChilling);
-      const doughTitle = anyChill && anyProof ? 'Proofing & chilling containers'
-        : anyChill ? 'Chilling containers' : 'Proofing containers';
-      titleEl.textContent = groups.length > 0
-        ? (levainEntries.length > 0 ? doughTitle.replace(' containers', '') + ' & levain containers' : doughTitle)
-        : 'Levain containers';
-    }
+    if (titleEl) titleEl.textContent = 'Containers';
     card.style.display = '';
   }
 
