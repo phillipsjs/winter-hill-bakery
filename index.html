@@ -10172,7 +10172,7 @@ ${notesHtml}
       </div>`).join('') +
       `<div style="display:flex; align-items:center; gap:10px; margin-top:4px">
         <span class="muted" style="font-size:12px; flex:1">Blank rows use the default deadline (${escapeHtml(defLabel)}).</span>
-        ${hasOverrides ? `<button type="button" id="clear-recipe-deadlines-btn" class="secondary tiny">Clear all</button>` : ''}
+        <button type="button" id="clear-recipe-deadlines-btn" class="secondary tiny" style="${hasOverrides ? '' : 'display:none'}">Clear all</button>
       </div>`;
     const clearBtn = document.getElementById('clear-recipe-deadlines-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => {
@@ -10181,6 +10181,11 @@ ${notesHtml}
       renderSchedule();
       renderTotals();
     });
+    // Show/hide "Clear all" live as overrides are set/cleared, without re-rendering the
+    // list (which would interrupt typing in a datetime-local input).
+    const refreshClearBtn = () => {
+      if (clearBtn) clearBtn.style.display = Object.keys(loadRecipeDeadlines()).length ? '' : 'none';
+    };
     list.querySelectorAll('input[data-recipe-deadline]').forEach(inp => {
       inp.addEventListener('input', () => {
         const map = loadRecipeDeadlines();
@@ -10190,6 +10195,7 @@ ${notesHtml}
         // so it stays linked to the default rather than caching a duplicate.
         if (inp.value && inp.value !== def) map[id] = inp.value; else delete map[id];
         saveRecipeDeadlines(map);
+        refreshClearBtn();
         renderSchedule();
         renderTotals();
       });
