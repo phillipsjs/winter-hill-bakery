@@ -2227,6 +2227,231 @@
     return Math.ceil(Math.abs(b - a) / rate) + OVEN_TEMP_SETTLE_MIN;
   }
 
+  // ---- Recipe stage model (recipe builder revamp — Phase 1) -----------------
+  // A recipe's steps as an ordered, editable list. Each process seeds a default
+  // list from STAGE_TEMPLATES; the baker edits it. The schedulers still read the
+  // flat numeric fields (autolyseMin, bulkMin, coldProofHr, ...) — paramsFromStages()
+  // derives those from the stages (so the existing schedulers are untouched), and
+  // stagesFromRecipe() builds the list for legacy recipes that predate this model.
+  //
+  // duration.kind:
+  //   fixed         { min, activeMin? }       elapsed minutes (+ optional hands-on part)
+  //   perUnit       { minPerUnit }            minutes × number of units
+  //   countInterval { count, intervalMin }    a repeated step (e.g. stretch & folds)
+  //   range         { auto? | minHr, maxHr }  a window (cold/final proof); auto = scheduler picks
+  //   anchored      { min }                   the bake — the back-scheduling anchor
+  const STAGE_PALETTE = {
+    weigh:    { stage: 'prep',   active: true,  kind: 'fixed',         label: 'Weigh ingredients' },
+    mill:     { stage: 'prep',   active: true,  kind: 'fixed',         label: 'Mill flour' },
+    levain:   { stage: 'levain', active: true,  kind: 'fixed',         label: 'Levain build' },
+    autolyse: { stage: 'mix',    active: false, kind: 'fixed',         label: 'Autolyse' },
+    mix:      { stage: 'mix',    active: true,  kind: 'fixed',         label: 'Mix' },
+    fold:     { stage: 'fold',   active: true,  kind: 'countInterval', label: 'Stretch & fold' },
+    bulk:     { stage: 'proof',  active: false, kind: 'fixed',         label: 'Bulk ferment' },
+    preshape: { stage: 'shape',  active: true,  kind: 'perUnit',       label: 'Preshape' },
+    bench:    { stage: 'shape',  active: false, kind: 'fixed',         label: 'Bench rest' },
+    shape:    { stage: 'shape',  active: true,  kind: 'perUnit',       label: 'Shape' },
+    proof:    { stage: 'proof',  active: false, kind: 'fixed',         label: 'Final proof' },
+    chill:    { stage: 'chill',  active: false, kind: 'range',         label: 'Cold proof' },
+    warmup:   { stage: 'proof',  active: false, kind: 'fixed',         label: 'Warm-up before bake' },
+    boil:     { stage: 'bake',   active: true,  kind: 'fixed',         label: 'Boil' },
+    bake:     { stage: 'bake',   active: false, kind: 'anchored',      label: 'Bake' },
+    cool:     { stage: 'done',   active: false, kind: 'fixed',         label: 'Cool' },
+    glaze:    { stage: 'done',   active: true,  kind: 'fixed',         label: 'Glaze / ice' },
+    rest:     { stage: 'proof',  active: false, kind: 'fixed',         label: 'Rest' },
+    step:     { stage: 'prep',   active: true,  kind: 'fixed',         label: 'Step' },
+  };
+  // Default stage list per process — the numbers mirror PROCESS_TEMPLATES so a recipe
+  // with no overrides derives back to identical scheduler params.
+  const STAGE_TEMPLATES = {
+    'sourdough-loaf': [
+      { type: 'autolyse', duration: { kind: 'fixed', min: 60, activeMin: 10 } },
+      { type: 'mix',      duration: { kind: 'fixed', min: 0, activeMin: 10 }, label: 'Mix in salt + levain' },
+      { type: 'fold',     duration: { kind: 'countInterval', count: 5, intervalMin: 30 } },
+      { type: 'bulk',     duration: { kind: 'fixed', min: 240 }, vessel: 'bulk-container' },
+      { type: 'shape',    duration: { kind: 'perUnit', minPerUnit: 7 }, vessel: 'banneton' },
+      { type: 'chill',    duration: { kind: 'range', auto: true }, vessel: 'banneton' },
+      { type: 'bake',     duration: { kind: 'anchored', min: 40 }, tempF: 500, vessel: 'oven' },
+    ],
+    'sourdough-muffin': [
+      { type: 'mix',    duration: { kind: 'fixed', min: 0, activeMin: 10 } },
+      { type: 'bulk',   duration: { kind: 'fixed', min: 120 }, vessel: 'bulk-container' },
+      { type: 'shape',  duration: { kind: 'perUnit', minPerUnit: 1 }, vessel: 'pan' },
+      { type: 'chill',  duration: { kind: 'range', auto: true }, vessel: 'pan' },
+      { type: 'warmup', duration: { kind: 'fixed', min: 180 }, vessel: 'pan' },
+      { type: 'bake',   duration: { kind: 'anchored', min: 12 }, tempF: 375, vessel: 'oven' },
+    ],
+    'bagel': [
+      { type: 'mix',   duration: { kind: 'fixed', min: 0, activeMin: 10 } },
+      { type: 'bulk',  duration: { kind: 'fixed', min: 120 }, vessel: 'bulk-container' },
+      { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 2 }, vessel: 'sheet' },
+      { type: 'chill', duration: { kind: 'range', auto: true }, vessel: 'sheet' },
+      { type: 'boil',  duration: { kind: 'fixed', min: 5 } },
+      { type: 'bake',  duration: { kind: 'anchored', min: 22 }, tempF: 450, vessel: 'oven' },
+    ],
+    'focaccia': [
+      { type: 'mix',      duration: { kind: 'fixed', min: 0, activeMin: 10 } },
+      { type: 'autolyse', duration: { kind: 'fixed', min: 15 } },
+      { type: 'fold',     duration: { kind: 'countInterval', count: 4, intervalMin: 15 } },
+      { type: 'bulk',     duration: { kind: 'fixed', min: 75 }, vessel: 'bulk-container' },
+      { type: 'shape',    duration: { kind: 'perUnit', minPerUnit: 10 }, vessel: 'pan' },
+      { type: 'warmup',   duration: { kind: 'fixed', min: 45 }, label: 'Pan rise', vessel: 'pan' },
+      { type: 'bake',     duration: { kind: 'anchored', min: 23 }, tempF: 475, vessel: 'oven' },
+    ],
+    'simple': [
+      { type: 'weigh', duration: { kind: 'fixed', min: 5 } },
+      { type: 'mix',   duration: { kind: 'fixed', min: 15, activeMin: 15 } },
+      { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 0.7 }, label: 'Shape / portion' },
+      { type: 'bake',  duration: { kind: 'anchored', min: 14 }, tempF: 350, vessel: 'oven' },
+      { type: 'cool',  duration: { kind: 'fixed', min: 15 } },
+    ],
+    'enriched': [
+      { type: 'weigh', duration: { kind: 'fixed', min: 5 } },
+      { type: 'mix',   duration: { kind: 'fixed', min: 20, activeMin: 20 }, label: 'Mix & knead' },
+      { type: 'bulk',  duration: { kind: 'fixed', min: 90 }, label: 'Bulk rise', vessel: 'bulk-container' },
+      { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 2 } },
+      { type: 'proof', duration: { kind: 'fixed', min: 60 }, label: 'Final proof — warm' },
+      { type: 'bake',  duration: { kind: 'anchored', min: 25 }, tempF: 350, vessel: 'oven' },
+      { type: 'cool',  duration: { kind: 'fixed', min: 20 } },
+    ],
+    'levain': [],
+  };
+  let _stageIdSeq = 0;
+  function newStageId() { return 'stg-' + (_stageIdSeq++); }
+  function cloneStage(s) {
+    return { id: newStageId(), type: s.type, label: s.label || STAGE_PALETTE[s.type].label,
+      duration: { ...s.duration }, ...(s.vessel ? { vessel: s.vessel } : {}), ...(s.tempF != null ? { tempF: s.tempF } : {}) };
+  }
+  function stageTemplateFor(processType) {
+    return (STAGE_TEMPLATES[processType] || []).map(cloneStage);
+  }
+  const _numOrNull = (v) => (v === undefined || v === null || v === '') ? null : (Number.isFinite(Number(v)) ? Number(v) : null);
+  function parseHrRange(raw) {
+    if (raw === undefined || raw === null || raw === '') return null;
+    const parts = String(raw).split('-');
+    if (parts.length === 2 && Number.isFinite(Number(parts[0])) && Number.isFinite(Number(parts[1]))) {
+      return { minHr: Number(parts[0]), maxHr: Number(parts[1]) };
+    }
+    const n = Number(raw);
+    return Number.isFinite(n) ? { minHr: n, maxHr: n } : null;
+  }
+  // Build the editable stage list for a recipe: template defaults overlaid with the
+  // recipe's saved overrides (so legacy recipes round-trip to identical scheduler params).
+  function stagesFromRecipe(recipe) {
+    const pt = getProcessType(recipe);
+    const stages = stageTemplateFor(pt);
+    const find = (type) => stages.find(s => s.type === type);
+    let s, v;
+    if ((s = find('autolyse')) && (v = _numOrNull(recipe.autolyseMin)) != null) s.duration.min = v;
+    if ((s = find('bulk')) && (v = _numOrNull(recipe.bulkMin)) != null) s.duration.min = v;
+    if ((s = find('fold')) && (v = _numOrNull(recipe.foldsCount)) != null) s.duration.count = v;
+    if ((s = find('shape')) && (v = _numOrNull(recipe.shapeMinPerUnit)) != null) s.duration.minPerUnit = v;
+    if ((s = find('warmup')) && (v = _numOrNull(recipe.warmupMin)) != null) s.duration.min = v;
+    if ((s = find('bake'))) {
+      if ((v = _numOrNull(recipe.bakeMin)) != null) s.duration.min = v;
+      if ((v = _numOrNull(recipe.bakeTempF)) != null) s.tempF = v;
+    }
+    // Cold proof (bread): blank → auto; "0" → no chill; "a-b" → explicit window.
+    if (processCategory(pt) === 'bread') {
+      const chill = find('chill');
+      const cp = recipe.coldProofHr;
+      if (cp === '0' || cp === 0) {
+        if (chill) stages.splice(stages.indexOf(chill), 1);
+      } else if (cp === undefined || cp === null || cp === '') {
+        if (chill) chill.duration = { kind: 'range', auto: true };
+      } else if (chill) {
+        const r = parseHrRange(cp);
+        if (r) chill.duration = { kind: 'range', minHr: r.minHr, maxHr: r.maxHr };
+      }
+    }
+    // Simple: optional chill/rest window before baking.
+    if (pt === 'simple') {
+      const r = parseHrRange(recipe.chillWindow);
+      if (r) {
+        const chillStage = cloneStage({ type: 'chill', duration: { kind: 'range', minHr: r.minHr, maxHr: r.maxHr }, label: 'Chill / rest', vessel: 'bulk-container' });
+        const bakeIdx = stages.findIndex(x => x.type === 'bake');
+        stages.splice(bakeIdx >= 0 ? bakeIdx : stages.length, 0, chillStage);
+      }
+    }
+    // Enriched: final proof (warm/cold) + optional glaze.
+    if (pt === 'enriched') {
+      const proof = find('proof');
+      if (proof) {
+        if ((recipe.finalProofMode || 'warm') === 'cold') {
+          const r = parseHrRange(recipe.finalProofColdWindow || '8-12') || { minHr: 8, maxHr: 12 };
+          proof.type = 'chill'; proof.label = 'Final proof — cold (overnight)';
+          proof.duration = { kind: 'range', minHr: r.minHr, maxHr: r.maxHr };
+        } else if ((v = _numOrNull(recipe.finalProofWarmMin)) != null) {
+          proof.duration.min = v;
+        }
+      }
+      if (recipe.glazeEnabled) {
+        const g = cloneStage({ type: 'glaze', duration: { kind: 'fixed', min: _numOrNull(recipe.glazeMin) != null ? _numOrNull(recipe.glazeMin) : 5 } });
+        const coolIdx = stages.findIndex(x => x.type === 'cool');
+        stages.splice(coolIdx >= 0 ? coolIdx + 1 : stages.length, 0, g);
+      }
+    }
+    return stages;
+  }
+  // Reverse: derive the flat scheduler fields from a stage list. Emits '' when a value
+  // equals the process-template default so recipes stay minimal and template-linked
+  // (and the cold-proof auto-search stays enabled when chill is 'auto').
+  function paramsFromStages(stages, processType) {
+    const def = stageTemplateFor(processType);
+    const dfind = (t) => def.find(s => s.type === t);
+    const sfind = (t) => (stages || []).find(s => s.type === t);
+    const out = {};
+    const emit = (field, val, defVal) => { out[field] = (val == null || val === defVal) ? '' : val; };
+    const autolyse = sfind('autolyse'), dauto = dfind('autolyse');
+    emit('autolyseMin', autolyse ? autolyse.duration.min : 0, dauto ? dauto.duration.min : 0);
+    const bulk = sfind('bulk'), dbulk = dfind('bulk');
+    emit('bulkMin', bulk ? bulk.duration.min : 0, dbulk ? dbulk.duration.min : 0);
+    const fold = sfind('fold'), dfold = dfind('fold');
+    emit('foldsCount', fold ? fold.duration.count : 0, dfold ? dfold.duration.count : 0);
+    const shape = sfind('shape'), dshape = dfind('shape');
+    emit('shapeMinPerUnit', shape ? shape.duration.minPerUnit : 0, dshape ? dshape.duration.minPerUnit : 0);
+    const warmup = sfind('warmup'), dwarm = dfind('warmup');
+    emit('warmupMin', warmup ? warmup.duration.min : 0, dwarm ? dwarm.duration.min : 0);
+    const bake = sfind('bake'), dbake = dfind('bake');
+    emit('bakeMin', bake ? bake.duration.min : null, dbake ? dbake.duration.min : null);
+    emit('bakeTempF', bake ? bake.tempF : null, dbake ? dbake.tempF : null);
+    if (processCategory(processType) === 'bread') {
+      const chill = sfind('chill');
+      const tmplChill = dfind('chill');
+      // No chill stage: blank (= template default) when the template has none either;
+      // '0' (an explicit "no cold proof") only when a default chill was removed.
+      if (!chill) out.coldProofHr = tmplChill ? '0' : '';
+      else if (chill.duration.auto) out.coldProofHr = '';
+      else {
+        const d = chill.duration;
+        out.coldProofHr = (d.minHr === d.maxHr) ? String(d.minHr) : `${d.minHr}-${d.maxHr}`;
+      }
+    }
+    if (processType === 'simple') {
+      const chill = sfind('chill');
+      out.chillWindow = chill && !chill.duration.auto
+        ? (chill.duration.minHr === chill.duration.maxHr ? String(chill.duration.minHr) : `${chill.duration.minHr}-${chill.duration.maxHr}`)
+        : '';
+    }
+    if (processType === 'enriched') {
+      const cold = (stages || []).find(s => s.type === 'chill');
+      const warm = sfind('proof');
+      if (cold) {
+        out.finalProofMode = 'cold';
+        out.finalProofColdWindow = (cold.duration.minHr === cold.duration.maxHr) ? `${cold.duration.minHr}-${cold.duration.maxHr}` : `${cold.duration.minHr}-${cold.duration.maxHr}`;
+        out.finalProofWarmMin = '';
+      } else {
+        out.finalProofMode = 'warm';
+        const dwarmEnr = dfind('proof');
+        out.finalProofWarmMin = (warm && warm.duration.min !== (dwarmEnr ? dwarmEnr.duration.min : null)) ? warm.duration.min : '';
+      }
+      const glaze = sfind('glaze');
+      out.glazeEnabled = !!glaze;
+      out.glazeMin = glaze ? (glaze.duration.min === 5 ? '' : glaze.duration.min) : '';
+    }
+    return out;
+  }
+
   const SEED_RECIPES = [
     {
       id: 'seed-levain',
@@ -2307,7 +2532,6 @@
       ],
       autolyseMin: 0,
       bulkMin: 120,
-      warmupMin: 90,
       coldProofHr: 14,
       bakeMin: 22,
       shapeMinPerUnit: 2,

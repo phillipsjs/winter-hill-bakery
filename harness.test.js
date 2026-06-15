@@ -100,6 +100,8 @@ const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
   buildScheduleAcrossLoafGroups, getEventStage,
+  stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
+  processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   __sr: () => _scheduleResult,
   __setPlan: (p) => { plan = p; },
   __setBannetons: (b) => { userBannetons = b; },
@@ -351,6 +353,55 @@ let contOk = true;
 contOk &= expectContainer('muffin', { [SEED.muffin]: 24 }, ['Mix muffin dough', 'Muffin dough bulk ferment']);
 contOk &= expectContainer('bagel', { [SEED.bagel]: 20 }, ['Mix bagel dough', 'Bagel dough bulk ferment']);
 allOk &= contOk;
+
+// ---- stage-model round-trip assertions (recipe builder Phase 1) ----
+console.log('\nStage-model assertions:');
+const isBlank = (v) => v === undefined || v === null || v === '';
+function specEq(a, b) {
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every(k => a[k] === b[k]);
+}
+let stageModelOk = true;
+function checkStg(label, cond) { console.log(`  [stage] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+
+// 1) A fresh template derives to no overrides (so a new recipe = template behavior).
+['sourdough-loaf','sourdough-muffin','bagel','focaccia','simple','enriched'].forEach(pt => {
+  const params = api.paramsFromStages(api.stageTemplateFor(pt), pt);
+  const numericFields = ['autolyseMin','bulkMin','foldsCount','shapeMinPerUnit','warmupMin','bakeMin','bakeTempF'];
+  const allBlank = numericFields.every(f => isBlank(params[f]))
+    && (api.processCategory(pt) !== 'bread' || isBlank(params.coldProofHr));
+  stageModelOk &= checkStg(`${pt}: fresh template → no numeric overrides`, allBlank);
+});
+
+// 2) Every seed recipe round-trips: stagesFromRecipe → paramsFromStages preserves the
+//    effective scheduler spec and the cold-proof auto/explicit state.
+api.SEED_RECIPES.filter(r => api.getProcessType(r) !== 'levain').forEach(r => {
+  const pt = api.getProcessType(r);
+  const stages = api.stagesFromRecipe(r);
+  const params = api.paramsFromStages(stages, pt);
+  const merged = { ...r, ...params };
+  const specOk = specEq(api.getRecipeSpec(r), api.getRecipeSpec(merged));
+  stageModelOk &= checkStg(`${r.name}: getRecipeSpec preserved`, specOk);
+  if (api.processCategory(pt) === 'bread') {
+    const autoBefore = isBlank(r.coldProofHr) ? 'auto' : (String(r.coldProofHr) === '0' ? 'none' : 'explicit');
+    const autoAfter = isBlank(merged.coldProofHr) ? 'auto' : (String(merged.coldProofHr) === '0' ? 'none' : 'explicit');
+    stageModelOk &= checkStg(`${r.name}: cold-proof state (${autoBefore})`, autoBefore === autoAfter);
+  }
+});
+
+// 3) Explicit overrides survive the round-trip.
+const loaf = api.SEED_RECIPES.find(r => api.getProcessType(r) === 'sourdough-loaf');
+const variant = { ...loaf, bulkMin: 300, foldsCount: 3, coldProofHr: '12-16' };
+const vParams = api.paramsFromStages(api.stagesFromRecipe(variant), 'sourdough-loaf');
+stageModelOk &= checkStg('override bulkMin=300 survives', vParams.bulkMin === 300);
+stageModelOk &= checkStg('override foldsCount=3 survives', vParams.foldsCount === 3);
+stageModelOk &= checkStg('override coldProofHr=12-16 survives', vParams.coldProofHr === '12-16');
+// coldProofHr="0" (no cold proof) survives as "0", not blank.
+const noCp = api.paramsFromStages(api.stagesFromRecipe({ ...loaf, coldProofHr: '0' }), 'sourdough-loaf');
+stageModelOk &= checkStg('coldProofHr=0 (none) survives', noCp.coldProofHr === '0');
+
+allOk &= stageModelOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
