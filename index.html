@@ -5065,13 +5065,17 @@ ${notesHtml}
       let statusHtml;
       if (compatiblePans.length === 0) {
         statusHtml = '<span class="muted" style="font-size:0.85rem">no pans configured</span>';
-      } else if (ok) {
-        const detail = compatiblePans.length === 1 && getPanCapacityForRecipe(compatiblePans[0], r.id) > 1
-          ? `${compatiblePans[0].quantity} × ${getPanCapacityForRecipe(compatiblePans[0], r.id)} = ${totalCapacity}`
-          : `${totalCapacity}`;
-        statusHtml = `<span class="muted" style="font-size:0.85rem">${detail} capacity</span>`;
       } else {
-        statusHtml = `<span style="color:var(--danger);font-size:0.85rem">&#9888; need ${needed}, have ${totalCapacity} capacity</span>`;
+        // Name the pan(s) covering this recipe (mirrors the mixer card), with each
+        // pan's quantity × per-pan capacity so it's clear what's being used.
+        const panList = compatiblePans.map(p => {
+          const per = getPanCapacityForRecipe(p, r.id);
+          const detail = per > 1 ? `${p.quantity} × ${per} = ${p.quantity * per}` : `${p.quantity}`;
+          return `${escapeHtml(p.name)} <span class="muted" style="font-size:0.8rem">(${detail})</span>`;
+        }).join(', ');
+        statusHtml = ok
+          ? `<span style="font-size:0.85rem">${panList}</span>`
+          : `<span style="font-size:0.85rem">${panList}</span> <span style="color:var(--danger);font-size:0.8rem">&#9888; need ${needed}, have ${totalCapacity}</span>`;
       }
       return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
         <span style="flex:1">${escapeHtml(r.name)}</span>
