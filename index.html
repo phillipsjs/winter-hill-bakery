@@ -6347,7 +6347,23 @@ ${notesHtml}
     const out = document.getElementById('container-output');
     const groups = planDoughContainers(recipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
 
-    if (groups.length === 0) {
+    // Levain build vessels come from the last-built schedule (sized separately for the
+    // small Build 1 refresh and the larger Build 2). Shown alongside the dough proofing
+    // containers so the card is the single inventory of every vessel the bake needs.
+    const sr = _scheduleResult || {};
+    const levainInfo = sr.levainContainerInfo || {};
+    // The "shared" levain also feeds the muffins/bagels when they don't use a separate
+    // levain, so label it accordingly.
+    const sharedAlsoMuffin = !sr.useSeparateLevains && recipes.some(r => getProcessType(r) === 'sourdough-muffin' && (plan[r.id] || 0) > 0);
+    const sharedAlsoBagel = !sr.useBagelSeparateLevain && recipes.some(r => getProcessType(r) === 'bagel' && (plan[r.id] || 0) > 0);
+    const sharedLevainLabel = (sharedAlsoMuffin || sharedAlsoBagel) ? 'Shared levain' : 'Loaf levain';
+    const levainEntries = [
+      { key: 'shared', label: sharedLevainLabel, info: levainInfo.shared },
+      { key: 'muffin', label: 'Muffin levain', info: levainInfo.muffin },
+      { key: 'bagel',  label: 'Bagel levain',  info: levainInfo.bagel },
+    ].filter(e => e.info);
+
+    if (groups.length === 0 && levainEntries.length === 0) {
       card.style.display = 'none';
       return;
     }
@@ -6365,7 +6381,9 @@ ${notesHtml}
       </div>`;
     }
 
-    html += `<p style="margin-top:0">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
+    if (groups.length > 0) {
+      html += `<p style="margin-top:0">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
+    }
 
     for (let gi = 0; gi < groups.length; gi++) {
       const g = groups[gi];
@@ -6392,15 +6410,45 @@ ${notesHtml}
         ${warnHtml}
       </div>`;
     }
+    // Levain build vessels — one block per active levain (loaf / muffin / bagel),
+    // listing the small Build 1 refresh vessel and the larger Build 2 vessel.
+    let levainContainerCount = 0;
+    if (levainEntries.length > 0) {
+      const topStyle = groups.length > 0 ? 'border-top:1px solid var(--border);padding-top:12px;' : '';
+      const blocks = levainEntries.map(e => {
+        const lines = [];
+        if (e.info.b1Name) {
+          lines.push(`${escapeHtml(e.info.b1Name)}: <strong>${formatGrams(e.info.b1Grams)}</strong> — Build 1 (first refresh)`);
+          levainContainerCount++;
+        }
+        lines.push(`${escapeHtml(e.info.name)}: <strong>${formatGrams(e.info.grams)}</strong> — Build 2 (final build)`);
+        levainContainerCount++;
+        return `<div style="margin-top:6px"><strong>${escapeHtml(e.label)}</strong></div>
+          <div style="margin-top:4px">${lines.join('<br>')}</div>`;
+      }).join('');
+      html += `<div style="margin-top:12px;${topStyle}">
+        <div><strong>Levain</strong> <span class="muted" style="font-size:0.8rem">— for levain builds</span></div>
+        ${blocks}
+      </div>`;
+    }
+
     out.innerHTML = html;
     const containerSummaryEl = document.getElementById('container-summary');
-    if (containerSummaryEl) containerSummaryEl.textContent = `${totalContainers} container${totalContainers > 1 ? 's' : ''} · ${formatGrams(totalDough)} dough`;
+    if (containerSummaryEl) {
+      const parts = [];
+      if (totalContainers > 0) parts.push(`${totalContainers} container${totalContainers > 1 ? 's' : ''} · ${formatGrams(totalDough)} dough`);
+      if (levainContainerCount > 0) parts.push(`${levainContainerCount} levain vessel${levainContainerCount > 1 ? 's' : ''}`);
+      containerSummaryEl.textContent = parts.join(' · ');
+    }
     const titleEl = document.getElementById('container-card-title');
     if (titleEl) {
       const anyChill = groups.some(g => g.isChilling);
       const anyProof = groups.some(g => !g.isChilling);
-      titleEl.textContent = anyChill && anyProof ? 'Proofing & chilling containers'
+      const doughTitle = anyChill && anyProof ? 'Proofing & chilling containers'
         : anyChill ? 'Chilling containers' : 'Proofing containers';
+      titleEl.textContent = groups.length > 0
+        ? (levainEntries.length > 0 ? doughTitle.replace(' containers', '') + ' & levain containers' : doughTitle)
+        : 'Levain containers';
     }
     card.style.display = '';
   }
@@ -8866,9 +8914,12 @@ ${notesHtml}
     const muffinLevainB1Cont = (muffinLevainTotal > 0 && muffinBuild2Opt) ? pickLevainContainer(build1Grams(muffinLevainTotal, muffinBuild2Opt)) : null;
     const bagelLevainB1Cont  = (bagelLevainTotal  > 0 && bagelBuild2Opt)  ? pickLevainContainer(build1Grams(bagelLevainTotal,  bagelBuild2Opt))  : null;
     const levainContainerInfo = {
-      shared: sharedLevainCont ? { name: sharedLevainCont.name, grams: sharedLevainTotal } : null,
-      muffin: muffinLevainCont ? { name: muffinLevainCont.name, grams: muffinLevainTotal } : null,
-      bagel:  bagelLevainCont  ? { name: bagelLevainCont.name,  grams: bagelLevainTotal  } : null,
+      shared: sharedLevainCont ? { name: sharedLevainCont.name, grams: sharedLevainTotal,
+        b1Name: sharedLevainB1Cont ? sharedLevainB1Cont.name : null, b1Grams: build1Grams(sharedLevainTotal, build2Opt) } : null,
+      muffin: muffinLevainCont ? { name: muffinLevainCont.name, grams: muffinLevainTotal,
+        b1Name: muffinLevainB1Cont ? muffinLevainB1Cont.name : null, b1Grams: muffinBuild2Opt ? build1Grams(muffinLevainTotal, muffinBuild2Opt) : null } : null,
+      bagel:  bagelLevainCont  ? { name: bagelLevainCont.name,  grams: bagelLevainTotal,
+        b1Name: bagelLevainB1Cont ? bagelLevainB1Cont.name : null, b1Grams: bagelBuild2Opt ? build1Grams(bagelLevainTotal, bagelBuild2Opt) : null } : null,
     };
     const levainContStr = (cont) => cont ? ` · use ${cont.name}` : '';
     // Relabel a "· use X" event (levain/chill/cold-proof) when its container is reassigned.
