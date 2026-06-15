@@ -9228,9 +9228,11 @@ ${notesHtml}
     }
 
     // --- Loaf bake loop ---
+    // Oven naming for the loaf bake/out/off steps (mirrors the turn-off layer below).
+    const loafOvenEquip = (loafSlot && loafSlot.ovenName) ? [loafSlot.ovenName] : (singleOvenName ? [singleOvenName] : []);
+    const loafOvenLabel = (loafSlot && loafSlot.ovenName) ? loafSlot.ovenName : (singleOvenName || 'the oven');
     for (let b = 0; b < breadBatches; b++) {
       const bakeStart = loafBakeStartTimes[b];
-      const reheatSuffix = b < breadBatches - 1 ? ` · ${SCHED.REHEAT_MIN} min reheat after` : '';
       const plan_b = ovenPlan[b];
       const kindSuffix = totalMuffins > 0 ? ' — bread into oven' : ' — into oven';
       const deckEquip = plan_b
@@ -9253,9 +9255,21 @@ ${notesHtml}
       events.push({
         time: bakeStart,
         title: `Bake ${b + 1} of ${breadBatches}${kindSuffix}`,
-        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${loafAgg.bakeTempF}°F${reheatSuffix}${planLines}`,
+        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${loafAgg.bakeTempF}°F${planLines}`,
         process: 'loaf', colDetails: bakeColDetails, equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
       });
+      // Dedicated "loaves out" step at the moment this batch leaves the oven. The
+      // reheat before the next batch (folded into the bake step before) lives here.
+      // The final batch's "out" step is the cooling step below (which folds the
+      // oven-off), so only emit per-batch out steps for the non-final batches.
+      if (b < breadBatches - 1) {
+        events.push({
+          time: addMinutes(bakeStart, loafAgg.bakeMin),
+          title: `Loaves out (batch ${b + 1} of ${breadBatches})`,
+          detail: `Pull batch ${b + 1}, load batch ${b + 2} · reheat ~${SCHED.REHEAT_MIN} min to ${loafAgg.bakeTempF}°F before next bake`,
+          process: 'loaf', stage: 'bake', equip: loafOvenEquip,
+        });
+      }
     }
 
     // --- Muffin bake loop (independent slot) ---
@@ -9448,7 +9462,15 @@ ${notesHtml}
     const loafCoolDetail = `${fmtCoolHr(packageReady - lastLoafBakeEnd)} cool`;
 
     if (breadBatches > 0) {
-      events.push({ time: lastLoafBakeEnd, title: 'Last loaves out — start cooling', detail: loafCoolDetail, process: 'loaf' });
+      // The final batch's "out" step doubles as the oven-off step (folded in, like
+      // the per-batch reheat) so the schedule stops assuming the oven stays hot.
+      const loafTurnOff = !!(loafSlot && loafSlot.turnOffAfter);
+      events.push({
+        time: lastLoafBakeEnd,
+        title: 'Last loaves out — start cooling',
+        detail: loafCoolDetail + (loafTurnOff ? ` · turn off ${loafOvenLabel} (cools to room temp)` : ''),
+        process: 'loaf', equip: loafTurnOff ? loafOvenEquip : undefined,
+      });
     }
     if (totalMuffins > 0 && muffinSlot) {
       const muffinCoolDetail = `${fmtCoolHr(muffinSlot.packageReady - muffinSlot.lastBakeEnd)} cool`;
@@ -9729,7 +9751,9 @@ ${notesHtml}
       }
       // Turn the oven off once its baking is done (or before a long idle gap), so the
       // schedule doesn't assume it stays hot. The next bake preheats from room temp.
-      if (s && s.turnOffAfter && s.lastBakeEnd) {
+      // Loaves fold this into the "Last loaves out — start cooling" step above, so
+      // skip the standalone turn-off for the loaf process.
+      if (s && s.turnOffAfter && s.lastBakeEnd && process !== 'loaf') {
         const ovenLabel = s.ovenName || 'the oven';
         events.push({
           time: new Date(s.lastBakeEnd),
