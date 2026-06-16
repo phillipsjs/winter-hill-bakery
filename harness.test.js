@@ -104,6 +104,7 @@ const exportsTail = `
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
   pantryLinkOptionsHtml, SEED_PANTRY, suggestPantryLinkFor, withMigratedStages,
+  stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
   __editorStages: () => _editorStages,
@@ -111,6 +112,7 @@ const exportsTail = `
   __setPlan: (p) => { plan = p; },
   __setBannetons: (b) => { userBannetons = b; },
   __setPantry: (p) => { pantryItems = p; },
+  __setMixers: (m) => { userMixers = m; },
   __recipes: () => recipes,
 };`;
 
@@ -677,6 +679,22 @@ migOk &= mg('existing stages are preserved', migrated.stages.some(s => s.type ==
 const okBagel = { ...legacyBagel, id: 'ok-bagel', stages: api.stageTemplateFor('bagel') };
 migOk &= mg('a recipe that already has weigh is unchanged', api.withMigratedStages(okBagel).stages.length === okBagel.stages.length);
 allOk &= migOk;
+
+// ---- mix-stage vessel dropdown offers the kitchen's mixers ----
+console.log('\nMixer-vessel assertions:');
+let mxOk = true;
+function mx(label, cond) { console.log(`  [mixer] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+api.__setMixers([{ id: 'mx1', name: 'Hobart N50', quantity: 1 }, { id: 'mx2', name: 'KitchenAid', quantity: 2 }]);
+const mixVessel = api.stageVesselSelectHtml({ type: 'mix', duration: { kind: 'fixed', min: 10 } }, 0);
+mxOk &= mx('mix stage lists the kitchen mixers', /value="mixer:mx1"/.test(mixVessel) && /Hobart N50/.test(mixVessel) && /value="mixer:mx2"/.test(mixVessel));
+mxOk &= mx('mix stage still offers standard vessels (dough tub)', /value="bulk-container"/.test(mixVessel));
+const mixPicked = api.stageVesselSelectHtml({ type: 'mix', vessel: 'mixer:mx2', duration: { kind: 'fixed', min: 10 } }, 0);
+mxOk &= mx('an explicitly picked mixer is selected', /value="mixer:mx2" selected/.test(mixPicked));
+const bulkVessel = api.stageVesselSelectHtml({ type: 'bulk', duration: { kind: 'fixed', min: 60 } }, 0);
+mxOk &= mx('non-mix stages do NOT list mixers', !/mixer:mx1/.test(bulkVessel) && /value="bulk-container"/.test(bulkVessel));
+const removedMixer = api.stageVesselSelectHtml({ type: 'mix', vessel: 'mixer:gone', duration: { kind: 'fixed', min: 10 } }, 0);
+mxOk &= mx('a removed mixer link stays visible', /value="mixer:gone" selected/.test(removedMixer) && /removed mixer/.test(removedMixer));
+allOk &= mxOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

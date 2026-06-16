@@ -7408,6 +7408,8 @@ ${notesHtml}
     const capLabel = row.querySelector('.r-mixer-cap-label');
     capInput.style.display = checkbox.checked ? '' : 'none';
     capLabel.style.display = checkbox.checked ? '' : 'none';
+    // Selecting a mixer makes it the default mixing vessel — refresh the stage editor.
+    renderStageEditor();
   }
 
   function selOpt(value, label, current) {
@@ -7420,6 +7422,36 @@ ${notesHtml}
   let _editorStages = [];
   const STAGE_VESSEL_OPTIONS = [['', '—'], ['bulk-container', 'Dough tub'], ['banneton', 'Banneton'], ['pan', 'Pan'], ['sheet', 'Sheet / tray'], ['oven', 'Oven']];
   const STAGE_VESSEL_TYPES = ['mix', 'autolyse', 'bulk', 'preshape', 'bench', 'shape', 'proof', 'chill', 'warmup', 'bake', 'cool'];
+
+  // The mixers currently ticked in the recipe editor's equipment section.
+  function editorSelectedMixerIds() {
+    return Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(e => e.value);
+  }
+  // When a mixer is selected for the recipe, the mixing step happens in it — so that's the
+  // default vessel for a mix stage (as `mixer:<id>`), unless the baker picked another vessel.
+  function defaultMixVesselValue() {
+    const ids = editorSelectedMixerIds();
+    return ids.length ? ('mixer:' + ids[0]) : '';
+  }
+  // Vessel dropdown for a stage. Mixing steps also offer the kitchen's mixers and default
+  // to the recipe's selected mixer; other stages use the standard vessel list.
+  function stageVesselSelectHtml(s, i) {
+    if (!STAGE_VESSEL_TYPES.includes(s.type)) return '';
+    let options = STAGE_VESSEL_OPTIONS.slice();
+    let sel = s.vessel || '';
+    if (s.type === 'mix') {
+      const mixers = userMixers.map(m => ['mixer:' + m.id, m.name]);
+      options = [STAGE_VESSEL_OPTIONS[0], ...mixers, ...STAGE_VESSEL_OPTIONS.slice(1)];
+      if (!sel) sel = defaultMixVesselValue();
+    }
+    // A stored mixer link whose mixer was removed: keep it visible rather than silently drop.
+    if (sel.indexOf('mixer:') === 0 && !options.some(([v]) => v === sel)) {
+      options = [...options, [sel, '(removed mixer)']];
+    }
+    return `<select class="settings-select" style="flex:none;width:auto;font-size:0.8rem" onchange="stageEditorSetVessel(${i},this.value)">`
+      + options.map(([v, l]) => `<option value="${escapeAttr(v)}"${sel === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')
+      + `</select>`;
+  }
 
   function _stageDurationHtml(s, i) {
     const d = s.duration || {};
@@ -7449,9 +7481,7 @@ ${notesHtml}
       list.innerHTML = _editorStages.map((s, i) => {
         const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
         const col = STAGE_COLORS[pal.stage] || STAGE_COLORS.prep;
-        const vessel = STAGE_VESSEL_TYPES.includes(s.type)
-          ? `<select class="settings-select" style="flex:none;width:auto;font-size:0.8rem" onchange="stageEditorSetVessel(${i},this.value)">${STAGE_VESSEL_OPTIONS.map(([v, l]) => `<option value="${v}"${(s.vessel || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
-          : '';
+        const vessel = stageVesselSelectHtml(s, i);
         const locked = s.type === 'mill'; // ingredient-controlled — appears when a flour needs milling
         return `<div class="stage-row">
           <span class="stage-move">
