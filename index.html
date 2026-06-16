@@ -2300,7 +2300,7 @@
       { type: 'bulk',     duration: { kind: 'fixed', min: 240 }, vessel: 'bulk-container' },
       { type: 'shape',    duration: { kind: 'perUnit', minPerUnit: 7 }, vessel: 'banneton' },
       { type: 'chill',    duration: { kind: 'range', auto: true }, vessel: 'banneton' },
-      { type: 'bake',     duration: { kind: 'anchored', min: 40 }, tempF: 500, vessel: 'oven' },
+      { type: 'bake',     duration: { kind: 'anchored', min: 40 }, tempF: 500 },
     ],
     'sourdough-muffin': [
       { type: 'weigh',  duration: { kind: 'fixed', min: 5 } },
@@ -2309,7 +2309,7 @@
       { type: 'shape',  duration: { kind: 'perUnit', minPerUnit: 1 }, vessel: 'pan' },
       { type: 'chill',  duration: { kind: 'range', auto: true }, vessel: 'pan' },
       { type: 'warmup', duration: { kind: 'fixed', min: 180 }, vessel: 'pan' },
-      { type: 'bake',   duration: { kind: 'anchored', min: 12 }, tempF: 375, vessel: 'oven' },
+      { type: 'bake',   duration: { kind: 'anchored', min: 12 }, tempF: 375 },
     ],
     'bagel': [
       { type: 'weigh', duration: { kind: 'fixed', min: 5 } },
@@ -2318,7 +2318,7 @@
       { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 2 }, vessel: 'sheet' },
       { type: 'chill', duration: { kind: 'range', auto: true }, vessel: 'sheet' },
       { type: 'boil',  duration: { kind: 'fixed', min: 5 } },
-      { type: 'bake',  duration: { kind: 'anchored', min: 22 }, tempF: 450, vessel: 'oven' },
+      { type: 'bake',  duration: { kind: 'anchored', min: 22 }, tempF: 450 },
     ],
     'focaccia': [
       { type: 'weigh',    duration: { kind: 'fixed', min: 5 } },
@@ -2328,13 +2328,13 @@
       { type: 'bulk',     duration: { kind: 'fixed', min: 75 }, vessel: 'bulk-container' },
       { type: 'shape',    duration: { kind: 'perUnit', minPerUnit: 10 }, vessel: 'pan' },
       { type: 'warmup',   duration: { kind: 'fixed', min: 45 }, label: 'Pan rise', vessel: 'pan' },
-      { type: 'bake',     duration: { kind: 'anchored', min: 23 }, tempF: 475, vessel: 'oven' },
+      { type: 'bake',     duration: { kind: 'anchored', min: 23 }, tempF: 475 },
     ],
     'simple': [
       { type: 'weigh', duration: { kind: 'fixed', min: 5 } },
       { type: 'mix',   duration: { kind: 'fixed', min: 15, activeMin: 15 } },
       { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 0.7 }, label: 'Shape / portion' },
-      { type: 'bake',  duration: { kind: 'anchored', min: 14 }, tempF: 350, vessel: 'oven' },
+      { type: 'bake',  duration: { kind: 'anchored', min: 14 }, tempF: 350 },
       { type: 'cool',  duration: { kind: 'fixed', min: 15 } },
     ],
     'enriched': [
@@ -2343,7 +2343,7 @@
       { type: 'bulk',  duration: { kind: 'fixed', min: 90 }, label: 'Bulk rise', vessel: 'bulk-container' },
       { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 2 } },
       { type: 'proof', duration: { kind: 'fixed', min: 60 }, label: 'Final proof — warm' },
-      { type: 'bake',  duration: { kind: 'anchored', min: 25 }, tempF: 350, vessel: 'oven' },
+      { type: 'bake',  duration: { kind: 'anchored', min: 25 }, tempF: 350 },
       { type: 'cool',  duration: { kind: 'fixed', min: 20 } },
     ],
     'levain': [],
@@ -7491,13 +7491,11 @@ ${notesHtml}
     const prefBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
     const prefPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
     const prefMixerIds = Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(function(e) { return e.value; });
-    const prefOvenEl = document.getElementById('r-pref-oven');
-    const prefOvenId = prefOvenEl ? prefOvenEl.value : '';
-    const prefPotEl = document.getElementById('r-pref-pot');
-    const prefPotId = prefPotEl ? prefPotEl.value : '';
+    // Oven/pot are picked on the bake/boil stage rows; changing the process resets the stage
+    // list anyway, so only the per-boil batch size is preserved here.
     const boilBatchEl = document.getElementById('r-boil-batch');
     const boilBatch = boilBatchEl ? boilBatchEl.value : '';
-    renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredMixerIds: prefMixerIds, preferredOvenId: prefOvenId, preferredPotId: prefPotId, boilBatchSize: boilBatch });
+    renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredMixerIds: prefMixerIds, boilBatchSize: boilBatch });
   }
 
   function onRecipePanCheck(checkbox) {
@@ -7527,7 +7525,7 @@ ${notesHtml}
   // the flat scheduler params from it via paramsFromStages().
   let _editorStages = [];
   const STAGE_VESSEL_OPTIONS = [['', '—'], ['bulk-container', 'Dough tub'], ['banneton', 'Banneton'], ['pan', 'Pan'], ['sheet', 'Sheet / tray'], ['oven', 'Oven']];
-  const STAGE_VESSEL_TYPES = ['mix', 'autolyse', 'bulk', 'preshape', 'bench', 'shape', 'proof', 'chill', 'warmup', 'bake', 'cool'];
+  const STAGE_VESSEL_TYPES = ['mix', 'autolyse', 'bulk', 'preshape', 'bench', 'shape', 'proof', 'chill', 'warmup', 'boil', 'bake', 'cool'];
 
   // The mixers currently ticked in the recipe editor's equipment section.
   function editorSelectedMixerIds() {
@@ -7539,20 +7537,38 @@ ${notesHtml}
     const ids = editorSelectedMixerIds();
     return ids.length ? ('mixer:' + ids[0]) : '';
   }
-  // Vessel dropdown for a stage. Mixing steps also offer the kitchen's mixers and default
-  // to the recipe's selected mixer; other stages use the standard vessel list.
+  // Seed the bake/boil stage rows from a recipe's saved oven/pot preference, so editing an
+  // existing recipe shows its current pick on the step (the step is now the source of truth).
+  function migrateStageEquipmentVessels(stages, recipe) {
+    if (!Array.isArray(stages) || !recipe) return stages;
+    const bake = stages.find(s => s.type === 'bake');
+    if (bake && (!bake.vessel || bake.vessel === 'oven') && recipe.preferredOvenId) bake.vessel = 'oven:' + recipe.preferredOvenId;
+    const boil = stages.find(s => s.type === 'boil');
+    if (boil && !boil.vessel && recipe.preferredPotId) boil.vessel = 'pot:' + recipe.preferredPotId;
+    return stages;
+  }
+  // Vessel/equipment dropdown for a stage. Mixing steps offer the kitchen's mixers (default
+  // to the recipe's selected mixer); the bake step offers the kitchen's ovens; the boil step
+  // offers the kitchen's pots; other stages use the standard vessel list. The bake/boil pick
+  // is the recipe's oven/pot (mirrored to preferredOvenId/preferredPotId on save).
   function stageVesselSelectHtml(s, i) {
     if (!STAGE_VESSEL_TYPES.includes(s.type)) return '';
-    let options = STAGE_VESSEL_OPTIONS.slice();
-    let sel = s.vessel || '';
+    let options, sel = s.vessel || '';
     if (s.type === 'mix') {
       const mixers = userMixers.map(m => ['mixer:' + m.id, m.name]);
       options = [STAGE_VESSEL_OPTIONS[0], ...mixers, ...STAGE_VESSEL_OPTIONS.slice(1)];
       if (!sel) sel = defaultMixVesselValue();
+    } else if (s.type === 'bake') {
+      if (sel === 'oven') sel = ''; // legacy generic vessel → no specific oven
+      options = [['', '— no oven preference —'], ...userOvens.map(o => ['oven:' + o.id, o.name])];
+    } else if (s.type === 'boil') {
+      options = [['', '— no pot —'], ...userPots.map(p => ['pot:' + p.id, p.name + (p.size ? ' (' + p.size + ')' : '')])];
+    } else {
+      options = STAGE_VESSEL_OPTIONS.slice();
     }
-    // A stored mixer link whose mixer was removed: keep it visible rather than silently drop.
-    if (sel.indexOf('mixer:') === 0 && !options.some(([v]) => v === sel)) {
-      options = [...options, [sel, '(removed mixer)']];
+    // A stored equipment link whose item was removed: keep it visible rather than drop it.
+    if (/^(mixer|oven|pot):/.test(sel) && !options.some(([v]) => v === sel)) {
+      options = [...options, [sel, '(removed)']];
     }
     return `<select class="settings-select" style="flex:none;width:auto;font-size:0.8rem" onchange="stageEditorSetVessel(${i},this.value)">`
       + options.map(([v, l]) => `<option value="${escapeAttr(v)}"${sel === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')
@@ -7700,8 +7716,6 @@ ${notesHtml}
     const prefBannetons = (prefs && prefs.preferredBannetonIds) || [];
     const prefPans = (prefs && prefs.preferredPanIds) || [];
     const prefMixers = (prefs && prefs.preferredMixerIds) || [];
-    const prefOven = (prefs && prefs.preferredOvenId) || '';
-    const prefPot = (prefs && prefs.preferredPotId) || '';
     const prefBoilBatch = (prefs && prefs.boilBatchSize != null) ? prefs.boilBatchSize : '';
     const isLoaf = processType === 'sourdough-loaf';
     const isLevain = processType === 'levain';
@@ -7814,12 +7828,7 @@ ${notesHtml}
       if (userOvens.length === 0) {
         ovenHtml += '<span class="muted" style="font-size:0.9rem">No ovens added yet. </span><button class="secondary tiny" onclick="openKitchenEquipmentForm(\'oven\')">+ Add to Kitchen</button>';
       } else {
-        ovenHtml += '<select id="r-pref-oven" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>';
-        userOvens.forEach(function(o) {
-          var sel = o.id === prefOven ? ' selected' : '';
-          ovenHtml += '<option value="' + escapeAttr(o.id) + '"' + sel + '>' + escapeHtml(o.name) + '</option>';
-        });
-        ovenHtml += '</select>';
+        ovenHtml += '<span class="muted" style="font-size:0.85rem">Pick the oven on the recipe\'s <strong>Bake</strong> step above.</span>';
       }
     }
 
@@ -7831,10 +7840,7 @@ ${notesHtml}
       if (userPots.length === 0) {
         boilHtml += '<p class="muted" style="font-size:0.9rem;margin:0 0 6px">No pots added yet. <button class="secondary tiny" onclick="openKitchenEquipmentForm(\'pot\')">+ Add to Kitchen</button></p>';
       } else {
-        boilHtml += '<div class="row" style="align-items:center;gap:8px;margin-bottom:6px"><label style="width:120px;font-size:0.9rem">Boiling pot</label>'
-          + '<select id="r-pref-pot" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>'
-          + userPots.map(function(p) { return '<option value="' + escapeAttr(p.id) + '"' + (p.id === prefPot ? ' selected' : '') + '>' + escapeHtml(p.name) + (p.size ? ' (' + escapeHtml(p.size) + ')' : '') + '</option>'; }).join('')
-          + '</select></div>';
+        boilHtml += '<p class="muted" style="font-size:0.85rem;margin:0 0 6px">Pick the pot on the recipe\'s <strong>Boil</strong> step above.</p>';
       }
       boilHtml += '<div class="row" style="align-items:center;gap:8px"><label style="width:120px;font-size:0.9rem">Per boil</label>'
         + '<input type="number" id="r-boil-batch" min="1" step="1" style="width:90px;flex:none" placeholder="' + SCHED.BAGEL_BATCH_SIZE + '" value="' + escapeAttr(String(prefBoilBatch)) + '" /> <span class="muted" style="font-size:0.85rem">units boiled per batch</span></div>';
@@ -7987,6 +7993,7 @@ ${notesHtml}
     // Load the recipe's saved stages (or migrate on the fly), cloned for editing.
     _editorStages = isLevain ? []
       : (Array.isArray(r.stages) && r.stages.length ? r.stages.map(s => ({ ...s, duration: { ...s.duration } })) : stagesFromRecipe(r));
+    migrateStageEquipmentVessels(_editorStages, r); // reflect saved oven/pot on the bake/boil rows
     renderStageEditor();
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
@@ -8195,11 +8202,15 @@ ${notesHtml}
     const preferredBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
     const preferredPanIds = Array.from(document.querySelectorAll('.r-pref-pan:checked')).map(function(e) { return e.value; });
     const preferredMixerIds = Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(function(e) { return e.value; });
-    const prefOvenEl = document.getElementById('r-pref-oven');
-    const preferredOvenId = prefOvenEl ? (prefOvenEl.value || null) : null;
-    // Boiling: pot + per-boil batch size (only meaningful for recipes with a boil step).
-    const prefPotEl = document.getElementById('r-pref-pot');
-    const preferredPotId = prefPotEl ? (prefPotEl.value || null) : null;
+    // Oven (bake step) and pot (boil step) are picked on their stage rows now; mirror them to
+    // preferredOvenId/preferredPotId so the scheduler (which reads those fields) keeps working.
+    const stageEquipId = (type, prefix) => {
+      const st = _editorStages.find(s => s.type === type);
+      const v = st && typeof st.vessel === 'string' ? st.vessel : '';
+      return v.indexOf(prefix + ':') === 0 ? v.slice(prefix.length + 1) : null;
+    };
+    const preferredOvenId = stageEquipId('bake', 'oven');
+    const preferredPotId = stageEquipId('boil', 'pot');
     const boilBatchEl = document.getElementById('r-boil-batch');
     const boilBatchSize = (() => { const n = boilBatchEl ? parseInt(boilBatchEl.value, 10) : NaN; return (Number.isFinite(n) && n > 0) ? n : null; })();
 
@@ -8725,7 +8736,12 @@ ${notesHtml}
     const bagelBoilSizes = bagelRecipes.map(r => Math.floor(Number(r.boilBatchSize))).filter(n => Number.isFinite(n) && n > 0);
     const bagelBatchSizeEff = bagelBoilSizes.length ? Math.min(...bagelBoilSizes) : SCHED.BAGEL_BATCH_SIZE;
     const bagelPot = (() => {
-      const pid = bagelRecipes.map(r => r.preferredPotId).find(Boolean);
+      const potIdOf = (r) => {
+        const boil = Array.isArray(r.stages) ? r.stages.find(s => s.type === 'boil') : null;
+        if (boil && typeof boil.vessel === 'string' && boil.vessel.indexOf('pot:') === 0) return boil.vessel.slice(4);
+        return r.preferredPotId || null;
+      };
+      const pid = bagelRecipes.map(potIdOf).find(Boolean);
       return pid ? userPots.find(p => p.id === pid) : null;
     })();
     const bagelPotLabel = bagelPot ? bagelPot.name : 'the pot';
@@ -10476,7 +10492,8 @@ ${notesHtml}
             const mx = mixerForRecipeG(r);
             if (mx) ev.equip = [mx.name];
           } else if (s.type === 'boil') {
-            const pot = r.preferredPotId ? userPots.find(p => p.id === r.preferredPotId) : null;
+            const potId = (typeof s.vessel === 'string' && s.vessel.indexOf('pot:') === 0) ? s.vessel.slice(4) : r.preferredPotId;
+            const pot = potId ? userPots.find(p => p.id === potId) : null;
             if (pot) { ev.equip = [pot.name]; ev.equipStrip = ` · ${pot.name}`; ev.detail = `${unitsLabel} · ${fmtStageDur(dur)} · ${pot.name}`; }
           }
           if (s.type === 'chill') {

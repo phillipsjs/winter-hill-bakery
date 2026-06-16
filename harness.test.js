@@ -113,6 +113,7 @@ const exportsTail = `
   __setPantry: (p) => { pantryItems = p; },
   __setMixers: (m) => { userMixers = m; },
   __setPots: (p) => { userPots = p; },
+  __setOvens: (o) => { userOvens = o; },
   __recipes: () => recipes,
 };`;
 
@@ -693,7 +694,18 @@ mxOk &= mx('an explicitly picked mixer is selected', /value="mixer:mx2" selected
 const bulkVessel = api.stageVesselSelectHtml({ type: 'bulk', duration: { kind: 'fixed', min: 60 } }, 0);
 mxOk &= mx('non-mix stages do NOT list mixers', !/mixer:mx1/.test(bulkVessel) && /value="bulk-container"/.test(bulkVessel));
 const removedMixer = api.stageVesselSelectHtml({ type: 'mix', vessel: 'mixer:gone', duration: { kind: 'fixed', min: 10 } }, 0);
-mxOk &= mx('a removed mixer link stays visible', /value="mixer:gone" selected/.test(removedMixer) && /removed mixer/.test(removedMixer));
+mxOk &= mx('a removed mixer link stays visible', /value="mixer:gone" selected/.test(removedMixer) && /removed/.test(removedMixer));
+
+// Bake step → pick a specific oven; boil step → pick a pot.
+api.__setOvens([{ id: 'o1', name: 'Deck Oven' }, { id: 'o2', name: 'Rack Oven' }]);
+const bakeVessel = api.stageVesselSelectHtml({ type: 'bake', vessel: 'oven:o2', duration: { kind: 'anchored', min: 20 }, tempF: 450 }, 0);
+mxOk &= mx('bake stage lists ovens and selects the chosen one', /value="oven:o1"/.test(bakeVessel) && /Deck Oven/.test(bakeVessel) && /value="oven:o2" selected/.test(bakeVessel));
+mxOk &= mx('bake stage does not list pots or mixers', !/value="pot:/.test(bakeVessel) && !/value="mixer:/.test(bakeVessel));
+const legacyBake = api.stageVesselSelectHtml({ type: 'bake', vessel: 'oven', duration: { kind: 'anchored', min: 20 } }, 0);
+mxOk &= mx('legacy bake vessel "oven" normalizes to no specific oven', /value="" selected/.test(legacyBake));
+api.__setPots([{ id: 'pot1', name: 'Big Stockpot', size: '20 qt', quantity: 1 }]);
+const boilVessel = api.stageVesselSelectHtml({ type: 'boil', vessel: 'pot:pot1', duration: { kind: 'fixed', min: 5 } }, 0);
+mxOk &= mx('boil stage lists pots and selects the chosen one', /value="pot:pot1" selected/.test(boilVessel) && /Big Stockpot/.test(boilVessel));
 allOk &= mxOk;
 
 // ---- boiling: per-recipe batch size + pot drive the bagel boil ----
@@ -725,7 +737,17 @@ if (bagelR) {
   // No batch size set → falls back to the default of 10.
   delete bagelR.boilBatchSize;
   boilOk &= bo('no batch size falls back to default 10 (12 → 2 batches)', bagelEvents({ 'seed-sourdough-bagels': 12 }).filter(e => /^Boil & top/.test(e.title)).length === 2);
+  // The pot can be driven by the boil STEP's vessel (the new per-step picker), not just
+  // preferredPotId. Clear preferredPotId and set the boil stage's vessel instead.
   delete bagelR.preferredPotId;
+  const boilStage = (bagelR.stages || []).find(s => s.type === 'boil');
+  if (boilStage) {
+    boilStage.vessel = 'pot:pot1';
+    const ev2 = bagelEvents({ 'seed-sourdough-bagels': 12 });
+    const bring2 = ev2.find(e => /^Bring .* to a boil/.test(e.title));
+    boilOk &= bo('boil step vessel (pot:) drives the boiling pot', !!bring2 && /Big Stockpot/.test(bring2.title));
+    delete boilStage.vessel;
+  }
 }
 allOk &= boilOk;
 
