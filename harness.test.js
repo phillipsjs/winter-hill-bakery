@@ -103,6 +103,7 @@ const exportsTail = `
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
+  pantryLinkOptionsHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
   __editorStages: () => _editorStages,
@@ -631,6 +632,24 @@ if (focOrig) {
 millOk &= mk('focaccia bake temp follows the recipe (460°F)', focTempOk);
 
 allOk &= millOk;
+
+// ---- recipe-editor kitchen-ingredient link options ----
+console.log('\nKitchen-ingredient link assertions:');
+let linkOk = true;
+function lk(label, cond) { console.log(`  [link] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+api.__setPantry([
+  { id: 'k-bread', name: 'Bread flour', requiresMilling: false },
+  { id: 'k-rye', name: 'Whole rye', requiresMilling: true },
+]);
+const optLinked = api.pantryLinkOptionsHtml('k-rye');
+linkOk &= lk('links a pantry item by id (selected)', /value="k-rye" selected/.test(optLinked));
+linkOk &= lk('flags milling flours with a "mills" tag', /Whole rye · mills/.test(optLinked));
+linkOk &= lk('offers a no-cost link', /__free__/.test(optLinked) && /Add kitchen ingredient/.test(optLinked));
+const optDangling = api.pantryLinkOptionsHtml('k-removed');
+linkOk &= lk('shows a removed link as "(linked item removed)"', /linked item removed/.test(optDangling));
+const optEmpty = api.pantryLinkOptionsHtml('');
+linkOk &= lk('unlinked default has no selected pantry item', /value="" selected/.test(optEmpty) && !/value="k-rye" selected/.test(optEmpty));
+allOk &= linkOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

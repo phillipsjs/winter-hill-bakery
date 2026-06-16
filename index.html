@@ -969,7 +969,7 @@
           <button type="button" id="r-mode-grams-btn" class="secondary tiny" onclick="setRecipeEntryMode('grams')">Grams</button>
         </div>
       </div>
-      <p class="muted" id="r-mode-hint-percent" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally.</p>
+      <p class="muted" id="r-mode-hint-percent" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally. <strong>Link</strong> each ingredient to a kitchen ingredient — that drives costing and adds a milling step when the linked flour needs milling.</p>
       <p class="muted" id="r-mode-hint-grams" style="margin-top:0;display:none">Enter each ingredient's weight in grams for the whole batch, and set how many units the batch makes above. Mark which ingredients are flour. We'll convert to baker's percentages on save.</p>
       <div id="r-ingredients"></div>
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
@@ -4612,16 +4612,30 @@ ${notesHtml}
     const category = document.getElementById('pantry-category').value || '';
     const requiresMilling = document.getElementById('pantry-requires-milling').checked;
     const editId = document.getElementById('pantry-add-form').dataset.editId;
+    let savedId = editId;
     if (editId) {
       const idx = pantryItems.findIndex(p => p.id === editId);
       if (idx >= 0) pantryItems[idx] = { ...pantryItems[idx], name, weightG, pricePaid, costPerGram, category, requiresMilling };
     } else {
-      pantryItems.push({ id: uid(), name, weightG, pricePaid, costPerGram, category, requiresMilling });
+      savedId = uid();
+      pantryItems.push({ id: savedId, name, weightG, pricePaid, costPerGram, category, requiresMilling });
     }
     savePantryLocally();
     hidePantryAddForm();
     renderPantry();
     if (getGistConfig()) pushPantryToGist().catch(() => {});
+    // Keep the recipe editor's kitchen-ingredient links in sync with the pantry.
+    refreshIngredientPantryOptions();
+    // If this came from a recipe-editor "+ Add kitchen ingredient…", link it back and return.
+    if (_pendingPantryLinkRow) {
+      const sel = _pendingPantryLinkRow.querySelector('.ing-pantry');
+      if (sel) { sel.value = savedId; sel.dataset.prevValue = savedId; }
+      _pendingPantryLinkRow = null;
+      showTab('recipes');
+      updateFlourSummary();
+      const ed = document.getElementById('recipe-editor');
+      if (ed && ed.style.display !== 'none') ed.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     // refresh recipe editor cost display if open
     updateRecipeEditorCostDisplay();
   }
@@ -4637,6 +4651,8 @@ ${notesHtml}
     pantryItems = pantryItems.filter(x => x.id !== id);
     savePantryLocally();
     renderPantry();
+    refreshIngredientPantryOptions();
+    updateFlourSummary();
     if (getGistConfig()) pushPantryToGist().catch(() => {});
   }
 
@@ -7773,10 +7789,57 @@ ${notesHtml}
         <option value="anchor"${flourType === 'anchor' ? ' selected' : ''}>Anchor flour</option>
         <option value="specialty"${flourType === 'specialty' ? ' selected' : ''}>Specialty flour</option>
       </select>
+      <select class="ing-pantry" onchange="onIngredientPantryChange(this)" title="Link to a kitchen ingredient — drives cost and flags whether this flour needs milling">
+        ${pantryLinkOptionsHtml(prefill ? prefill.pantryId : '')}
+      </select>
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
     wrap.appendChild(row);
     updateFlourSummary();
+  }
+
+  // Options for an ingredient's kitchen-ingredient link. Linking by pantry id keeps the
+  // recipe aligned even if the pantry item is renamed; a "mills" tag surfaces the flag that
+  // drives the milling step. A dangling id (pantry item deleted) shows as removed.
+  function pantryLinkOptionsHtml(selectedId) {
+    const sel = selectedId || '';
+    let opts = `<option value=""${sel === '' ? ' selected' : ''}>— link kitchen ingredient —</option>`;
+    opts += `<option value="__free__"${sel === '__free__' ? ' selected' : ''}>no cost ($0.00)</option>`;
+    opts += pantryItems.map(p =>
+      `<option value="${escapeAttr(p.id)}"${sel === p.id ? ' selected' : ''}>${escapeHtml(p.name)}${p.requiresMilling ? ' · mills' : ''}</option>`
+    ).join('');
+    if (sel && sel !== '__free__' && !pantryItems.some(p => p.id === sel)) {
+      opts += `<option value="${escapeAttr(sel)}" selected>(linked item removed)</option>`;
+    }
+    opts += `<option value="__add_pantry__">+ Add kitchen ingredient…</option>`;
+    return opts;
+  }
+  // Rebuild every editor row's kitchen-ingredient dropdown, preserving each current link.
+  // Called when the pantry changes (add/edit/delete) so the editor stays in sync.
+  function refreshIngredientPantryOptions() {
+    document.querySelectorAll('#r-ingredients .ing-pantry').forEach(selEl => {
+      const cur = selEl.value;
+      selEl.innerHTML = pantryLinkOptionsHtml(cur);
+      selEl.value = cur;
+    });
+  }
+  let _pendingPantryLinkRow = null;
+  function onIngredientPantryChange(sel) {
+    if (sel.value === '__add_pantry__') {
+      // Jump to the pantry add form prefilled with this ingredient's name; link back on save.
+      sel.value = sel.dataset.prevValue || '';
+      const row = sel.closest('.ingredient-edit-row');
+      const nm = row ? (row.querySelector('.ing-name').value || '').trim() : '';
+      _pendingPantryLinkRow = row || null;
+      showTab('ingredients');
+      showPantryAddForm({ suggestName: nm });
+      const f = document.getElementById('pantry-add-form');
+      if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    sel.dataset.prevValue = sel.value;
+    updateFlourSummary();            // re-sync the ingredient-controlled mill stage
+    updateRecipeEditorCostDisplay(); // refresh the live cost readout
   }
 
   function toggleRecipeCard(header, event) {
@@ -7856,12 +7919,14 @@ ${notesHtml}
     }
     const bakeTempF = (stageParams.bakeTempF === '' || stageParams.bakeTempF == null) ? null : Number(stageParams.bakeTempF);
 
-    // Preserve pantryId links from the existing recipe (matched by ingredient name).
-    // Cost links are managed in the Prices tab, not the recipe editor.
+    // The editor's per-ingredient kitchen-ingredient link is the source of truth. Only
+    // fall back to the existing recipe's link (by name) for rows the user left unlinked,
+    // so a link set earlier (e.g. in the Prices tab) isn't lost.
     if (editingId) {
       const existingRecipe = recipes.find(x => x.id === editingId);
       if (existingRecipe) {
         ingredients.forEach(ing => {
+          if (ing.pantryId) return;
           const match = existingRecipe.ingredients.find(
             e => e.name.toLowerCase() === ing.name.toLowerCase()
           );
@@ -11757,6 +11822,14 @@ ${notesHtml}
         select.value = detected;
         rebalanceAnchors();
       }
+    }
+    // Auto-link to a matching kitchen ingredient when the row isn't linked yet, so
+    // recipe ingredients stay aligned to the pantry (and milling flags) by default.
+    const pantrySel = row.querySelector('.ing-pantry');
+    if (pantrySel && !pantrySel.value) {
+      const nm = (input.value || '').trim().toLowerCase();
+      const match = nm ? pantryItems.find(p => p.name.toLowerCase() === nm) : null;
+      if (match) { pantrySel.value = match.id; pantrySel.dataset.prevValue = match.id; updateRecipeEditorCostDisplay(); }
     }
     updateFlourSummary();
   }
