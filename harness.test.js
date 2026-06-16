@@ -104,6 +104,7 @@ const exportsTail = `
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
   pantryLinkOptionsHtml, SEED_PANTRY, suggestPantryLinkFor, withMigratedStages,
+  INGREDIENT_CATALOG, BUILTIN_CATEGORIES,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -808,6 +809,25 @@ edOk &= ed('clearing oven resets to auto (null)', !loafE.preferredOvenId && !(lo
 delete bagelE.preferredPotId; const bs = bagelE.stages.find(s => s.type === 'boil'); if (bs) delete bs.vessel;
 delete loafE.preferredOvenId; delete loafE.preferredContainerIds; delete loafE.preferredMixerIds;
 allOk &= edOk;
+
+// ---- ingredient catalog (searchable add-ingredient list) ----
+console.log('\nIngredient-catalog assertions:');
+let catOk = true;
+function ct(label, cond) { console.log(`  [catalog] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+const CAT = api.INGREDIENT_CATALOG;
+const CATS = api.BUILTIN_CATEGORIES;
+catOk &= ct('catalog has ~100 ingredients', Array.isArray(CAT) && CAT.length >= 100);
+catOk &= ct('every item has a name, valid category, and a numeric price', CAT.every(c =>
+  typeof c.name === 'string' && c.name.trim() &&
+  CATS.includes(c.category) &&
+  typeof c.costPerGram === 'number' && c.costPerGram >= 0 && Number.isFinite(c.costPerGram)));
+const names = CAT.map(c => c.name.toLowerCase());
+catOk &= ct('no duplicate names', new Set(names).size === names.length);
+const staples = ['All-purpose flour', 'Bread flour', 'Granulated sugar', 'Unsalted butter', 'Eggs (large)', 'Vanilla extract', 'Cocoa powder', 'Active dry yeast'];
+catOk &= ct('includes common staples', staples.every(s => names.includes(s.toLowerCase())));
+catOk &= ct('prices look sane (flour cheaper than vanilla extract)',
+  CAT.find(c => c.name === 'All-purpose flour').costPerGram < CAT.find(c => c.name === 'Vanilla extract').costPerGram);
+allOk &= catOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

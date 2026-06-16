@@ -1049,7 +1049,9 @@
 
     <div id="pantry-add-form" class="card" style="display:none">
       <h3 style="margin:0 0 12px">Add ingredient</h3>
-      <div class="row"><label style="width:140px">Name</label><input type="text" id="pantry-name" placeholder="e.g. Bread flour" oninput="onPantryCategoryChange()" /></div>
+      <div class="row"><label style="width:140px">Name</label><input type="text" id="pantry-name" placeholder="Search or type an ingredient…" list="ingredient-catalog-list" autocomplete="off" oninput="onPantryNameInput()" /></div>
+      <datalist id="ingredient-catalog-list"></datalist>
+      <p class="muted" style="margin:-4px 0 8px 140px;font-size:0.8rem">Pick from the list for a consistent name + a default price, or type your own. You can edit the name and price after.</p>
       <div class="row">
         <label style="width:140px">Total weight bought</label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1998,7 +2000,7 @@
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
   const CONTAINERS_KEY = 'cottage-bakery-containers-v1';
   const CATEGORIES_KEY = 'cottage-bakery-categories-v1';
-  const BUILTIN_CATEGORIES = ['Flours', 'Water', 'Levain & starter', 'Salt', 'Sweeteners', 'Oils & fats', 'Yeast', 'Dairy', 'Other'];
+  const BUILTIN_CATEGORIES = ['Flours', 'Water', 'Levain & starter', 'Yeast', 'Leaveners', 'Salt', 'Sweeteners', 'Oils & fats', 'Dairy', 'Eggs', 'Chocolate & cocoa', 'Nuts & seeds', 'Dried fruit', 'Spices & flavorings', 'Starches & thickeners', 'Other'];
   // Default kitchen ingredients so every recipe ingredient can be linked out of the box
   // (recipes now require a link for cost + milling). Costs are editable starting points;
   // names match the seed recipes so they auto-link. Fixed ids keep links stable.
@@ -2018,6 +2020,143 @@
     { id: 'seed-pan-instant-yeast', name: 'Instant yeast',        weightG: 454,  pricePaid: 8.00,  costPerGram: 0.0176,  category: 'Yeast',        requiresMilling: false },
     { id: 'seed-pan-adry-yeast',   name: 'Active dry yeast',      weightG: 454,  pricePaid: 7.00,  costPerGram: 0.0154,  category: 'Yeast',        requiresMilling: false },
     { id: 'seed-pan-malt',         name: 'Diastatic malt powder', weightG: 454,  pricePaid: 9.00,  costPerGram: 0.0198,  category: 'Other',        requiresMilling: false },
+  ];
+  // Searchable catalog of ~100 common baking ingredients. Picking one in the Add-ingredient
+  // form fills a canonical name + category + a default per-gram price (entered as $/1000 g so
+  // the user can override with what they actually paid). Prices are approximate 2026 US retail
+  // ($/g) and are meant as a starting point. Custom names are still allowed.
+  const INGREDIENT_CATALOG = [
+    // Flours & meals
+    { name: 'All-purpose flour', category: 'Flours', costPerGram: 0.0013 },
+    { name: 'Bread flour', category: 'Flours', costPerGram: 0.0020 },
+    { name: 'Whole wheat flour', category: 'Flours', costPerGram: 0.0022 },
+    { name: 'White whole wheat flour', category: 'Flours', costPerGram: 0.0024 },
+    { name: 'Whole wheat pastry flour', category: 'Flours', costPerGram: 0.0028 },
+    { name: 'Pastry flour', category: 'Flours', costPerGram: 0.0026 },
+    { name: 'Cake flour', category: 'Flours', costPerGram: 0.0032 },
+    { name: 'Self-rising flour', category: 'Flours', costPerGram: 0.0022 },
+    { name: 'High-gluten flour', category: 'Flours', costPerGram: 0.0024 },
+    { name: '"00" pizza flour', category: 'Flours', costPerGram: 0.0035 },
+    { name: 'Rye flour', category: 'Flours', costPerGram: 0.0035 },
+    { name: 'Dark rye flour', category: 'Flours', costPerGram: 0.0040 },
+    { name: 'Spelt flour', category: 'Flours', costPerGram: 0.0050 },
+    { name: 'Einkorn flour', category: 'Flours', costPerGram: 0.0090 },
+    { name: 'Semolina flour', category: 'Flours', costPerGram: 0.0030 },
+    { name: 'Durum flour', category: 'Flours', costPerGram: 0.0032 },
+    { name: 'Buckwheat flour', category: 'Flours', costPerGram: 0.0055 },
+    { name: 'Cornmeal', category: 'Flours', costPerGram: 0.0022 },
+    { name: 'Oat flour', category: 'Flours', costPerGram: 0.0040 },
+    { name: 'Almond flour', category: 'Flours', costPerGram: 0.0150 },
+    { name: 'Coconut flour', category: 'Flours', costPerGram: 0.0090 },
+    { name: 'Rice flour', category: 'Flours', costPerGram: 0.0035 },
+    { name: 'Gluten-free flour blend', category: 'Flours', costPerGram: 0.0060 },
+    { name: 'Vital wheat gluten', category: 'Flours', costPerGram: 0.0120 },
+    // Yeast & leaveners
+    { name: 'Active dry yeast', category: 'Yeast', costPerGram: 0.0160 },
+    { name: 'Instant yeast', category: 'Yeast', costPerGram: 0.0160 },
+    { name: 'Fresh yeast', category: 'Yeast', costPerGram: 0.0060 },
+    { name: 'Baking powder', category: 'Leaveners', costPerGram: 0.0080 },
+    { name: 'Baking soda', category: 'Leaveners', costPerGram: 0.0030 },
+    { name: 'Cream of tartar', category: 'Leaveners', costPerGram: 0.0250 },
+    // Salt
+    { name: 'Table salt', category: 'Salt', costPerGram: 0.0015 },
+    { name: 'Kosher salt', category: 'Salt', costPerGram: 0.0025 },
+    { name: 'Fine sea salt', category: 'Salt', costPerGram: 0.0040 },
+    { name: 'Flaky sea salt', category: 'Salt', costPerGram: 0.0120 },
+    // Sweeteners
+    { name: 'Granulated sugar', category: 'Sweeteners', costPerGram: 0.0028 },
+    { name: 'Caster sugar', category: 'Sweeteners', costPerGram: 0.0035 },
+    { name: 'Powdered sugar', category: 'Sweeteners', costPerGram: 0.0030 },
+    { name: 'Light brown sugar', category: 'Sweeteners', costPerGram: 0.0030 },
+    { name: 'Dark brown sugar', category: 'Sweeteners', costPerGram: 0.0032 },
+    { name: 'Turbinado sugar', category: 'Sweeteners', costPerGram: 0.0045 },
+    { name: 'Coconut sugar', category: 'Sweeteners', costPerGram: 0.0090 },
+    { name: 'Honey', category: 'Sweeteners', costPerGram: 0.0088 },
+    { name: 'Maple syrup', category: 'Sweeteners', costPerGram: 0.0180 },
+    { name: 'Molasses', category: 'Sweeteners', costPerGram: 0.0070 },
+    { name: 'Corn syrup', category: 'Sweeteners', costPerGram: 0.0040 },
+    { name: 'Agave nectar', category: 'Sweeteners', costPerGram: 0.0090 },
+    { name: 'Malt syrup', category: 'Sweeteners', costPerGram: 0.0090 },
+    // Oils & fats
+    { name: 'Unsalted butter', category: 'Oils & fats', costPerGram: 0.0110 },
+    { name: 'Salted butter', category: 'Oils & fats', costPerGram: 0.0110 },
+    { name: 'European-style butter', category: 'Oils & fats', costPerGram: 0.0150 },
+    { name: 'Vegetable oil', category: 'Oils & fats', costPerGram: 0.0030 },
+    { name: 'Canola oil', category: 'Oils & fats', costPerGram: 0.0030 },
+    { name: 'Olive oil', category: 'Oils & fats', costPerGram: 0.0120 },
+    { name: 'Extra-virgin olive oil', category: 'Oils & fats', costPerGram: 0.0150 },
+    { name: 'Coconut oil', category: 'Oils & fats', costPerGram: 0.0090 },
+    { name: 'Vegetable shortening', category: 'Oils & fats', costPerGram: 0.0060 },
+    { name: 'Lard', category: 'Oils & fats', costPerGram: 0.0060 },
+    // Dairy
+    { name: 'Whole milk', category: 'Dairy', costPerGram: 0.0011 },
+    { name: 'Buttermilk', category: 'Dairy', costPerGram: 0.0020 },
+    { name: 'Heavy cream', category: 'Dairy', costPerGram: 0.0060 },
+    { name: 'Sour cream', category: 'Dairy', costPerGram: 0.0040 },
+    { name: 'Cream cheese', category: 'Dairy', costPerGram: 0.0080 },
+    { name: 'Greek yogurt', category: 'Dairy', costPerGram: 0.0050 },
+    { name: 'Plain yogurt', category: 'Dairy', costPerGram: 0.0040 },
+    { name: 'Mascarpone', category: 'Dairy', costPerGram: 0.0150 },
+    { name: 'Evaporated milk', category: 'Dairy', costPerGram: 0.0035 },
+    { name: 'Sweetened condensed milk', category: 'Dairy', costPerGram: 0.0050 },
+    { name: 'Nonfat dry milk powder', category: 'Dairy', costPerGram: 0.0090 },
+    // Eggs
+    { name: 'Eggs (large)', category: 'Eggs', costPerGram: 0.0040 },
+    { name: 'Egg whites', category: 'Eggs', costPerGram: 0.0060 },
+    { name: 'Egg yolks', category: 'Eggs', costPerGram: 0.0090 },
+    // Chocolate & cocoa
+    { name: 'Cocoa powder', category: 'Chocolate & cocoa', costPerGram: 0.0120 },
+    { name: 'Dutch-process cocoa', category: 'Chocolate & cocoa', costPerGram: 0.0140 },
+    { name: 'Semisweet chocolate chips', category: 'Chocolate & cocoa', costPerGram: 0.0110 },
+    { name: 'Bittersweet chocolate', category: 'Chocolate & cocoa', costPerGram: 0.0160 },
+    { name: 'Dark chocolate', category: 'Chocolate & cocoa', costPerGram: 0.0160 },
+    { name: 'Milk chocolate chips', category: 'Chocolate & cocoa', costPerGram: 0.0110 },
+    { name: 'White chocolate chips', category: 'Chocolate & cocoa', costPerGram: 0.0120 },
+    { name: 'Unsweetened baking chocolate', category: 'Chocolate & cocoa', costPerGram: 0.0150 },
+    // Nuts & seeds
+    { name: 'Almonds', category: 'Nuts & seeds', costPerGram: 0.0140 },
+    { name: 'Walnuts', category: 'Nuts & seeds', costPerGram: 0.0180 },
+    { name: 'Pecans', category: 'Nuts & seeds', costPerGram: 0.0220 },
+    { name: 'Hazelnuts', category: 'Nuts & seeds', costPerGram: 0.0220 },
+    { name: 'Pistachios', category: 'Nuts & seeds', costPerGram: 0.0260 },
+    { name: 'Peanuts', category: 'Nuts & seeds', costPerGram: 0.0070 },
+    { name: 'Sesame seeds', category: 'Nuts & seeds', costPerGram: 0.0120 },
+    { name: 'Poppy seeds', category: 'Nuts & seeds', costPerGram: 0.0150 },
+    { name: 'Sunflower seeds', category: 'Nuts & seeds', costPerGram: 0.0070 },
+    { name: 'Flax seeds', category: 'Nuts & seeds', costPerGram: 0.0060 },
+    { name: 'Chia seeds', category: 'Nuts & seeds', costPerGram: 0.0120 },
+    { name: 'Peanut butter', category: 'Nuts & seeds', costPerGram: 0.0080 },
+    // Dried fruit
+    { name: 'Raisins', category: 'Dried fruit', costPerGram: 0.0070 },
+    { name: 'Golden raisins', category: 'Dried fruit', costPerGram: 0.0080 },
+    { name: 'Dried cranberries', category: 'Dried fruit', costPerGram: 0.0090 },
+    { name: 'Dried apricots', category: 'Dried fruit', costPerGram: 0.0120 },
+    { name: 'Pitted dates', category: 'Dried fruit', costPerGram: 0.0100 },
+    { name: 'Currants', category: 'Dried fruit', costPerGram: 0.0110 },
+    { name: 'Shredded coconut', category: 'Dried fruit', costPerGram: 0.0070 },
+    // Spices & flavorings
+    { name: 'Vanilla extract', category: 'Spices & flavorings', costPerGram: 0.1100 },
+    { name: 'Vanilla bean paste', category: 'Spices & flavorings', costPerGram: 0.1500 },
+    { name: 'Almond extract', category: 'Spices & flavorings', costPerGram: 0.0600 },
+    { name: 'Ground cinnamon', category: 'Spices & flavorings', costPerGram: 0.0250 },
+    { name: 'Ground nutmeg', category: 'Spices & flavorings', costPerGram: 0.0600 },
+    { name: 'Ground ginger', category: 'Spices & flavorings', costPerGram: 0.0300 },
+    { name: 'Ground cardamom', category: 'Spices & flavorings', costPerGram: 0.1200 },
+    { name: 'Ground cloves', category: 'Spices & flavorings', costPerGram: 0.0500 },
+    { name: 'Pumpkin pie spice', category: 'Spices & flavorings', costPerGram: 0.0400 },
+    { name: 'Instant espresso powder', category: 'Spices & flavorings', costPerGram: 0.0600 },
+    // Starches & thickeners
+    { name: 'Cornstarch', category: 'Starches & thickeners', costPerGram: 0.0035 },
+    { name: 'Tapioca starch', category: 'Starches & thickeners', costPerGram: 0.0040 },
+    { name: 'Potato starch', category: 'Starches & thickeners', costPerGram: 0.0050 },
+    { name: 'Xanthan gum', category: 'Starches & thickeners', costPerGram: 0.0300 },
+    { name: 'Unflavored gelatin', category: 'Starches & thickeners', costPerGram: 0.0250 },
+    // Other
+    { name: 'Rolled oats', category: 'Other', costPerGram: 0.0030 },
+    { name: 'Quick oats', category: 'Other', costPerGram: 0.0030 },
+    { name: 'Wheat germ', category: 'Other', costPerGram: 0.0060 },
+    { name: 'Malted milk powder', category: 'Other', costPerGram: 0.0090 },
+    { name: 'Diastatic malt powder', category: 'Other', costPerGram: 0.0198 },
   ];
   const DOUGH_DENSITY_G_PER_ML = 0.85;   // typical bread dough ~75% hydration
   const CONTAINER_FILL_FACTOR = 0.45;    // headroom for bulk-ferment rise (~1.8×)
@@ -4561,6 +4700,37 @@ ${notesHtml}
     if (!isFlour) document.getElementById('pantry-requires-milling').checked = false;
   }
 
+  // Fill the search datalist with the catalog's canonical ingredient names (once).
+  function populateIngredientCatalogDatalist() {
+    const dl = document.getElementById('ingredient-catalog-list');
+    if (!dl || dl.dataset.filled) return;
+    dl.innerHTML = INGREDIENT_CATALOG.map(c => `<option value="${escapeAttr(c.name)}"></option>`).join('');
+    dl.dataset.filled = '1';
+  }
+  // When the typed/picked name matches a catalog item, seed its category and a default price
+  // (as $ per 1000 g) — only when those fields are still blank, so we never clobber edits.
+  function onPantryNameInput() {
+    const name = (document.getElementById('pantry-name').value || '').trim().toLowerCase();
+    const item = name ? INGREDIENT_CATALOG.find(c => c.name.toLowerCase() === name) : null;
+    if (item) {
+      const catSel = document.getElementById('pantry-category');
+      if (catSel && !catSel.value) populateCategorySelect(item.category);
+      const priceEl = document.getElementById('pantry-price');
+      const wG = document.getElementById('pantry-weight');
+      const wLbs = document.getElementById('pantry-weight-lbs');
+      const wOz = document.getElementById('pantry-weight-oz');
+      const weightBlank = !wG.value && !wLbs.value && !wOz.value;
+      if (weightBlank && !priceEl.value) {
+        document.getElementById('pantry-weight-unit').value = 'g';
+        onPantryWeightUnitChange();
+        wG.value = 1000;
+        priceEl.value = (item.costPerGram * 1000).toFixed(2);
+        updatePantryCostPreview();
+      }
+    }
+    onPantryCategoryChange();
+  }
+
   function showNewCategoryInput() {
     document.getElementById('pantry-new-category-row').style.display = '';
     document.getElementById('pantry-new-category-input').value = '';
@@ -4649,6 +4819,7 @@ ${notesHtml}
   }
 
   function showPantryAddForm(prefill) {
+    populateIngredientCatalogDatalist();
     // prefill can be a pantry item (for edit) or {suggestName} (from suggestions)
     const suggestName = prefill && prefill.suggestName ? prefill.suggestName : null;
     const item = prefill && prefill.id ? prefill : null;
@@ -4663,7 +4834,9 @@ ${notesHtml}
     populateCategorySelect(item ? (item.category || '') : '');
     document.getElementById('pantry-requires-milling').checked = item ? !!item.requiresMilling : false;
     document.getElementById('pantry-new-category-row').style.display = 'none';
-    onPantryCategoryChange();
+    // For a fresh add (incl. a "from your recipes" suggestion), seed price/category from the
+    // catalog if the name matches; for an edit the guards leave the saved values untouched.
+    onPantryNameInput();
     document.getElementById('pantry-add-msg').textContent = '';
     document.getElementById('pantry-add-form').dataset.editId = item ? item.id : '';
     const det = document.getElementById('ingredient-costs-details');
