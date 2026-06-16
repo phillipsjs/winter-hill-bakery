@@ -664,6 +664,7 @@
   .stage-badge { font-size: 0.72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; text-transform: capitalize; }
   .stage-row input.stage-label { flex: 1; min-width: 110px; }
   .stage-row .stage-dur { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+  .stage-row .stage-locked { font-size: 0.72rem; white-space: nowrap; cursor: help; }
   .stage-row .stage-dur input { width: 60px; }
   .stage-move { display: inline-flex; flex-direction: column; gap: 1px; }
   .stage-move button { padding: 0 7px; font-size: 0.7rem; line-height: 1.5; }
@@ -2253,6 +2254,7 @@
   // with no overrides derives back to identical scheduler params.
   const STAGE_TEMPLATES = {
     'sourdough-loaf': [
+      { type: 'weigh',    duration: { kind: 'fixed', min: 5 } },
       { type: 'autolyse', duration: { kind: 'fixed', min: 60, activeMin: 10 } },
       { type: 'mix',      duration: { kind: 'fixed', min: 0, activeMin: 10 }, label: 'Mix in salt + levain' },
       { type: 'fold',     duration: { kind: 'countInterval', count: 5, intervalMin: 30 } },
@@ -2262,6 +2264,7 @@
       { type: 'bake',     duration: { kind: 'anchored', min: 40 }, tempF: 500, vessel: 'oven' },
     ],
     'sourdough-muffin': [
+      { type: 'weigh',  duration: { kind: 'fixed', min: 5 } },
       { type: 'mix',    duration: { kind: 'fixed', min: 0, activeMin: 10 } },
       { type: 'bulk',   duration: { kind: 'fixed', min: 120 }, vessel: 'bulk-container' },
       { type: 'shape',  duration: { kind: 'perUnit', minPerUnit: 1 }, vessel: 'pan' },
@@ -2270,6 +2273,7 @@
       { type: 'bake',   duration: { kind: 'anchored', min: 12 }, tempF: 375, vessel: 'oven' },
     ],
     'bagel': [
+      { type: 'weigh', duration: { kind: 'fixed', min: 5 } },
       { type: 'mix',   duration: { kind: 'fixed', min: 0, activeMin: 10 } },
       { type: 'bulk',  duration: { kind: 'fixed', min: 120 }, vessel: 'bulk-container' },
       { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 2 }, vessel: 'sheet' },
@@ -2278,6 +2282,7 @@
       { type: 'bake',  duration: { kind: 'anchored', min: 22 }, tempF: 450, vessel: 'oven' },
     ],
     'focaccia': [
+      { type: 'weigh',    duration: { kind: 'fixed', min: 5 } },
       { type: 'mix',      duration: { kind: 'fixed', min: 0, activeMin: 10 } },
       { type: 'autolyse', duration: { kind: 'fixed', min: 15 } },
       { type: 'fold',     duration: { kind: 'countInterval', count: 4, intervalMin: 15 } },
@@ -2322,6 +2327,53 @@
     }
     const n = Number(raw);
     return Number.isFinite(n) ? { minHr: n, maxHr: n } : null;
+  }
+  // --- Milling: ingredient-controlled. A recipe that uses a flour flagged "requires
+  // milling" in the pantry gets a Mill stage auto-inserted (and removed when it no longer
+  // does). The baker can retime it but not add/remove it by hand — its presence tracks the
+  // ingredients. Both schedulers derive milling presence the same way, so the schedule is
+  // correct even if a recipe's persisted stages are stale. ---
+  function milledFlourNamesFor(recipe) {
+    const names = new Set();
+    if (!recipe || !Array.isArray(recipe.ingredients)) return names;
+    for (const i of recipe.ingredients) {
+      if (!((Number(i.pct) || 0) > 0) || !i.pantryId) continue;
+      const pi = pantryItems.find(p => p.id === i.pantryId);
+      if (pi && pi.requiresMilling) names.add(i.name);
+    }
+    return names;
+  }
+  function recipeUsesMilledFlour(recipe) { return milledFlourNamesFor(recipe).size > 0; }
+  // Insert/remove a mill stage in a stage list to match whether the recipe mills flour.
+  // Mill goes right before the first autolyse/mix (after any weigh step).
+  function syncMillStage(stages, usesMill, defaultMin) {
+    const idx = stages.findIndex(s => s.type === 'mill');
+    if (usesMill && idx < 0) {
+      const anchor = stages.findIndex(s => s.type === 'autolyse' || s.type === 'mix');
+      const at = anchor >= 0 ? anchor : (stages.findIndex(s => s.type === 'weigh') + 1);
+      stages.splice(Math.max(0, at), 0, cloneStage({ type: 'mill', duration: { kind: 'fixed', min: defaultMin } }));
+    } else if (!usesMill && idx >= 0) {
+      stages.splice(idx, 1);
+    }
+    return stages;
+  }
+  // The stage list a scheduler should walk for a recipe: its saved stages (or a freshly
+  // derived list), with the ingredient-controlled mill stage re-synced so the schedule is
+  // correct even when the persisted stages predate a pantry milling-flag change.
+  function stagesForScheduling(recipe) {
+    const base = (Array.isArray(recipe.stages) && recipe.stages.length)
+      ? recipe.stages.map(s => ({ ...s, duration: { ...s.duration } }))
+      : stagesFromRecipe(recipe);
+    syncMillStage(base, recipeUsesMilledFlour(recipe), SCHED.MILL_ACTIVE_MIN);
+    return base;
+  }
+  // Duration (fixed min) of a recipe's stage of the given type, else a fallback — lets the
+  // specialized bread engine read weigh/mill timing from the editable stage list.
+  function stageDurationOf(recipe, type, fallbackMin) {
+    const stages = (Array.isArray(recipe.stages) && recipe.stages.length) ? recipe.stages : null;
+    const s = stages ? stages.find(x => x.type === type) : null;
+    const v = s && s.duration ? Number(s.duration.min) : NaN;
+    return Number.isFinite(v) ? v : fallbackMin;
   }
   // Build the editable stage list for a recipe: template defaults overlaid with the
   // recipe's saved overrides (so legacy recipes round-trip to identical scheduler params).
@@ -2379,6 +2431,8 @@
         stages.splice(coolIdx >= 0 ? coolIdx + 1 : stages.length, 0, g);
       }
     }
+    // Mill stage is derived from the ingredients, not stored overrides.
+    syncMillStage(stages, recipeUsesMilledFlour(recipe), SCHED.MILL_ACTIVE_MIN);
     return stages;
   }
   // Reverse: derive the flat scheduler fields from a stage list. Emits '' when a value
@@ -7319,6 +7373,7 @@ ${notesHtml}
   function renderStageEditor() {
     const list = document.getElementById('r-stages-list');
     if (!list) return;
+    syncEditorMillStage(); // keep the ingredient-controlled mill step in sync on every render
     if (!_editorStages.length) {
       list.innerHTML = '<p class="muted" style="font-size:0.85rem;margin:4px 0">No steps yet — add one below or reset to the process template.</p>';
     } else {
@@ -7328,6 +7383,7 @@ ${notesHtml}
         const vessel = STAGE_VESSEL_TYPES.includes(s.type)
           ? `<select class="settings-select" style="flex:none;width:auto;font-size:0.8rem" onchange="stageEditorSetVessel(${i},this.value)">${STAGE_VESSEL_OPTIONS.map(([v, l]) => `<option value="${v}"${(s.vessel || '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select>`
           : '';
+        const locked = s.type === 'mill'; // ingredient-controlled — appears when a flour needs milling
         return `<div class="stage-row">
           <span class="stage-move">
             <button type="button" onclick="stageEditorMove(${i},-1)"${i === 0 ? ' disabled' : ''} title="Move up">▲</button>
@@ -7337,15 +7393,44 @@ ${notesHtml}
           <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
           ${_stageDurationHtml(s, i)}
           ${vessel}
-          <button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>
+          ${locked
+            ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
+            : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`}
         </div>`;
       }).join('');
     }
     const addSel = document.getElementById('r-stage-add-type');
     if (addSel && !addSel.dataset.filled) {
-      addSel.innerHTML = Object.keys(STAGE_PALETTE).map(t => `<option value="${t}">${escapeHtml(STAGE_PALETTE[t].label)}</option>`).join('');
+      // Mill is ingredient-controlled, so it's not a manually-addable step.
+      addSel.innerHTML = Object.keys(STAGE_PALETTE).filter(t => t !== 'mill')
+        .map(t => `<option value="${t}">${escapeHtml(STAGE_PALETTE[t].label)}</option>`).join('');
       addSel.dataset.filled = '1';
     }
+  }
+  // Read the editor's current ingredient rows to see if any flour needs milling. New recipes
+  // have no pantryId on the rows yet, so match by pantry name as well as id.
+  function editorMilledFlourNames() {
+    const names = new Set();
+    document.querySelectorAll('#r-ingredients .ingredient-edit-row').forEach(row => {
+      const nameEl = row.querySelector('.ing-name'), pctEl = row.querySelector('.ing-pct');
+      const name = nameEl ? (nameEl.value || '').trim() : '';
+      const pct = pctEl ? Number(pctEl.value) || 0 : 0;
+      if (!name || pct <= 0) return;
+      const pantryEl = row.querySelector('.ing-pantry');
+      const pid = pantryEl ? pantryEl.value : '';
+      const pi = pid ? pantryItems.find(p => p.id === pid)
+                     : pantryItems.find(p => p.name.toLowerCase() === name.toLowerCase());
+      if (pi && pi.requiresMilling) names.add(name);
+    });
+    return names;
+  }
+  // Keep _editorStages' mill step in sync with the ingredient rows. Returns true if it changed.
+  function syncEditorMillStage() {
+    const uses = editorMilledFlourNames().size > 0;
+    const idx = _editorStages.findIndex(s => s.type === 'mill');
+    if (uses && idx < 0) { syncMillStage(_editorStages, true, SCHED.MILL_ACTIVE_MIN); return true; }
+    if (!uses && idx >= 0) { _editorStages.splice(idx, 1); return true; }
+    return false;
   }
 
   function _defaultStageOfType(type) {
@@ -7825,8 +7910,12 @@ ${notesHtml}
     }
 
     const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ...stepFields, ...overrides };
-    // The edited stage list is the source of truth — persist it verbatim.
-    if (processType !== 'levain') base.stages = _editorStages.map(s => ({ ...s, duration: { ...s.duration } }));
+    // The edited stage list is the source of truth — persist it verbatim, but first
+    // re-sync the (ingredient-controlled) mill stage against the resolved pantryId links.
+    if (processType !== 'levain') {
+      syncMillStage(_editorStages, recipeUsesMilledFlour({ ingredients }), SCHED.MILL_ACTIVE_MIN);
+      base.stages = _editorStages.map(s => ({ ...s, duration: { ...s.duration } }));
+    }
 
     let recipeId;
     if (editingId) {
@@ -8226,6 +8315,14 @@ ${notesHtml}
     const specialtyFlourNames = millingFloursForRecipes(loafRecipes);
     const millingFloursMuffin  = millingFloursForRecipes(muffinRecipes);
     const millingFloursBagel   = millingFloursForRecipes(bagelRecipes);
+    // Weigh / mill durations come from each recipe's stage list (fallback to the SCHED
+    // constant) so the recipe builder drives these steps. Weigh aggregates across the
+    // recipes mixed together; mill takes the longest among those that actually mill.
+    const weighMinFor = (recipeList) => recipeList.reduce((sum, r) => sum + stageDurationOf(r, 'weigh', SCHED.WEIGH_MIN_PER_RECIPE), 0);
+    const millMinFor = (recipeList) => {
+      const mins = recipeList.filter(recipeUsesMilledFlour).map(r => stageDurationOf(r, 'mill', SCHED.MILL_ACTIVE_MIN));
+      return mins.length ? Math.max(...mins) : SCHED.MILL_ACTIVE_MIN;
+    };
 
     const loafSpecs = loafRecipes.map(getRecipeSpec);
     const muffinSpecs = muffinRecipes.map(getRecipeSpec);
@@ -8266,7 +8363,9 @@ ${notesHtml}
       foldsCount:      maxOr(focacciaSpecs.map(s => s.foldsCount),      PROCESS_TEMPLATES.focaccia.foldsCount),
       shapeMinPerUnit: maxOr(focacciaSpecs.map(s => s.shapeMinPerUnit), PROCESS_TEMPLATES.focaccia.shapeMinPerUnit),
       autolyseMin:     maxOr(focacciaSpecs.map(s => s.autolyseMin),     PROCESS_TEMPLATES.focaccia.autolyseMin),
+      bakeTempF:       maxOr(focacciaRecipes.map(r => recipeBakeTempF(r, PROCESS_TEMPLATES.focaccia.bakeTempF)), PROCESS_TEMPLATES.focaccia.bakeTempF),
     } : null;
+    const millingFloursFocaccia = millingFloursForRecipes(focacciaRecipes);
     const FOCACCIA_FOLD_INTERVAL_MIN = 15;
     const FOCACCIA_MIX_ACTIVE_MIN = 10;
     const FOCACCIA_COOL_MIN = 20;
@@ -9030,7 +9129,12 @@ ${notesHtml}
         const focacciaLastFoldTime = addMinutes(focacciaShapeStart, -focacciaAgg.bulkMin);
         const focacciaFirstFoldTime = addMinutes(focacciaLastFoldTime, -(focacciaAgg.foldsCount - 1) * FOCACCIA_FOLD_INTERVAL_MIN);
         const focacciaMixTime = addMinutes(focacciaFirstFoldTime, -(FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin));
-        events.push({ time: addMinutes(focacciaMixTime, -SCHED.WEIGH_MIN_PER_RECIPE), title: 'Weigh out focaccia ingredients', detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'focaccia' });
+        const focWeighDur = weighMinFor(focacciaRecipes);
+        const focMills = millingFloursFocaccia.size > 0;
+        const focMillMin = millMinFor(focacciaRecipes);
+        const focWeighEnd = focMills ? addMinutes(focacciaMixTime, -focMillMin) : focacciaMixTime;
+        events.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Weigh ingredients', detail: focacciaRecipes.length > 1 ? `${focWeighDur} min active · ${focacciaRecipes.length} recipes` : `${focWeighDur} min active`, process: 'focaccia' });
+        if (focMills) events.push({ time: addMinutes(focacciaMixTime, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...millingFloursFocaccia].join(' + ')}`, process: 'focaccia' });
         events.push({ time: focacciaMixTime, title: 'Mix focaccia dough', detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia' });
         for (let k = 0; k < focacciaAgg.foldsCount; k++) {
           const isLast = k === focacciaAgg.foldsCount - 1;
@@ -9040,12 +9144,23 @@ ${notesHtml}
           ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
           : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`;
         events.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia' });
-        events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · oven preheats concurrently`, process: 'focaccia' });
+        // Oven-on is triggered by the recipe's bake temp + assigned oven's preheat curve.
+        const focOven = (focacciaSlot && focacciaSlot.ovenId) ? userOvens.find(o => o.id === focacciaSlot.ovenId) : null;
+        const focPreheat = ovenPreheatMin(focOven, focacciaAgg.bakeTempF) ?? SCHED.OVEN_PREHEAT_MIN;
+        const focOvenOnTime = addMinutes(focacciaSlot.firstBakeStart, -focPreheat);
+        const focOvenTag = focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '';
+        if (focOvenOnTime < focacciaPanRiseStart) {
+          // Preheat outlasts the pan rise — start the oven before the dough goes to rise.
+          events.push({ time: focOvenOnTime, title: `Turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
+          events.push({ time: focacciaPanRiseStart, title: 'Pan rise', detail: `${focacciaAgg.warmupMin} min room-temp pan rise`, process: 'focaccia' });
+        } else {
+          events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
+        }
         let cumFocMin = 0;
         for (let b = 0; b < focacciaBatches; b++) {
           const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
           const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '' });
+          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${focacciaAgg.bakeTempF}°F${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
           cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
         }
         events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
@@ -9328,10 +9443,11 @@ ${notesHtml}
         }
       }
       const involvedCols = Object.keys(millByCol);
+      const loafMillMin = millMinFor(loafRecipes);
       const millEvent = {
-        time: addMinutes(autolyseStart, -SCHED.MILL_ACTIVE_MIN),
+        time: addMinutes(autolyseStart, -loafMillMin),
         title: 'Mill flour',
-        detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...specialtyFlourNames].join(' + ')}`,
+        detail: `${loafMillMin} min active · ${[...specialtyFlourNames].join(' + ')}`,
         process: 'loaf',
       };
       if (loafColumns.length > 1 && involvedCols.length === 1) {
@@ -9342,18 +9458,18 @@ ${notesHtml}
       }
       events.push(millEvent);
     }
-    // Weigh out flours and salt: 5 min per loaf recipe, finishing just in
-    // time for the mill step (or the autolyse if there's nothing to mill).
-    const weighDuration = loafRecipes.length * SCHED.WEIGH_MIN_PER_RECIPE;
+    // Weigh out flours and salt (duration from each recipe's weigh stage), finishing just
+    // in time for the mill step (or the autolyse if there's nothing to mill).
+    const weighDuration = weighMinFor(loafRecipes);
     const weighEndTime = specialtyFlourNames.size > 0
-      ? addMinutes(autolyseStart, -SCHED.MILL_ACTIVE_MIN)
+      ? addMinutes(autolyseStart, -millMinFor(loafRecipes))
       : autolyseStart;
     events.push({
       time: addMinutes(weighEndTime, -weighDuration),
       title: 'Weigh ingredients',
       detail: loafRecipes.length > 1
-        ? `${SCHED.WEIGH_MIN_PER_RECIPE} min × ${loafRecipes.length} recipes = ${weighDuration} min active`
-        : `${SCHED.WEIGH_MIN_PER_RECIPE} min active`,
+        ? `${weighDuration} min active · ${loafRecipes.length} recipes`
+        : `${weighDuration} min active`,
       process: 'loaf',
     });
     const autolyseRestMin = Math.max(0, loafAgg.autolyseMin - SCHED.AUTOLYSE_ACTIVE_MIN);
@@ -9532,10 +9648,14 @@ ${notesHtml}
       const temp = (recipeList[0] && Number(recipeList[0].bakeTempF)) || PROCESS_TEMPLATES[proc].bakeTempF;
       return ovenPreheatMin(oven, temp) != null ? ovenPreheatMin(oven, temp) : SCHED.OVEN_PREHEAT_MIN;
     };
+    const procTemp = (recipeList, proc) => (recipeList[0] && Number(recipeList[0].bakeTempF)) || PROCESS_TEMPLATES[proc].bakeTempF;
     const loafPreheat = procPreheat(loafSlot, loafRecipes, 'sourdough-loaf');
     const muffinPreheat = procPreheat(muffinSlot, muffinRecipes, 'sourdough-muffin');
     const bagelPreheat = procPreheat(bagelSlot, bagelRecipes, 'bagel');
-    const fmtPreheat = (min) => `~${min} min preheat to bake temp`;
+    const loafTemp = procTemp(loafRecipes, 'sourdough-loaf');
+    const muffinTemp = procTemp(muffinRecipes, 'sourdough-muffin');
+    const bagelTemp = procTemp(bagelRecipes, 'bagel');
+    const fmtPreheat = (min, temp) => `~${min} min preheat to ${temp}°F`;
     const showsSeparatePreheats = (() => {
       if (!muffinSlot || breadBatches === 0) return false;
       const gapMs = muffinSlot.firstBakeStart - lastBakeEnd;
@@ -9546,8 +9666,8 @@ ${notesHtml}
     if (breadBatches > 0) {
       events.push({
         time: addMinutes(firstBakeStart, -loafPreheat),
-        title: muffinSlot && !showsSeparatePreheats ? 'Turn on oven' : 'Turn on oven (bread)',
-        detail: fmtPreheat(loafPreheat),
+        title: muffinSlot && !showsSeparatePreheats ? `Turn on oven to ${loafTemp}°F` : `Turn on oven (bread) to ${loafTemp}°F`,
+        detail: fmtPreheat(loafPreheat, loafTemp),
         process: muffinSlot && !showsSeparatePreheats ? 'shared' : 'loaf',
         equip: ovenNamesFromPlan(muffinSlot && !showsSeparatePreheats ? [...ovenPlan, ...muffinOvenPlan] : ovenPlan),
       });
@@ -9555,8 +9675,8 @@ ${notesHtml}
     if (muffinSlot && showsSeparatePreheats) {
       events.push({
         time: addMinutes(muffinSlot.firstBakeStart, -muffinPreheat),
-        title: 'Turn on oven (muffins)',
-        detail: fmtPreheat(muffinPreheat),
+        title: `Turn on oven (muffins) to ${muffinTemp}°F`,
+        detail: fmtPreheat(muffinPreheat, muffinTemp),
         process: 'muffin',
         equip: ovenNamesFromPlan(muffinOvenPlan),
       });
@@ -9568,8 +9688,8 @@ ${notesHtml}
       const firstBagelBake = addMinutes(bagelSlot.firstBakeStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
       events.push({
         time: addMinutes(firstBagelBake, -bagelPreheat),
-        title: 'Turn on oven (bagels)',
-        detail: fmtPreheat(bagelPreheat),
+        title: `Turn on oven (bagels) to ${bagelTemp}°F`,
+        detail: fmtPreheat(bagelPreheat, bagelTemp),
         process: 'bagel',
         equip: (bagelSlot && bagelSlot.ovenName ? [bagelSlot.ovenName] : (singleOvenName ? [singleOvenName] : [])),
       });
@@ -9672,27 +9792,28 @@ ${notesHtml}
     }
 
     // --- Muffin mix / shape / fridge events (using precomputed muffinTimes) ---
+    const muffinMillMin = millMinFor(muffinRecipes);
     if (totalMuffins > 0 && muffinTimes && millingFloursMuffin.size > 0) {
       events.push({
-        time: addMinutes(muffinMixStart, -SCHED.MILL_ACTIVE_MIN),
+        time: addMinutes(muffinMixStart, -muffinMillMin),
         title: 'Mill flour',
-        detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...millingFloursMuffin].join(' + ')}`,
+        detail: `${muffinMillMin} min active · ${[...millingFloursMuffin].join(' + ')}`,
         process: 'muffin',
       });
     }
     if (totalMuffins > 0 && muffinTimes) {
-      // Weigh ingredients before mixing — finishing in time for the mill step (if any
-      // flour is milled) or the mix otherwise.
-      const muffinWeighDuration = muffinRecipes.length * SCHED.WEIGH_MIN_PER_RECIPE;
+      // Weigh ingredients before mixing (duration from each recipe's weigh stage) —
+      // finishing in time for the mill step (if any flour is milled) or the mix otherwise.
+      const muffinWeighDuration = weighMinFor(muffinRecipes);
       const muffinWeighEnd = millingFloursMuffin.size > 0
-        ? addMinutes(muffinMixStart, -SCHED.MILL_ACTIVE_MIN)
+        ? addMinutes(muffinMixStart, -muffinMillMin)
         : muffinMixStart;
       events.push({
         time: addMinutes(muffinWeighEnd, -muffinWeighDuration),
         title: 'Weigh ingredients',
         detail: muffinRecipes.length > 1
-          ? `${SCHED.WEIGH_MIN_PER_RECIPE} min × ${muffinRecipes.length} recipes = ${muffinWeighDuration} min active`
-          : `${SCHED.WEIGH_MIN_PER_RECIPE} min active`,
+          ? `${muffinWeighDuration} min active · ${muffinRecipes.length} recipes`
+          : `${muffinWeighDuration} min active`,
         process: 'muffin',
       });
       const muffinBulkHrLabel = (muffinAgg.bulkMin / 60).toFixed(muffinAgg.bulkMin % 60 === 0 ? 0 : 1);
@@ -9763,27 +9884,28 @@ ${notesHtml}
     }
 
     // --- Bagel mix / shape / fridge events (using precomputed bagelTimes) ---
+    const bagelMillMin = millMinFor(bagelRecipes);
     if (totalBagels > 0 && bagelTimes && millingFloursBagel.size > 0) {
       events.push({
-        time: addMinutes(bagelMixStart, -SCHED.MILL_ACTIVE_MIN),
+        time: addMinutes(bagelMixStart, -bagelMillMin),
         title: 'Mill flour',
-        detail: `${SCHED.MILL_ACTIVE_MIN} min active · ${[...millingFloursBagel].join(' + ')}`,
+        detail: `${bagelMillMin} min active · ${[...millingFloursBagel].join(' + ')}`,
         process: 'bagel',
       });
     }
     if (totalBagels > 0 && bagelTimes) {
-      // Weigh ingredients before mixing — finishing in time for the mill step (if any
-      // flour is milled) or the mix otherwise.
-      const bagelWeighDuration = bagelRecipes.length * SCHED.WEIGH_MIN_PER_RECIPE;
+      // Weigh ingredients before mixing (duration from each recipe's weigh stage) —
+      // finishing in time for the mill step (if any flour is milled) or the mix otherwise.
+      const bagelWeighDuration = weighMinFor(bagelRecipes);
       const bagelWeighEnd = millingFloursBagel.size > 0
-        ? addMinutes(bagelMixStart, -SCHED.MILL_ACTIVE_MIN)
+        ? addMinutes(bagelMixStart, -bagelMillMin)
         : bagelMixStart;
       events.push({
         time: addMinutes(bagelWeighEnd, -bagelWeighDuration),
         title: 'Weigh ingredients',
         detail: bagelRecipes.length > 1
-          ? `${SCHED.WEIGH_MIN_PER_RECIPE} min × ${bagelRecipes.length} recipes = ${bagelWeighDuration} min active`
-          : `${SCHED.WEIGH_MIN_PER_RECIPE} min active`,
+          ? `${bagelWeighDuration} min active · ${bagelRecipes.length} recipes`
+          : `${bagelWeighDuration} min active`,
         process: 'bagel',
       });
       const bagelBulkHrLabel = (bagelAgg.bulkMin / 60).toFixed(bagelAgg.bulkMin % 60 === 0 ? 0 : 1);
@@ -9887,7 +10009,12 @@ ${notesHtml}
       const focacciaLastFoldTime = addMinutes(focacciaShapeStart, -focacciaAgg.bulkMin);
       const focacciaFirstFoldTime = addMinutes(focacciaLastFoldTime, -(focacciaAgg.foldsCount - 1) * FOCACCIA_FOLD_INTERVAL_MIN);
       const focacciaMixTime = addMinutes(focacciaFirstFoldTime, -(FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin));
-      events.push({ time: addMinutes(focacciaMixTime, -SCHED.WEIGH_MIN_PER_RECIPE), title: 'Weigh out focaccia ingredients', detail: `${SCHED.WEIGH_MIN_PER_RECIPE} min active`, process: 'focaccia' });
+      const focWeighDur = weighMinFor(focacciaRecipes);
+      const focMills = millingFloursFocaccia.size > 0;
+      const focMillMin = millMinFor(focacciaRecipes);
+      const focWeighEnd = focMills ? addMinutes(focacciaMixTime, -focMillMin) : focacciaMixTime;
+      events.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Weigh ingredients', detail: focacciaRecipes.length > 1 ? `${focWeighDur} min active · ${focacciaRecipes.length} recipes` : `${focWeighDur} min active`, process: 'focaccia' });
+      if (focMills) events.push({ time: addMinutes(focacciaMixTime, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...millingFloursFocaccia].join(' + ')}`, process: 'focaccia' });
       events.push({ time: focacciaMixTime, title: 'Mix focaccia dough', detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia' });
       for (let k = 0; k < focacciaAgg.foldsCount; k++) {
         const isLast = k === focacciaAgg.foldsCount - 1;
@@ -9897,12 +10024,22 @@ ${notesHtml}
         ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
         : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`;
       events.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia' });
-      events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · oven preheats concurrently`, process: 'focaccia' });
+      // Oven-on is triggered by the recipe's bake temp + assigned oven's preheat curve.
+      const focOven = (focacciaSlot && focacciaSlot.ovenId) ? userOvens.find(o => o.id === focacciaSlot.ovenId) : null;
+      const focPreheat = ovenPreheatMin(focOven, focacciaAgg.bakeTempF) ?? SCHED.OVEN_PREHEAT_MIN;
+      const focOvenOnTime = addMinutes(focacciaSlot.firstBakeStart, -focPreheat);
+      const focOvenTag = focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '';
+      if (focOvenOnTime < focacciaPanRiseStart) {
+        events.push({ time: focOvenOnTime, title: `Turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
+        events.push({ time: focacciaPanRiseStart, title: 'Pan rise', detail: `${focacciaAgg.warmupMin} min room-temp pan rise`, process: 'focaccia' });
+      } else {
+        events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
+      }
       let cumFocMin = 0;
       for (let b = 0; b < focacciaBatches; b++) {
         const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
         const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${PROCESS_TEMPLATES.focaccia.bakeTempF}°F${focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : ''}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '' });
+        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${focacciaAgg.bakeTempF}°F${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
         cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
       events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
@@ -10009,7 +10146,8 @@ ${notesHtml}
         const bakeStart = addMinutes(slot.firstBakeStart, cum);
         // Pre-bake dough chain: walk the recipe's stages before the bake, backward from
         // the bake start, so each batch's chain ends exactly when its bake begins.
-        const stages = (Array.isArray(r.stages) && r.stages.length) ? r.stages : stagesFromRecipe(r);
+        const stages = stagesForScheduling(r);
+        const milledNames = milledFlourNamesFor(r);
         const bakeIdx = stages.findIndex(s => s.type === 'bake');
         const preStages = bakeIdx >= 0 ? stages.slice(0, bakeIdx) : stages;
         let cursor = bakeStart;
@@ -10021,6 +10159,8 @@ ${notesHtml}
           const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, activeStep: !!pal.active };
           if (s.type === 'weigh') {
             ev.batchIngredients = ingsForUnits(r, batchUnits);
+          } else if (s.type === 'mill') {
+            ev.detail = `${fmtStageDur(dur)} active · ${[...milledNames].join(' + ')}`;
           } else if (s.type === 'mix') {
             const mx = mixerForRecipeG(r);
             if (mx) ev.equip = [mx.name];
@@ -11646,6 +11786,8 @@ ${notesHtml}
   // Live readout under the ingredient list. In percent mode: do flours sum to 100% + hydration.
   // In grams mode: flour weight, total dough, per-unit weight, hydration.
   function updateFlourSummary() {
+    // Milling is ingredient-controlled: re-sync the mill stage whenever ingredients change.
+    if (syncEditorMillStage()) renderStageEditor();
     const el = document.getElementById('r-flour-summary');
     if (!el) return;
     const rows = readEditorRows();

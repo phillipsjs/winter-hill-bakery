@@ -102,12 +102,14 @@ const exportsTail = `
   buildScheduleAcrossLoafGroups, getEventStage,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
+  recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
   __editorStages: () => _editorStages,
   __sr: () => _scheduleResult,
   __setPlan: (p) => { plan = p; },
   __setBannetons: (b) => { userBannetons = b; },
+  __setPantry: (p) => { pantryItems = p; },
   __recipes: () => recipes,
 };`;
 
@@ -556,6 +558,79 @@ enrR.stages.push({ id: 'p2-g', type: 'glaze', label: 'Glaze / ice', duration: { 
 const afterGlaze = p2events('enriched');
 p2Ok &= p2('adding a glaze stage adds a Glaze step', !hasGlazeBefore && afterGlaze.some(e => /Glaze/.test(e.title)));
 allOk &= p2Ok;
+
+// ---- Milling (ingredient-controlled) + weigh-stage alignment ----
+console.log('\nMilling + weigh-stage assertions:');
+let millOk = true;
+function mk(label, cond) { console.log(`  [mill] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+function renderEvents(plan) {
+  api.__setPlan(plan); seedPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  return api.__sr().events;
+}
+
+// Every bread template now seeds a weigh stage.
+['sourdough-loaf', 'sourdough-muffin', 'bagel', 'focaccia'].forEach(pt => {
+  millOk &= mk(`${pt} template has a weigh stage`, api.STAGE_TEMPLATES[pt].some(s => s.type === 'weigh'));
+});
+
+// recipeUsesMilledFlour keys off the pantry flag.
+api.__setPantry([{ id: 'pan-rye', name: 'Whole rye', requiresMilling: true }]);
+const milledIngs = [
+  { name: 'Bread flour', pct: 80, flourType: 'anchor' },
+  { name: 'Whole rye', pct: 20, flourType: 'specialty', pantryId: 'pan-rye' },
+  { name: 'Water', pct: 75 }, { name: 'Salt', pct: 2 }, { name: 'Levain', pct: 20 },
+];
+const plainIngs = [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }, { name: 'Water', pct: 75 }, { name: 'Salt', pct: 2 }, { name: 'Levain', pct: 20 }];
+millOk &= mk('recipeUsesMilledFlour true when a milled flour is used', api.recipeUsesMilledFlour({ ingredients: milledIngs }) === true);
+millOk &= mk('recipeUsesMilledFlour false otherwise', api.recipeUsesMilledFlour({ ingredients: plainIngs }) === false);
+
+// stagesFromRecipe auto-inserts mill (after weigh, before mix/autolyse) when milled.
+const milledStages = api.stagesFromRecipe({ processType: 'sourdough-loaf', ingredients: milledIngs });
+const mi = milledStages.findIndex(s => s.type === 'mill');
+const wi = milledStages.findIndex(s => s.type === 'weigh');
+const ai = milledStages.findIndex(s => s.type === 'autolyse' || s.type === 'mix');
+millOk &= mk('mill stage injected when milled', mi >= 0);
+millOk &= mk('mill positioned after weigh, before mix/autolyse', wi >= 0 && wi < mi && mi <= ai);
+millOk &= mk('no mill stage when not milled', !api.stagesFromRecipe({ processType: 'sourdough-loaf', ingredients: plainIngs }).some(s => s.type === 'mill'));
+
+// Bread schedule: a milled loaf emits a Mill flour step; weigh duration comes from the stage.
+const milledLoaf = { id: 'mill-loaf', name: 'Rye Boule', processType: 'sourdough-loaf', unit: 'loaf', loafWeight: 900, leavening: 'sourdough', bakeTempF: 500, ingredients: milledIngs, stages: milledStages };
+milledLoaf.stages.find(s => s.type === 'weigh').duration.min = 8;
+api.__recipes().push(milledLoaf);
+let me = renderEvents({ 'mill-loaf': 8 });
+millOk &= mk('milled loaf emits a Mill flour step', me.some(e => e.process === 'loaf' && /^Mill flour/.test(e.title)));
+const weighEv = me.find(e => e.process === 'loaf' && /^Weigh /.test(e.title));
+millOk &= mk('loaf weigh duration is stage-driven (8 min)', !!weighEv && /\b8 min/.test(weighEv.detail));
+
+// Drop the milling flag → the Mill flour step disappears (ingredient-controlled).
+api.__setPantry([{ id: 'pan-rye', name: 'Whole rye', requiresMilling: false }]);
+me = renderEvents({ 'mill-loaf': 8 });
+millOk &= mk('no Mill flour step once the flour no longer mills', !me.some(e => e.process === 'loaf' && /^Mill flour/.test(e.title)));
+
+// Generic engine: a simple recipe with a milled flour also gets a Mill flour step.
+api.__setPantry([{ id: 'pan-corn', name: 'Whole corn', requiresMilling: true }]);
+const milledSimple = { id: 'mill-simple', name: 'Cornbread', processType: 'simple', unit: 'piece', loafWeight: 80, leavening: 'none', ingredients: [{ name: 'Whole corn', pct: 100, flourType: 'anchor', pantryId: 'pan-corn' }, { name: 'Milk', pct: 70 }], stages: api.stageTemplateFor('simple') };
+api.__recipes().push(milledSimple);
+const ms = renderEvents({ 'mill-simple': 12 }).filter(e => e.process === 'simple');
+millOk &= mk('generic (simple) milled recipe emits a Mill flour step', ms.some(e => /^Mill flour/.test(e.title)));
+
+// Focaccia oven-on / bake reflect the recipe's edited bake temp (not the template default).
+const focOrig = api.__recipes().find(r => r.id === 'seed-focaccia');
+let focTempOk = false;
+if (focOrig) {
+  focOrig.bakeTempF = 460;
+  focOrig.stages = api.stagesFromRecipe(focOrig);
+  const bs = focOrig.stages.find(s => s.type === 'bake'); if (bs) bs.tempF = 460;
+  const fe = renderEvents({ 'seed-focaccia': 2 }).filter(e => e.process === 'focaccia');
+  focTempOk = fe.some(e => /460°F/.test((e.detail || '') + (e.title || '')));
+}
+millOk &= mk('focaccia bake temp follows the recipe (460°F)', focTempOk);
+
+allOk &= millOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
