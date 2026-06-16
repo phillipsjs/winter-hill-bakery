@@ -2930,6 +2930,7 @@
     msg.textContent = 'Settings saved — syncing now…';
     msg.style.color = 'var(--muted)';
     syncNow();
+    reconcilePantryWithGist();
   }
 
   async function createGistFromSettings() {
@@ -2945,6 +2946,7 @@
       msg.textContent = `Gist created! ID: ${id}`;
       msg.style.color = 'var(--ok)';
       updateFooterNote();
+      reconcilePantryWithGist();
       setSyncStatus('synced');
     } catch (e) {
       msg.textContent = `Error: ${e.message}`;
@@ -3511,8 +3513,26 @@ ${notesHtml}
     if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
     const data = await resp.json();
     const file = data.files[PANTRY_FILENAME];
-    if (!file) return [];
+    // null = no pantry file in the gist yet (never synced) — distinct from an empty
+    // pantry ([]) the user deliberately cleared. The first sync seeds the defaults.
+    if (!file) return null;
     return JSON.parse(file.content);
+  }
+
+  // On connecting a gist: adopt its pantry if it has one, otherwise seed the gist with the
+  // current (default) local pantry. Fetch-first so reconnecting an existing gist never
+  // overwrites the user's remote pantry with the local defaults.
+  async function reconcilePantryWithGist() {
+    if (!getGistConfig()) return;
+    let remote = null;
+    try { remote = await fetchPantryFromGist(); } catch (e) { return; }
+    if (Array.isArray(remote)) {
+      pantryItems = remote;
+    } else {
+      try { await pushPantryToGist(); } catch (e) {}
+    }
+    savePantryLocally();
+    renderPantry();
   }
 
   function getLocalSettings() {
@@ -12355,6 +12375,12 @@ ${notesHtml}
       if (Array.isArray(remotePantry)) {
         pantryItems = remotePantry;
         savePantryLocally();
+        renderPantry();
+      } else if (remotePantry === null) {
+        // First sync to a gist with no pantry yet: seed it with the current (default)
+        // local pantry so the defaults persist in the gist until the user removes them.
+        savePantryLocally();
+        pushPantryToGist().catch(() => {});
         renderPantry();
       }
       if (remoteSettings) {
