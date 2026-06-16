@@ -99,6 +99,7 @@ const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
   buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet,
+  setBakePlanEquip, renderTotals,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
@@ -772,6 +773,41 @@ bsOk &= bsk('loaf levain build lists its ingredients', /Levain Build 1/.test(bak
 bsOk &= bsk('muffin-only levain build lists ingredients', /Mature starter/.test(bakeSheetHtml({ [SEED.muffin]: 12 })));
 bsOk &= bsk('bagel-only levain build lists ingredients', /Mature starter/.test(bakeSheetHtml({ [SEED.bagel]: 10 })));
 allOk &= bsOk;
+
+// ---- editable bake-plan cards: switching equipment updates the recipe preference ----
+console.log('\nBake-plan equipment-edit assertions:');
+let edOk = true;
+function ed(label, cond) { console.log(`  [edit] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+api.__setPots([{ id: 'pot1', name: 'Big Stockpot', size: '20 qt', quantity: 1 }]);
+api.__setOvens([{ id: 'o1', name: 'Deck Oven', decks: 3 }, { id: 'o2', name: 'Rack Oven', decks: 2 }]);
+const recs = api.__recipes();
+const bagelE = recs.find(r => r.id === 'seed-sourdough-bagels');
+const loafE = recs.find(r => r.id === 'seed-sourdough-batard');
+// Render a plan so the cards have data, then drive the helper as the card dropdowns do.
+api.__setPlan({ 'seed-sourdough-batard': 8, 'seed-sourdough-bagels': 12 });
+seedPlan({ 'seed-sourdough-batard': 8, 'seed-sourdough-bagels': 12 });
+els['deadline-default-input'].value = fmtLocal(tomorrow8);
+['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+let threw = null;
+try { api.setBakePlanEquip([bagelE.id], 'pot', 'pot1'); } catch (e) { threw = e.message; }
+edOk &= ed('switching pot does not throw (re-renders cards)', threw === null);
+edOk &= ed('pot edit sets preferredPotId', bagelE.preferredPotId === 'pot1');
+edOk &= ed('pot edit sets the boil stage vessel', (bagelE.stages.find(s => s.type === 'boil') || {}).vessel === 'pot:pot1');
+api.setBakePlanEquip([loafE.id], 'oven', 'o2');
+edOk &= ed('oven edit sets preferredOvenId', loafE.preferredOvenId === 'o2');
+edOk &= ed('oven edit sets the bake stage vessel', (loafE.stages.find(s => s.type === 'bake') || {}).vessel === 'oven:o2');
+api.setBakePlanEquip([loafE.id], 'container', 'c9');
+edOk &= ed('container edit sets preferredContainerIds', Array.isArray(loafE.preferredContainerIds) && loafE.preferredContainerIds[0] === 'c9');
+api.setBakePlanEquip([loafE.id], 'mixer', 'm3');
+edOk &= ed('mixer edit sets preferredMixerIds', Array.isArray(loafE.preferredMixerIds) && loafE.preferredMixerIds[0] === 'm3');
+// clearing a value removes the preference
+api.setBakePlanEquip([loafE.id], 'oven', '');
+edOk &= ed('clearing oven resets to auto (null)', !loafE.preferredOvenId && !(loafE.stages.find(s => s.type === 'bake') || {}).vessel);
+// restore
+delete bagelE.preferredPotId; const bs = bagelE.stages.find(s => s.type === 'boil'); if (bs) delete bs.vessel;
+delete loafE.preferredOvenId; delete loafE.preferredContainerIds; delete loafE.preferredMixerIds;
+allOk &= edOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

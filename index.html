@@ -894,6 +894,18 @@
       </details>
     </div>
 
+    <div class="card totals" id="pot-overview-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Boiling</h2>
+          <span id="pot-overview-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Recipes with a boiling step (e.g. bagels) and the pot they boil in. Switch the pot here or on the recipe's Boil step.</p>
+        <div id="pot-overview-output" style="margin-top:8px"></div>
+      </details>
+    </div>
+
     <div id="plan-schedule-cta" style="display:none;margin-top:8px">
       <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
@@ -5576,9 +5588,13 @@ ${notesHtml}
         const sizeNote = (unified && unified.batchSize < perRound) ? ` of ${unified.batchSize}` : '';
         return `${escapeHtml(m.name)} <span class="muted" style="font-size:0.85rem">(${cap}/batch · ${batches} batch${batches > 1 ? 'es' : ''}${sizeNote})</span>`;
       });
-      return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
-        <span style="flex:1">${escapeHtml(r.name)}</span>
+      const mixerPicker = userMixers.length
+        ? bakePlanEquipSelect('mixer', [r.id], sharedPrefId([r.id], 'preferredMixerIds'), [['', '— none —'], ...userMixers.map(m => [m.id, m.name])])
+        : '';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <span style="flex:1;min-width:120px">${escapeHtml(r.name)}</span>
         <span class="muted" style="font-size:0.85rem">${needed} units</span>
+        ${mixerPicker}
         <span style="font-size:0.85rem">${parts.join(', ')}</span>
       </div>`;
     }).join('');
@@ -6399,6 +6415,7 @@ ${notesHtml}
     renderPanPlan();
     renderMixerPlan();
     renderOvenOverview();
+    renderPotPlan();
   }
 
   // Bake Plan "Oven overview" card: shows what's actually baking in each oven,
@@ -6486,6 +6503,21 @@ ${notesHtml}
       html += '<div style="padding:8px 0;border-top:1px solid var(--border)">';
       html += '<div style="font-weight:600">Scheduled into any free oven</div>';
       html += '<div class="muted" style="font-size:0.9rem;margin-top:2px">' + otherUnassigned.map(fmtRecipeTemp).join(', ') + '</div></div>';
+    }
+
+    // Assign ovens — one picker per process group (they bake in the same slot), so the
+    // choice applies to the whole group. Only meaningful with more than one oven.
+    if (multi) {
+      const kinds = [['sourdough-loaf', 'Loaves'], ['sourdough-muffin', 'Muffins'], ['bagel', 'Bagels'], ['focaccia', 'Focaccia'], ['simple', 'Simple bakes'], ['enriched', 'Enriched']];
+      let assignHtml = '';
+      kinds.forEach(([pt, label]) => {
+        const rs = active.filter(r => getProcessType(r) === pt);
+        if (!rs.length) return;
+        const ids = rs.map(r => r.id);
+        const picker = bakePlanEquipSelect('oven', ids, sharedPrefId(ids, 'preferredOvenId'), [['', '— auto —'], ...userOvens.map(o => [o.id, o.name])]);
+        assignHtml += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0"><span style="flex:1">${escapeHtml(label)} <span class="muted" style="font-size:0.8rem">(${rs.length})</span></span>${picker}</div>`;
+      });
+      if (assignHtml) html += `<div style="padding:8px 0;border-top:1px solid var(--border)"><div style="font-weight:600;margin-bottom:4px">Assign ovens</div>${assignHtml}</div>`;
     }
 
     // Single-oven, mixed-temp heads-up across the whole plan.
@@ -6810,6 +6842,80 @@ ${notesHtml}
       .map(c => ({ name: c.name, quantity: Number(c.quantity) || 1 }));
   }
 
+  // ---- Editable bake-plan cards: switch a recipe's equipment from its plan card ----
+  // Each choice updates the recipe's saved preference (which the scheduler honors) and
+  // re-renders. Shared groups pass every recipe id so the change applies to the group.
+  function setRecipeStageVessel(r, type, vessel) {
+    if (!Array.isArray(r.stages)) return;
+    const s = r.stages.find(x => x.type === type);
+    if (!s) return;
+    if (vessel) s.vessel = vessel; else delete s.vessel;
+  }
+  function setBakePlanEquip(recipeIds, kind, value) {
+    const ids = Array.isArray(recipeIds) ? recipeIds : [recipeIds];
+    ids.forEach(rid => {
+      const r = recipes.find(x => x.id === rid);
+      if (!r) return;
+      if (kind === 'container') r.preferredContainerIds = value ? [value] : [];
+      else if (kind === 'mixer') r.preferredMixerIds = value ? [value] : [];
+      else if (kind === 'oven') { r.preferredOvenId = value || null; setRecipeStageVessel(r, 'bake', value ? 'oven:' + value : ''); }
+      else if (kind === 'pot') { r.preferredPotId = value || null; setRecipeStageVessel(r, 'boil', value ? 'pot:' + value : ''); }
+    });
+    saveRecipes();
+    renderSchedule();
+    renderTotals();
+  }
+  function onBakePlanEquipChange(sel) {
+    const ids = (sel.dataset.recipes || '').split(',').filter(Boolean);
+    setBakePlanEquip(ids, sel.dataset.kind, sel.value);
+  }
+  // A small inline dropdown for a plan card. `options` is an array of [value, label];
+  // `current` is the selected value ('' = the auto/default option).
+  function bakePlanEquipSelect(kind, recipeIds, current, options) {
+    const ids = (Array.isArray(recipeIds) ? recipeIds : [recipeIds]).join(',');
+    return `<select class="bp-equip-select" style="font-size:0.82rem;padding:2px 6px;max-width:100%" onchange="onBakePlanEquipChange(this)" data-kind="${kind}" data-recipes="${escapeAttr(ids)}">`
+      + options.map(([v, l]) => `<option value="${escapeAttr(v)}"${(current || '') === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')
+      + `</select>`;
+  }
+  // The recipe-group's currently shared preference for a list field, or '' if none/mixed.
+  function sharedPrefId(recipeIds, field) {
+    const vals = recipeIds.map(id => {
+      const r = recipes.find(x => x.id === id);
+      const v = r && r[field];
+      return Array.isArray(v) ? (v[0] || '') : (v || '');
+    });
+    return vals.every(v => v === vals[0]) ? (vals[0] || '') : '';
+  }
+
+  // Boiling card: recipes with a boil step + the pot they boil in (switchable here).
+  function renderPotPlan() {
+    const card = document.getElementById('pot-overview-card');
+    const out = document.getElementById('pot-overview-output');
+    const summaryEl = document.getElementById('pot-overview-summary');
+    if (!card || !out) return;
+    const recipeBoils = (r) => Array.isArray(r.stages) && r.stages.some(s => s.type === 'boil');
+    const using = recipes.filter(r => (plan[r.id] || 0) > 0 && recipeBoils(r));
+    if (using.length === 0) { card.style.display = 'none'; return; }
+    out.innerHTML = using.map(r => {
+      const needed = plan[r.id] || 0;
+      const boil = r.stages.find(s => s.type === 'boil');
+      const potId = (boil && typeof boil.vessel === 'string' && boil.vessel.indexOf('pot:') === 0) ? boil.vessel.slice(4) : (r.preferredPotId || '');
+      const batch = (Number.isFinite(Number(r.boilBatchSize)) && Number(r.boilBatchSize) > 0) ? Number(r.boilBatchSize) : SCHED.BAGEL_BATCH_SIZE;
+      const batches = Math.ceil(needed / Math.max(1, batch));
+      const unit = r.unit || 'unit';
+      const picker = userPots.length
+        ? bakePlanEquipSelect('pot', [r.id], potId, [['', '— no pot —'], ...userPots.map(p => [p.id, p.name + (p.size ? ' (' + p.size + ')' : '')])])
+        : '<button class="secondary tiny" onclick="openKitchenEquipmentForm(\'pot\')">+ Add a pot</button>';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+        <span style="flex:1;min-width:120px">${escapeHtml(r.name)}</span>
+        <span class="muted" style="font-size:0.85rem">${needed} ${escapeHtml(unit)}${needed === 1 ? '' : 's'} · ${batch}/boil · ${batches} batch${batches > 1 ? 'es' : ''}</span>
+        ${picker}
+      </div>`;
+    }).join('');
+    if (summaryEl) summaryEl.textContent = `${using.length} recipe${using.length > 1 ? 's' : ''} with a boiling step`;
+    card.style.display = '';
+  }
+
   function renderDoughContainerPlan() {
     const card = document.getElementById('container-card');
     const out = document.getElementById('container-output');
@@ -6897,6 +7003,7 @@ ${notesHtml}
       html += `<p style="${sepStyle}">${formatGrams(totalDough)} total dough across <strong>${totalContainers} container${totalContainers > 1 ? 's' : ''}</strong></p>`;
     }
 
+    const eligibleLoafCont = userContainers.filter(c => c.processTag === 'any' || c.processTag === 'loaf');
     for (let gi = 0; gi < groups.length; gi++) {
       const g = groups[gi];
       const numInGroup = g.containers.length;
@@ -6915,10 +7022,15 @@ ${notesHtml}
       const warnHtml = g.quantityWarning
         ? `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px">&#9888; ${escapeHtml(g.quantityWarning)}</div>`
         : '';
+      const grpRecipeIds = g.items.map(i => i.recipe.id);
+      const contPicker = eligibleLoafCont.length
+        ? `<div style="margin-top:6px;font-size:0.85rem"><span class="muted">Use:</span> ${bakePlanEquipSelect('container', grpRecipeIds, sharedPrefId(grpRecipeIds, 'preferredContainerIds'), [['', '— auto (smallest that fits) —'], ...eligibleLoafCont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])}</div>`
+        : '';
       html += `<div style="margin-top:12px;${topStyle}">
         <div><strong>${escapeHtml(recipeNames)}</strong>${sharedNote}${actionNote}</div>
         <div class="muted" style="font-size:0.85rem;margin-top:2px">${escapeHtml(recipeDetails)}</div>
         <div style="margin-top:6px">${containerLines}</div>
+        ${contPicker}
         ${warnHtml}
       </div>`;
     }
