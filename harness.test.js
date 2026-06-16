@@ -731,6 +731,7 @@ if (bagelR) {
   const bring = ev.find(e => /^Bring .* to a boil/.test(e.title));
   boilOk &= bo('boil-up step names the pot', !!bring && /Big Stockpot/.test(bring.title) && Array.isArray(bring.equip) && bring.equip.indexOf('Big Stockpot') >= 0);
   boilOk &= bo('boil step is equipped with the pot', boils.length > 0 && boils.every(e => Array.isArray(e.equip) && e.equip.indexOf('Big Stockpot') >= 0));
+  boilOk &= bo('boil steps are their own "boil" stage (not bake)', boils.every(e => api.getEventStage(e) === 'boil') && api.getEventStage(bring) === 'boil');
   // Change the batch size → batch count changes (no global input involved).
   bagelR.boilBatchSize = 9;
   boilOk &= bo('changing the recipe batch size re-batches (18/9 = 2)', bagelEvents({ 'seed-sourdough-bagels': 18 }).filter(e => /^Boil & top/.test(e.title)).length === 2);

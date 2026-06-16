@@ -656,6 +656,7 @@
   .schedule-row[data-stage="shape"]::before,  .schedule-event[data-stage="shape"]::before,  .stage-group[data-stage="shape"]::before  { background: #A86E2B; color: #fbf6ec; }
   .schedule-row[data-stage="proof"]::before,  .schedule-event[data-stage="proof"]::before,  .stage-group[data-stage="proof"]::before  { background: #8F5A22; color: #fbf6ec; }
   .schedule-row[data-stage="chill"]::before,  .schedule-event[data-stage="chill"]::before,  .stage-group[data-stage="chill"]::before  { background: #4F6A73; color: #eef4f6; }
+  .schedule-row[data-stage="boil"]::before,   .schedule-event[data-stage="boil"]::before,   .stage-group[data-stage="boil"]::before   { background: #C0492E; color: #fbf6ec; }
   .schedule-row[data-stage="bake"]::before,   .schedule-event[data-stage="bake"]::before,   .stage-group[data-stage="bake"]::before   { background: #5E3413; color: #fbf6ec; }
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #1F4D2E; color: #fbf6ec; }
   /* Recipe stage editor */
@@ -2275,7 +2276,7 @@
     proof:    { stage: 'proof',  active: false, kind: 'fixed',         label: 'Final proof' },
     chill:    { stage: 'chill',  active: false, kind: 'range',         label: 'Cold proof' },
     warmup:   { stage: 'proof',  active: false, kind: 'fixed',         label: 'Warm-up before bake' },
-    boil:     { stage: 'bake',   active: true,  kind: 'fixed',         label: 'Boil' },
+    boil:     { stage: 'boil',   active: true,  kind: 'fixed',         label: 'Boil' },
     bake:     { stage: 'bake',   active: false, kind: 'anchored',      label: 'Bake' },
     cool:     { stage: 'done',   active: false, kind: 'fixed',         label: 'Cool' },
     glaze:    { stage: 'done',   active: true,  kind: 'fixed',         label: 'Glaze / ice' },
@@ -2287,8 +2288,8 @@
     prep:   { bg: '#ECDCB6', fg: '#4a3618' }, levain: { bg: '#E3C98C', fg: '#4a3618' },
     mix:    { bg: '#D6AE63', fg: '#4a3618' }, fold:   { bg: '#C28C40', fg: '#3a2a12' },
     shape:  { bg: '#A86E2B', fg: '#fbf6ec' }, proof:  { bg: '#8F5A22', fg: '#fbf6ec' },
-    chill:  { bg: '#4F6A73', fg: '#eef4f6' }, bake:   { bg: '#5E3413', fg: '#fbf6ec' },
-    done:   { bg: '#1F4D2E', fg: '#fbf6ec' },
+    chill:  { bg: '#4F6A73', fg: '#eef4f6' }, boil:   { bg: '#C0492E', fg: '#fbf6ec' },
+    bake:   { bg: '#5E3413', fg: '#fbf6ec' }, done:   { bg: '#1F4D2E', fg: '#fbf6ec' },
   };
   // Default stage list per process — the numbers mirror PROCESS_TEMPLATES so a recipe
   // with no overrides derives back to identical scheduler params.
@@ -10918,7 +10919,8 @@ ${notesHtml}
     if (/^(Chill \/ rest|Into fridge|Muffins into fridge|Bagels into fridge)/.test(t)) return 'chill';
     // Warm/room-temp proofing — bulk ferment, warm-up out of the fridge, pan/final rise.
     if (/^(Bulk ferment|Muffins out of fridge|Pan rise|Final proof|Bulk rise)/.test(t)) return 'proof';
-    if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch|Bring .* to a boil|Boil)/.test(t)) return 'bake';
+    if (/^(Bring .* to a boil|Boil)/.test(t)) return 'boil';
+    if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
   }
