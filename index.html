@@ -11692,13 +11692,17 @@ ${notesHtml}
       const isMuffin = proc === 'muffin' || t.toLowerCase().includes('muffin');
       const isBagel  = proc === 'bagel'  || t.toLowerCase().includes('bagel');
 
+      // A "(muffins)"/"(bagels)" suffix means a SEPARATE levain — but only when one was
+      // actually split out. When muffins/bagels are the sole or shared process their levain
+      // lives under `shared`, so fall back to it rather than showing an empty build.
+      const levainSrc = isMuffin ? (ingData.levain.muffin || ingData.levain.shared)
+        : isBagel ? (ingData.levain.bagel || ingData.levain.shared)
+        : ingData.levain.shared;
       if (t.includes('Levain Build 1')) {
-        const src = isMuffin ? ingData.levain.muffin : isBagel ? ingData.levain.bagel : ingData.levain.shared;
-        return src ? { type: 'simple', rows: src.build1 } : null;
+        return levainSrc ? { type: 'simple', rows: levainSrc.build1 } : null;
       }
       if (t.includes('Levain Build 2')) {
-        const src = isMuffin ? ingData.levain.muffin : isBagel ? ingData.levain.bagel : ingData.levain.shared;
-        return src ? { type: 'simple', rows: src.build2 } : null;
+        return levainSrc ? { type: 'simple', rows: levainSrc.build2 } : null;
       }
 
       // Recipes relevant to this event's process
@@ -11841,7 +11845,9 @@ ${notesHtml}
       if (t.includes('Levain Build')) {
         const isMuffin = t.includes('(muffins)');
         const isBagel  = t.includes('(bagels)');
-        const info = isMuffin ? levainContInfo.muffin : isBagel ? levainContInfo.bagel : levainContInfo.shared;
+        const info = isMuffin ? (levainContInfo.muffin || levainContInfo.shared)
+          : isBagel ? (levainContInfo.bagel || levainContInfo.shared)
+          : levainContInfo.shared;
         return info ? info.name : '';
       }
       // Bulk ferment events (loaf) — autolyse/mix/folds and the bulk-ferment step all

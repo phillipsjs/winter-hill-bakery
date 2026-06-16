@@ -98,7 +98,7 @@ function seedPlan(p) { localStorageStub.setItem(PLAN_KEY, JSON.stringify(p)); }
 const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
-  buildScheduleAcrossLoafGroups, getEventStage,
+  buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
@@ -751,6 +751,27 @@ if (bagelR) {
   }
 }
 allOk &= boilOk;
+
+// ---- bake sheet: levain builds list their ingredients (starter/flour/water) ----
+console.log('\nBake-sheet levain-ingredient assertions:');
+let bsOk = true;
+function bsk(label, cond) { console.log(`  [bakesheet] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+function bakeSheetHtml(plan) {
+  api.__setPlan(plan); seedPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  try { api.renderBakeSheet(); } catch (e) { return 'THREW:' + e.message; }
+  const h = getEl('bakesheet-content').innerHTML;
+  return typeof h === 'string' ? h : '';
+}
+bsOk &= bsk('loaf levain build lists its ingredients', /Levain Build 1/.test(bakeSheetHtml({ [SEED.batard]: 8 })) && /Mature starter/.test(bakeSheetHtml({ [SEED.batard]: 8 })));
+// Regression: muffin-only / bagel-only levain builds carry a "(muffins)"/"(bagels)" title
+// but their levain is the shared one — must still list ingredients, not render empty.
+bsOk &= bsk('muffin-only levain build lists ingredients', /Mature starter/.test(bakeSheetHtml({ [SEED.muffin]: 12 })));
+bsOk &= bsk('bagel-only levain build lists ingredients', /Mature starter/.test(bakeSheetHtml({ [SEED.bagel]: 10 })));
+allOk &= bsOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
