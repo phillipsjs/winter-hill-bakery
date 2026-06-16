@@ -991,6 +991,7 @@
         <div class="scheduler-overrides">
           <div id="r-capacity-mixer"></div>
           <div class="row" id="r-batch-size-row" style="display:none"><label style="width:160px">Batch size</label><input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" style="width:90px;flex:none" /> <span class="muted">units/batch — blank auto-fits</span></div>
+          <div id="r-capacity-boil" style="margin-top:6px"></div>
           <div id="r-oven-group" style="margin-top:6px">
             <div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Oven</div>
             <div class="row" id="r-oven-cap-row"><label style="width:160px">Oven capacity</label><input type="number" id="r-oven-cap" min="0" step="1" /> <span class="muted">per oven load (3 decks)</span></div>
@@ -7794,7 +7795,7 @@ ${notesHtml}
     // Mixer + oven preference render into the "Capacity & batching" section. Mixer goes
     // first; the oven preference is grouped with the oven/deck-capacity rows under the
     // static "Oven" heading.
-    let mixerHtml = '', ovenHtml = '';
+    let mixerHtml = '', ovenHtml = '', boilHtml = '';
     if (!isLevain) {
       const relevantMixers = userMixers.filter(function(m) { return m.recipeCapacities && Object.keys(m.recipeCapacities).length > 0; });
       mixerHtml += '<div style="margin-bottom:14px"><div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Mixer</div>';
@@ -7832,28 +7833,30 @@ ${notesHtml}
       }
     }
 
-    // Boiling: pot + per-boil batch size. Shown only for recipes whose stage list has a
-    // boil step (toggled live by updateBoilingSectionVisibility from the stage editor).
+    // Boiling: per-boil batch size lives in Capacity & batching (rendered into
+    // #r-capacity-boil). Shown only for recipes whose stage list has a boil step (toggled
+    // live by updateBoilingSectionVisibility). The pot itself is picked on the Boil step.
     if (!isLevain) {
-      let boilHtml = '<div id="r-boil-group" style="margin-bottom:14px;display:none">'
+      boilHtml = '<div id="r-boil-group" style="margin-top:6px;display:none">'
         + '<div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Boiling</div>';
       if (userPots.length === 0) {
         boilHtml += '<p class="muted" style="font-size:0.9rem;margin:0 0 6px">No pots added yet. <button class="secondary tiny" onclick="openKitchenEquipmentForm(\'pot\')">+ Add to Kitchen</button></p>';
       } else {
-        boilHtml += '<p class="muted" style="font-size:0.85rem;margin:0 0 6px">Pick the pot on the recipe\'s <strong>Boil</strong> step above.</p>';
+        boilHtml += '<p class="muted" style="font-size:0.85rem;margin:0 0 6px">Pick the pot on the recipe\'s <strong>Boil</strong> step.</p>';
       }
-      boilHtml += '<div class="row" style="align-items:center;gap:8px"><label style="width:120px;font-size:0.9rem">Per boil</label>'
-        + '<input type="number" id="r-boil-batch" min="1" step="1" style="width:90px;flex:none" placeholder="' + SCHED.BAGEL_BATCH_SIZE + '" value="' + escapeAttr(String(prefBoilBatch)) + '" /> <span class="muted" style="font-size:0.85rem">units boiled per batch</span></div>';
+      boilHtml += '<div class="row" style="align-items:center;gap:8px"><label style="width:160px">Per boil</label>'
+        + '<input type="number" id="r-boil-batch" min="1" step="1" style="width:90px;flex:none" placeholder="' + SCHED.BAGEL_BATCH_SIZE + '" value="' + escapeAttr(String(prefBoilBatch)) + '" /> <span class="muted">units boiled per batch</span></div>';
       boilHtml += '</div>';
-      html += boilHtml;
     }
 
     el.innerHTML = html;
-    updateBoilingSectionVisibility();
     const mixEl = document.getElementById('r-capacity-mixer');
     if (mixEl) mixEl.innerHTML = mixerHtml;
     const ovenEl = document.getElementById('r-capacity-oven');
     if (ovenEl) ovenEl.innerHTML = ovenHtml;
+    const boilEl = document.getElementById('r-capacity-boil');
+    if (boilEl) boilEl.innerHTML = boilHtml;
+    updateBoilingSectionVisibility();
   }
 
   function openKitchenEquipmentForm(type) {
