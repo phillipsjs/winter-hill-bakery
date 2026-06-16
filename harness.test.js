@@ -103,7 +103,7 @@ const exportsTail = `
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
-  pantryLinkOptionsHtml, SEED_PANTRY, suggestPantryLinkFor,
+  pantryLinkOptionsHtml, SEED_PANTRY, suggestPantryLinkFor, withMigratedStages,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
   __editorStages: () => _editorStages,
@@ -660,6 +660,23 @@ linkOk &= lk('suggest links a kitchen ingredient by name', api.suggestPantryLink
 linkOk &= lk('suggest links levain names to __levain__', api.suggestPantryLinkFor('Levain') === '__levain__');
 linkOk &= lk('suggest returns unlinked for unknown names', api.suggestPantryLinkFor('Unobtanium') === '');
 allOk &= linkOk;
+
+// ---- legacy stage migration: recipes saved before weigh was templated get a weigh stage ----
+console.log('\nLegacy stage-migration assertions:');
+let migOk = true;
+function mg(label, cond) { console.log(`  [migrate] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+// A bagel recipe persisted with stages but NO weigh step (pre-weigh-template).
+const legacyBagel = { id: 'lg-bagel', name: 'Legacy Bagels', processType: 'bagel', unit: 'bagel', loafWeight: 130,
+  ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }, { name: 'Water', pct: 55 }, { name: 'Salt', pct: 2 }, { name: 'Levain', pct: 20 }],
+  stages: api.stageTemplateFor('bagel').filter(s => s.type !== 'weigh') };
+const migrated = api.withMigratedStages(legacyBagel);
+migOk &= mg('legacy bagel without a weigh stage gains one', migrated.stages.some(s => s.type === 'weigh'));
+migOk &= mg('the weigh stage is first', migrated.stages[0].type === 'weigh');
+migOk &= mg('existing stages are preserved', migrated.stages.some(s => s.type === 'bake') && migrated.stages.some(s => s.type === 'mix'));
+// A recipe that already has weigh is left unchanged in count.
+const okBagel = { ...legacyBagel, id: 'ok-bagel', stages: api.stageTemplateFor('bagel') };
+migOk &= mg('a recipe that already has weigh is unchanged', api.withMigratedStages(okBagel).stages.length === okBagel.stages.length);
+allOk &= migOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

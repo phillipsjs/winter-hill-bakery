@@ -5676,16 +5676,22 @@ ${notesHtml}
       localStorage.setItem(BAGEL_INTRODUCED_KEY, '1');
     }
     ensureLevainFirst(list);
-    // Migrate to the stage model: any recipe without a stage list gets one derived
-    // from its process template + saved overrides (so legacy recipes are editable as
-    // stages and the scheduler keeps reading the same derived params).
-    return list.map(r => {
-      const withType = { ...r, processType: getProcessType(r) };
-      if (withType.processType !== 'levain' && (!Array.isArray(withType.stages) || withType.stages.length === 0)) {
-        withType.stages = stagesFromRecipe(withType);
-      }
-      return withType;
-    });
+    return list.map(withMigratedStages);
+  }
+  // Migrate a recipe to the current stage model: derive a stage list when missing, and
+  // ensure an existing list has a weigh step (recipes saved before weigh was added to the
+  // templates predate it). Schedule-neutral — the schedulers already emit/aggregate weigh;
+  // this just makes the stage list editable and complete. Applied on every load path.
+  function withMigratedStages(r) {
+    const withType = { ...r, processType: getProcessType(r) };
+    if (withType.processType === 'levain') return withType;
+    if (!Array.isArray(withType.stages) || withType.stages.length === 0) {
+      withType.stages = stagesFromRecipe(withType);
+    } else if (!withType.stages.some(s => s.type === 'weigh')) {
+      const tmplWeigh = (STAGE_TEMPLATES[withType.processType] || []).find(s => s.type === 'weigh');
+      withType.stages = [cloneStage(tmplWeigh || { type: 'weigh', duration: { kind: 'fixed', min: 5 } }), ...withType.stages];
+    }
+    return withType;
   }
   function saveRecipes() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
@@ -12362,7 +12368,7 @@ ${notesHtml}
     try {
       const [remoteRecipes, remoteBakes, remotePantry, remoteSettings] = await Promise.all([fetchFromGist(), fetchBakesFromGist(), fetchPantryFromGist(), fetchSettingsFromGist()]);
       if (Array.isArray(remoteRecipes) && remoteRecipes.length > 0) {
-        recipes = remoteRecipes.map(r => ({ ...r, processType: getProcessType(r) }));
+        recipes = remoteRecipes.map(withMigratedStages);
         ensureLevainFirst(recipes);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
         renderPlan();
