@@ -103,7 +103,7 @@ const exportsTail = `
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
-  pantryLinkOptionsHtml,
+  pantryLinkOptionsHtml, SEED_PANTRY, suggestPantryLinkFor,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
   __editorStages: () => _editorStages,
@@ -641,14 +641,24 @@ api.__setPantry([
   { id: 'k-bread', name: 'Bread flour', requiresMilling: false },
   { id: 'k-rye', name: 'Whole rye', requiresMilling: true },
 ]);
-const optLinked = api.pantryLinkOptionsHtml('k-rye');
+const optLinked = api.pantryLinkOptionsHtml('k-rye', true);
 linkOk &= lk('links a pantry item by id (selected)', /value="k-rye" selected/.test(optLinked));
 linkOk &= lk('flags milling flours with a "mills" tag', /Whole rye · mills/.test(optLinked));
-linkOk &= lk('offers a no-cost link', /__free__/.test(optLinked) && /Add kitchen ingredient/.test(optLinked));
-const optDangling = api.pantryLinkOptionsHtml('k-removed');
+linkOk &= lk('Levain is linkable; no "no cost" option', /value="__levain__"/.test(optLinked) && !/__free__/.test(optLinked) && /Add kitchen ingredient/.test(optLinked));
+linkOk &= lk('Levain link suppressed when editing the levain recipe', !/value="__levain__"/.test(api.pantryLinkOptionsHtml('', false)));
+const optDangling = api.pantryLinkOptionsHtml('k-removed', true);
 linkOk &= lk('shows a removed link as "(linked item removed)"', /linked item removed/.test(optDangling));
-const optEmpty = api.pantryLinkOptionsHtml('');
+const optEmpty = api.pantryLinkOptionsHtml('', true);
 linkOk &= lk('unlinked default has no selected pantry item', /value="" selected/.test(optEmpty) && !/value="k-rye" selected/.test(optEmpty));
+
+// Default kitchen ingredients exist (incl. water) and a levain link costs from the levain recipe.
+linkOk &= lk('SEED_PANTRY ships defaults including Water', Array.isArray(api.SEED_PANTRY) && api.SEED_PANTRY.some(p => p.name === 'Water') && api.SEED_PANTRY.length >= 8);
+
+// suggestPantryLinkFor resolves existing-row links on open (by name + levain).
+api.__setPantry([{ id: 'k-water', name: 'Water', requiresMilling: false }, { id: 'k-rye', name: 'Whole rye', requiresMilling: true }]);
+linkOk &= lk('suggest links a kitchen ingredient by name', api.suggestPantryLinkFor('Water') === 'k-water');
+linkOk &= lk('suggest links levain names to __levain__', api.suggestPantryLinkFor('Levain') === '__levain__');
+linkOk &= lk('suggest returns unlinked for unknown names', api.suggestPantryLinkFor('Unobtanium') === '');
 allOk &= linkOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');

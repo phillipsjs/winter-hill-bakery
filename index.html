@@ -1966,6 +1966,26 @@
   const CONTAINERS_KEY = 'cottage-bakery-containers-v1';
   const CATEGORIES_KEY = 'cottage-bakery-categories-v1';
   const BUILTIN_CATEGORIES = ['Flours', 'Water', 'Levain & starter', 'Salt', 'Sweeteners', 'Oils & fats', 'Yeast', 'Dairy', 'Other'];
+  // Default kitchen ingredients so every recipe ingredient can be linked out of the box
+  // (recipes now require a link for cost + milling). Costs are editable starting points;
+  // names match the seed recipes so they auto-link. Fixed ids keep links stable.
+  const SEED_PANTRY = [
+    { id: 'seed-pan-bread-flour',  name: 'Bread flour',           weightG: 5000, pricePaid: 9.00,  costPerGram: 0.0018,  category: 'Flours',       requiresMilling: false },
+    { id: 'seed-pan-ap-flour',     name: 'All-purpose flour',     weightG: 5000, pricePaid: 7.50,  costPerGram: 0.0015,  category: 'Flours',       requiresMilling: false },
+    { id: 'seed-pan-hg-flour',     name: 'High-gluten bread flour', weightG: 5000, pricePaid: 12.00, costPerGram: 0.0024, category: 'Flours',      requiresMilling: false },
+    { id: 'seed-pan-rye-flour',    name: 'Rye flour',             weightG: 2268, pricePaid: 8.00,  costPerGram: 0.0035,  category: 'Flours',       requiresMilling: false },
+    { id: 'seed-pan-red-wheat',    name: 'Red wheat (Redeemer)',  weightG: 2268, pricePaid: 9.00,  costPerGram: 0.0040,  category: 'Flours',       requiresMilling: false },
+    { id: 'seed-pan-water',        name: 'Water',                 weightG: 1000, pricePaid: 0,     costPerGram: 0,       category: 'Water',        requiresMilling: false },
+    { id: 'seed-pan-salt',         name: 'Salt',                  weightG: 1360, pricePaid: 2.00,  costPerGram: 0.0015,  category: 'Salt',         requiresMilling: false },
+    { id: 'seed-pan-sugar',        name: 'Sugar',                 weightG: 1814, pricePaid: 2.50,  costPerGram: 0.0014,  category: 'Sweeteners',   requiresMilling: false },
+    { id: 'seed-pan-honey',        name: 'Honey',                 weightG: 680,  pricePaid: 6.00,  costPerGram: 0.0088,  category: 'Sweeteners',   requiresMilling: false },
+    { id: 'seed-pan-olive-oil',    name: 'Olive oil',             weightG: 1000, pricePaid: 12.00, costPerGram: 0.0120,  category: 'Oils & fats',  requiresMilling: false },
+    { id: 'seed-pan-butter',       name: 'Butter',                weightG: 454,  pricePaid: 5.00,  costPerGram: 0.0110,  category: 'Oils & fats',  requiresMilling: false },
+    { id: 'seed-pan-milk',         name: 'Milk',                  weightG: 3785, pricePaid: 4.00,  costPerGram: 0.0011,  category: 'Dairy',        requiresMilling: false },
+    { id: 'seed-pan-instant-yeast', name: 'Instant yeast',        weightG: 454,  pricePaid: 8.00,  costPerGram: 0.0176,  category: 'Yeast',        requiresMilling: false },
+    { id: 'seed-pan-adry-yeast',   name: 'Active dry yeast',      weightG: 454,  pricePaid: 7.00,  costPerGram: 0.0154,  category: 'Yeast',        requiresMilling: false },
+    { id: 'seed-pan-malt',         name: 'Diastatic malt powder', weightG: 454,  pricePaid: 9.00,  costPerGram: 0.0198,  category: 'Other',        requiresMilling: false },
+  ];
   const DOUGH_DENSITY_G_PER_ML = 0.85;   // typical bread dough ~75% hydration
   const CONTAINER_FILL_FACTOR = 0.45;    // headroom for bulk-ferment rise (~1.8×)
   const LEVAIN_DENSITY_G_PER_ML = 1.0;  // levain is close to water density
@@ -3458,9 +3478,13 @@ ${notesHtml}
   function loadPantryLocally() {
     try {
       const raw = localStorage.getItem(PANTRY_LOCAL_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length) return arr;
+      }
     } catch(e) {}
-    return [];
+    // Empty / first run: start from the default kitchen ingredients.
+    return SEED_PANTRY.map(p => ({ ...p }));
   }
 
   function savePantryLocally() {
@@ -3630,20 +3654,24 @@ ${notesHtml}
     const flourWeight = recipe.loafWeight / (sumPct / 100);
     let total = 0, anyLinked = false;
     for (const ing of recipe.ingredients) {
-      // Levain ingredient in a bread sourdough recipe: cost from the levain recipe.
-      // Restricted to the bread family so a "starter" ingredient in a simple/enriched
-      // recipe isn't mistaken for the sourdough leaven.
-      if (isLevainIngredient(ing.name) && processCategory(getProcessType(recipe)) === 'bread' && recipe.leavening !== 'commercial-yeast') {
+      // Levain: cost from the levain recipe. Either explicitly linked (__levain__) or
+      // auto-detected by name in a bread sourdough recipe (the name path is restricted to
+      // the bread family so a "starter" in a simple/enriched recipe isn't mistaken for it).
+      const isLevainLink = ing.pantryId === '__levain__';
+      const isAutoLevain = isLevainIngredient(ing.name) && processCategory(getProcessType(recipe)) === 'bread' && recipe.leavening !== 'commercial-yeast';
+      if (isLevainLink || isAutoLevain) {
         const cpg = computeLevainCostPerGram();
         if (cpg != null) {
           total += flourWeight * (Number(ing.pct) / 100) * cpg;
+          anyLinked = true;
+        } else if (isLevainLink) {
           anyLinked = true;
         }
         continue;
       }
       if (!ing.pantryId) continue;
       anyLinked = true;
-      if (ing.pantryId === '__free__') continue; // $0 cost — contributes nothing to total
+      if (ing.pantryId === '__free__') continue; // legacy $0 link — contributes nothing
       const p = pantryItems.find(x => x.id === ing.pantryId);
       if (!p || !p.costPerGram) continue;
       const grams = flourWeight * (Number(ing.pct) / 100);
@@ -7050,8 +7078,7 @@ ${notesHtml}
               <select class="prices-pantry" data-recipe-id="${rid}" data-ing-idx="${idx}"
                 data-ing-name="${escapeAttr(ing.name)}"
                 onchange="onPricesPantryChange(this, '${rid}')">
-                <option value="">— no cost link —</option>
-                <option value="__free__"${ing.pantryId === '__free__' ? ' selected' : ''}>no cost ($0.00)</option>
+                <option value="">— not linked —</option>
                 ${pantryOptions}
                 <option value="__add_pantry__">+ Add new pantry item…</option>
               </select>
@@ -7781,6 +7808,9 @@ ${notesHtml}
     const pct = prefill && prefill.pct !== undefined ? prefill.pct : '';
     const flourType = prefill ? (prefill.flourType || detectFlourType(name)) : '';
     const amountPlaceholder = recipeEntryMode === 'grams' ? 'g' : '%';
+    // Pre-fill the kitchen-ingredient link: the saved one, else a suggestion by name so
+    // existing recipes surface (and persist on save) a match against the default pantry.
+    const linkId = (prefill && prefill.pantryId) ? prefill.pantryId : suggestPantryLinkFor(name);
     row.innerHTML = `
       <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
       <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
@@ -7790,7 +7820,7 @@ ${notesHtml}
         <option value="specialty"${flourType === 'specialty' ? ' selected' : ''}>Specialty flour</option>
       </select>
       <select class="ing-pantry" onchange="onIngredientPantryChange(this)" title="Link to a kitchen ingredient — drives cost and flags whether this flour needs milling">
-        ${pantryLinkOptionsHtml(prefill ? prefill.pantryId : '')}
+        ${pantryLinkOptionsHtml(linkId, editorAllowsLevainLink())}
       </select>
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
@@ -7800,26 +7830,44 @@ ${notesHtml}
 
   // Options for an ingredient's kitchen-ingredient link. Linking by pantry id keeps the
   // recipe aligned even if the pantry item is renamed; a "mills" tag surfaces the flag that
-  // drives the milling step. A dangling id (pantry item deleted) shows as removed.
-  function pantryLinkOptionsHtml(selectedId) {
+  // drives the milling step. Levain is linkable too (its cost comes from the levain recipe).
+  // A dangling id (pantry item deleted) shows as removed.
+  function pantryLinkOptionsHtml(selectedId, allowLevain) {
     const sel = selectedId || '';
     let opts = `<option value=""${sel === '' ? ' selected' : ''}>— link kitchen ingredient —</option>`;
-    opts += `<option value="__free__"${sel === '__free__' ? ' selected' : ''}>no cost ($0.00)</option>`;
+    if (allowLevain !== false) {
+      opts += `<option value="__levain__"${sel === '__levain__' ? ' selected' : ''}>Levain (from your levain recipe)</option>`;
+    }
     opts += pantryItems.map(p =>
       `<option value="${escapeAttr(p.id)}"${sel === p.id ? ' selected' : ''}>${escapeHtml(p.name)}${p.requiresMilling ? ' · mills' : ''}</option>`
     ).join('');
-    if (sel && sel !== '__free__' && !pantryItems.some(p => p.id === sel)) {
+    if (sel && sel !== '__levain__' && sel !== '__free__' && !pantryItems.some(p => p.id === sel)) {
       opts += `<option value="${escapeAttr(sel)}" selected>(linked item removed)</option>`;
     }
     opts += `<option value="__add_pantry__">+ Add kitchen ingredient…</option>`;
     return opts;
   }
+  // Best link for an ingredient name: the levain pseudo-link for levain/starter names,
+  // else an exact pantry-name match, else unlinked. Used to suggest links for existing rows.
+  function suggestPantryLinkFor(name) {
+    const raw = (name || '').trim();
+    if (!raw) return '';
+    if (isLevainIngredient(raw) && editorAllowsLevainLink()) return '__levain__';
+    const match = pantryItems.find(p => p.name.toLowerCase() === raw.toLowerCase());
+    return match ? match.id : '';
+  }
+  // Levain is offered as a link target except when editing the levain recipe itself.
+  function editorAllowsLevainLink() {
+    const pt = document.getElementById('r-process-type');
+    return !pt || pt.value !== 'levain';
+  }
   // Rebuild every editor row's kitchen-ingredient dropdown, preserving each current link.
   // Called when the pantry changes (add/edit/delete) so the editor stays in sync.
   function refreshIngredientPantryOptions() {
+    const allowLevain = editorAllowsLevainLink();
     document.querySelectorAll('#r-ingredients .ing-pantry').forEach(selEl => {
       const cur = selEl.value;
-      selEl.innerHTML = pantryLinkOptionsHtml(cur);
+      selEl.innerHTML = pantryLinkOptionsHtml(cur, allowLevain);
       selEl.value = cur;
     });
   }
@@ -11823,13 +11871,12 @@ ${notesHtml}
         rebalanceAnchors();
       }
     }
-    // Auto-link to a matching kitchen ingredient when the row isn't linked yet, so
-    // recipe ingredients stay aligned to the pantry (and milling flags) by default.
+    // Auto-link to a matching kitchen ingredient (or the levain) when the row isn't linked
+    // yet, so recipe ingredients stay aligned to the pantry (and milling flags) by default.
     const pantrySel = row.querySelector('.ing-pantry');
     if (pantrySel && !pantrySel.value) {
-      const nm = (input.value || '').trim().toLowerCase();
-      const match = nm ? pantryItems.find(p => p.name.toLowerCase() === nm) : null;
-      if (match) { pantrySel.value = match.id; pantrySel.dataset.prevValue = match.id; updateRecipeEditorCostDisplay(); }
+      const linkId = suggestPantryLinkFor(input.value);
+      if (linkId) { pantrySel.value = linkId; pantrySel.dataset.prevValue = linkId; updateRecipeEditorCostDisplay(); }
     }
     updateFlourSummary();
   }
