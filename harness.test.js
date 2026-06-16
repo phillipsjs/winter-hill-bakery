@@ -55,7 +55,6 @@ const presetInputs = {
   'coldproof-bagel-input': '',
   'build1-ratio-input': '',
   'build2-ratio-input': '',
-  'batchsize-bagel-input': '',
   'deadline-default-input': '',
 };
 function getEl(id) {
@@ -113,6 +112,7 @@ const exportsTail = `
   __setBannetons: (b) => { userBannetons = b; },
   __setPantry: (p) => { pantryItems = p; },
   __setMixers: (m) => { userMixers = m; },
+  __setPots: (p) => { userPots = p; },
   __recipes: () => recipes,
 };`;
 
@@ -156,7 +156,7 @@ function run(name, plan, deadlineDate, recipeDeadlines) {
   els['deadline-default-input'].value = fmtLocal(deadlineDate);
   // reset cold-proof/bake-time inputs to auto each run
   ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input',
-   'bake-time-default-input','build1-ratio-input','build2-ratio-input','batchsize-bagel-input']
+   'bake-time-default-input','build1-ratio-input','build2-ratio-input']
     .forEach(id => { els[id].value = ''; });
   if (recipeDeadlines) localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify(recipeDeadlines));
   else localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
@@ -695,6 +695,39 @@ mxOk &= mx('non-mix stages do NOT list mixers', !/mixer:mx1/.test(bulkVessel) &&
 const removedMixer = api.stageVesselSelectHtml({ type: 'mix', vessel: 'mixer:gone', duration: { kind: 'fixed', min: 10 } }, 0);
 mxOk &= mx('a removed mixer link stays visible', /value="mixer:gone" selected/.test(removedMixer) && /removed mixer/.test(removedMixer));
 allOk &= mxOk;
+
+// ---- boiling: per-recipe batch size + pot drive the bagel boil ----
+console.log('\nBoiling (pot + per-recipe batch size) assertions:');
+let boilOk = true;
+function bo(label, cond) { console.log(`  [boil] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+function bagelEvents(plan) {
+  api.__setPlan(plan); seedPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  return api.__sr().events.filter(e => e.process === 'bagel');
+}
+api.__setPots([{ id: 'pot1', name: 'Big Stockpot', size: '20 qt', quantity: 1 }]);
+const bagelR = api.__recipes().find(r => r.id === 'seed-sourdough-bagels');
+if (bagelR) {
+  bagelR.boilBatchSize = 6;
+  bagelR.preferredPotId = 'pot1';
+  const ev = bagelEvents({ 'seed-sourdough-bagels': 18 });
+  const boils = ev.filter(e => /^Boil & top/.test(e.title));
+  boilOk &= bo('boil batches = ceil(total / per-recipe batch size) — 18/6 = 3', boils.length === 3);
+  const bring = ev.find(e => /^Bring .* to a boil/.test(e.title));
+  boilOk &= bo('boil-up step names the pot', !!bring && /Big Stockpot/.test(bring.title) && Array.isArray(bring.equip) && bring.equip.indexOf('Big Stockpot') >= 0);
+  boilOk &= bo('boil step is equipped with the pot', boils.length > 0 && boils.every(e => Array.isArray(e.equip) && e.equip.indexOf('Big Stockpot') >= 0));
+  // Change the batch size → batch count changes (no global input involved).
+  bagelR.boilBatchSize = 9;
+  boilOk &= bo('changing the recipe batch size re-batches (18/9 = 2)', bagelEvents({ 'seed-sourdough-bagels': 18 }).filter(e => /^Boil & top/.test(e.title)).length === 2);
+  // No batch size set → falls back to the default of 10.
+  delete bagelR.boilBatchSize;
+  boilOk &= bo('no batch size falls back to default 10 (12 → 2 batches)', bagelEvents({ 'seed-sourdough-bagels': 12 }).filter(e => /^Boil & top/.test(e.title)).length === 2);
+  delete bagelR.preferredPotId;
+}
+allOk &= boilOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

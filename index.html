@@ -1147,6 +1147,15 @@
           <div id="mixer-list" style="margin-top:4px"></div>
         </div>
 
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <h3 style="margin:0;font-size:1rem">Pots (boiling)</h3>
+            <button onclick="showPotAddForm();event.stopPropagation()" class="secondary tiny">+ Add pot</button>
+          </div>
+          <p class="muted" style="margin:0 0 4px;font-size:0.88rem">Add the pot(s) you boil in (e.g. for bagels). Recipes with a boiling step pick a pot and set how many they boil per batch.</p>
+          <div id="pot-list" style="margin-top:4px"></div>
+        </div>
+
       </details>
     </div>
 
@@ -1297,6 +1306,18 @@
         <button onclick="saveMixer()">Save</button>
       </div>
       <p id="mixer-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
+    </div>
+
+    <div id="pot-add-form" class="card" style="display:none">
+      <h3 style="margin:0 0 12px" id="pot-add-form-title">Add pot</h3>
+      <div class="row"><label style="width:160px">Name</label><input type="text" id="pot-name" placeholder='e.g. Boiling pot' /></div>
+      <div class="row" style="margin-top:8px"><label style="width:160px">Size</label><input type="text" id="pot-size" placeholder='e.g. 20 qt / 12&quot;' style="width:160px;flex:none" /></div>
+      <div class="row" style="margin-top:8px"><label style="width:160px">Quantity</label><input type="number" id="pot-qty" min="1" step="1" style="width:80px;flex:none" placeholder="1" /></div>
+      <div class="row" style="gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="secondary" onclick="hidePotAddForm()">Cancel</button>
+        <button onclick="savePot()">Save</button>
+      </div>
+      <p id="pot-add-msg" style="color:var(--danger);font-size:0.85rem;margin:4px 0 0"></p>
     </div>
 
   </section>
@@ -1477,10 +1498,6 @@
               <option value="42-46">42–46 hours</option>
               <option value="44-48">44–48 hours</option>
             </select>
-          </div>
-          <div class="row" id="batchsize-bagel-row" style="align-items: center; gap: 10px;">
-            <label>Batch size:</label>
-            <input type="number" id="batchsize-bagel-input" class="settings-select" min="1" step="1" placeholder="10" style="flex:1; min-width:0;" />
           </div>
         </div>
 
@@ -3537,7 +3554,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '' };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '' };
   }
 
   function applyRemoteSettings(settings) {
@@ -3567,6 +3584,10 @@ ${notesHtml}
     if (Array.isArray(settings.mixers)) {
       userMixers = settings.mixers;
       saveMixersLocally();
+    }
+    if (Array.isArray(settings.pots)) {
+      userPots = settings.pots;
+      savePotsLocally();
     }
     if (Array.isArray(settings.containers)) {
       userContainers = settings.containers;
@@ -4782,8 +4803,8 @@ ${notesHtml}
   function pruneEquipmentRefs(field, id) {
     let changed = false;
     recipes.forEach(function(r) {
-      if (field === 'preferredOvenId') {
-        if (r.preferredOvenId === id) { r.preferredOvenId = null; changed = true; }
+      if (field === 'preferredOvenId' || field === 'preferredPotId') {
+        if (r[field] === id) { r[field] = null; changed = true; }
       } else if (Array.isArray(r[field]) && r[field].indexOf(id) !== -1) {
         r[field] = r[field].filter(function(x) { return x !== id; });
         changed = true;
@@ -5389,6 +5410,85 @@ ${notesHtml}
   }
   // ── end Mixers ───────────────────────────────────────────────────────────
 
+  // ── Pots (boiling vessels) ───────────────────────────────────────────────
+  const KITCHEN_POTS_KEY = 'whb-kitchen-pots-v1';
+  let userPots = loadPotsLocally();
+  function loadPotsLocally() {
+    try { const r = localStorage.getItem(KITCHEN_POTS_KEY); if (!r) return []; return JSON.parse(r); } catch(e) { return []; }
+  }
+  function savePotsLocally() { localStorage.setItem(KITCHEN_POTS_KEY, JSON.stringify(userPots)); }
+  function renderPots() {
+    const listEl = document.getElementById('pot-list');
+    if (!listEl) return;
+    if (userPots.length === 0) {
+      listEl.innerHTML = '<p class="muted" style="margin:4px 0;font-size:0.88rem">No pots added yet.</p>';
+      return;
+    }
+    listEl.innerHTML = userPots.map(function(p) {
+      return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="flex:1;font-weight:500">' + escapeHtml(p.name) + '</span>'
+        + (p.size ? '<span class="muted" style="font-size:0.88rem">' + escapeHtml(p.size) + '</span>' : '')
+        + '<span class="muted" style="font-size:0.88rem">qty ' + (p.quantity || 1) + '</span>'
+        + '<button class="secondary tiny" onclick="showPotAddForm(\'' + p.id + '\')">Edit</button>'
+        + '<button class="secondary tiny" onclick="removePot(\'' + p.id + '\')">Remove</button>'
+        + '</div>';
+    }).join('');
+  }
+  function showPotAddForm(editId) {
+    const form = document.getElementById('pot-add-form');
+    document.getElementById('pot-add-msg').textContent = '';
+    if (editId && typeof editId === 'string') {
+      const item = userPots.find(function(p) { return p.id === editId; });
+      if (item) {
+        document.getElementById('pot-name').value = item.name;
+        document.getElementById('pot-size').value = item.size || '';
+        document.getElementById('pot-qty').value = item.quantity || 1;
+        document.getElementById('pot-add-form-title').textContent = 'Edit pot';
+        form.dataset.editId = editId;
+      }
+    } else {
+      document.getElementById('pot-name').value = '';
+      document.getElementById('pot-size').value = '';
+      document.getElementById('pot-qty').value = '';
+      document.getElementById('pot-add-form-title').textContent = 'Add pot';
+      form.dataset.editId = '';
+    }
+    form.style.display = '';
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function hidePotAddForm() {
+    document.getElementById('pot-add-form').style.display = 'none';
+    document.getElementById('pot-add-form').dataset.editId = '';
+  }
+  function savePot() {
+    const name = document.getElementById('pot-name').value.trim();
+    const size = document.getElementById('pot-size').value.trim();
+    const qty = parseInt(document.getElementById('pot-qty').value, 10);
+    const msgEl = document.getElementById('pot-add-msg');
+    if (!name) { msgEl.textContent = 'Name is required.'; return; }
+    const quantity = (Number.isFinite(qty) && qty >= 1) ? qty : 1;
+    const editId = document.getElementById('pot-add-form').dataset.editId;
+    const newItem = { id: editId || ('pot-' + Math.random().toString(36).slice(2, 10)), name, size, quantity };
+    if (editId) {
+      const idx = userPots.findIndex(function(p) { return p.id === editId; });
+      if (idx >= 0) userPots[idx] = newItem; else userPots.push(newItem);
+    } else {
+      userPots.push(newItem);
+    }
+    savePotsLocally();
+    hidePotAddForm();
+    renderPots();
+    pushSettingsToGist().catch(function() {});
+  }
+  function removePot(id) {
+    userPots = userPots.filter(function(p) { return p.id !== id; });
+    pruneEquipmentRefs('preferredPotId', id);
+    savePotsLocally();
+    renderPots();
+    pushSettingsToGist().catch(function() {});
+  }
+  // ── end Pots ─────────────────────────────────────────────────────────────
+
   function renderPanPlan() {
     const card = document.getElementById('pan-card');
     const out = document.getElementById('pan-output');
@@ -5878,7 +5978,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderKitchenWindows(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderPots(); renderKitchenWindows(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') { renderRecipeDeadlines(); renderSchedule(); }
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -7391,7 +7491,11 @@ ${notesHtml}
     const prefMixerIds = Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(function(e) { return e.value; });
     const prefOvenEl = document.getElementById('r-pref-oven');
     const prefOvenId = prefOvenEl ? prefOvenEl.value : '';
-    renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredMixerIds: prefMixerIds, preferredOvenId: prefOvenId });
+    const prefPotEl = document.getElementById('r-pref-pot');
+    const prefPotId = prefPotEl ? prefPotEl.value : '';
+    const boilBatchEl = document.getElementById('r-boil-batch');
+    const boilBatch = boilBatchEl ? boilBatchEl.value : '';
+    renderRecipeEquipment(processType, { preferredContainerIds: prefContainerIds, preferredBannetonIds: prefBannetonIds, preferredPanIds: prefPanIds, preferredMixerIds: prefMixerIds, preferredOvenId: prefOvenId, preferredPotId: prefPotId, boilBatchSize: boilBatch });
   }
 
   function onRecipePanCheck(checkbox) {
@@ -7471,10 +7575,16 @@ ${notesHtml}
     }
   }
 
+  // Show the recipe's Boiling (pot + per-boil) section only when its stages include a boil.
+  function updateBoilingSectionVisibility() {
+    const g = document.getElementById('r-boil-group');
+    if (g) g.style.display = _editorStages.some(s => s.type === 'boil') ? '' : 'none';
+  }
   function renderStageEditor() {
     const list = document.getElementById('r-stages-list');
     if (!list) return;
     syncEditorMillStage(); // keep the ingredient-controlled mill step in sync on every render
+    updateBoilingSectionVisibility(); // boil step present ⇒ show the Boiling equipment section
     if (!_editorStages.length) {
       list.innerHTML = '<p class="muted" style="font-size:0.85rem;margin:4px 0">No steps yet — add one below or reset to the process template.</p>';
     } else {
@@ -7589,6 +7699,8 @@ ${notesHtml}
     const prefPans = (prefs && prefs.preferredPanIds) || [];
     const prefMixers = (prefs && prefs.preferredMixerIds) || [];
     const prefOven = (prefs && prefs.preferredOvenId) || '';
+    const prefPot = (prefs && prefs.preferredPotId) || '';
+    const prefBoilBatch = (prefs && prefs.boilBatchSize != null) ? prefs.boilBatchSize : '';
     const isLoaf = processType === 'sourdough-loaf';
     const isLevain = processType === 'levain';
     const isSimple = processType === 'simple';
@@ -7709,7 +7821,27 @@ ${notesHtml}
       }
     }
 
+    // Boiling: pot + per-boil batch size. Shown only for recipes whose stage list has a
+    // boil step (toggled live by updateBoilingSectionVisibility from the stage editor).
+    if (!isLevain) {
+      let boilHtml = '<div id="r-boil-group" style="margin-bottom:14px;display:none">'
+        + '<div style="font-weight:600;margin-bottom:6px;font-size:0.9rem">Boiling</div>';
+      if (userPots.length === 0) {
+        boilHtml += '<p class="muted" style="font-size:0.9rem;margin:0 0 6px">No pots added yet. <button class="secondary tiny" onclick="openKitchenEquipmentForm(\'pot\')">+ Add to Kitchen</button></p>';
+      } else {
+        boilHtml += '<div class="row" style="align-items:center;gap:8px;margin-bottom:6px"><label style="width:120px;font-size:0.9rem">Boiling pot</label>'
+          + '<select id="r-pref-pot" class="settings-select" style="flex:none;width:auto"><option value="">— no preference —</option>'
+          + userPots.map(function(p) { return '<option value="' + escapeAttr(p.id) + '"' + (p.id === prefPot ? ' selected' : '') + '>' + escapeHtml(p.name) + (p.size ? ' (' + escapeHtml(p.size) + ')' : '') + '</option>'; }).join('')
+          + '</select></div>';
+      }
+      boilHtml += '<div class="row" style="align-items:center;gap:8px"><label style="width:120px;font-size:0.9rem">Per boil</label>'
+        + '<input type="number" id="r-boil-batch" min="1" step="1" style="width:90px;flex:none" placeholder="' + SCHED.BAGEL_BATCH_SIZE + '" value="' + escapeAttr(String(prefBoilBatch)) + '" /> <span class="muted" style="font-size:0.85rem">units boiled per batch</span></div>';
+      boilHtml += '</div>';
+      html += boilHtml;
+    }
+
     el.innerHTML = html;
+    updateBoilingSectionVisibility();
     const mixEl = document.getElementById('r-capacity-mixer');
     if (mixEl) mixEl.innerHTML = mixerHtml;
     const ovenEl = document.getElementById('r-capacity-oven');
@@ -7723,6 +7855,7 @@ ${notesHtml}
     else if (type === 'banneton') { showBannetonAddForm(); document.getElementById('banneton-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else if (type === 'pan') { showPanAddForm(); document.getElementById('pan-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     else if (type === 'mixer') { showMixerAddForm(); document.getElementById('mixer-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    else if (type === 'pot') { showPotAddForm(); document.getElementById('pot-add-form').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
 
   function toggleTemplatePanel() {
@@ -7846,6 +7979,8 @@ ${notesHtml}
       preferredPanIds: r.preferredPanIds || [],
       preferredMixerIds: r.preferredMixerIds || [],
       preferredOvenId: r.preferredOvenId || null,
+      preferredPotId: r.preferredPotId || '',
+      boilBatchSize: r.boilBatchSize != null ? r.boilBatchSize : '',
     });
     // Load the recipe's saved stages (or migrate on the fly), cloned for editing.
     _editorStages = isLevain ? []
@@ -8060,6 +8195,11 @@ ${notesHtml}
     const preferredMixerIds = Array.from(document.querySelectorAll('.r-pref-mixer:checked')).map(function(e) { return e.value; });
     const prefOvenEl = document.getElementById('r-pref-oven');
     const preferredOvenId = prefOvenEl ? (prefOvenEl.value || null) : null;
+    // Boiling: pot + per-boil batch size (only meaningful for recipes with a boil step).
+    const prefPotEl = document.getElementById('r-pref-pot');
+    const preferredPotId = prefPotEl ? (prefPotEl.value || null) : null;
+    const boilBatchEl = document.getElementById('r-boil-batch');
+    const boilBatchSize = (() => { const n = boilBatchEl ? parseInt(boilBatchEl.value, 10) : NaN; return (Number.isFinite(n) && n > 0) ? n : null; })();
 
     // Step-derived sub-fields for simple/enriched (chill window, final proof, glaze) +
     // batch size from its own input.
@@ -8078,7 +8218,7 @@ ${notesHtml}
       if (batchSizeEl) { const bs = parseInt(batchSizeEl.value, 10); stepFields.batchSizeOverride = (Number.isFinite(bs) && bs > 0) ? bs : null; }
     }
 
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ...stepFields, ...overrides };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, preferredPotId, boilBatchSize, ...stepFields, ...overrides };
     // The edited stage list is the source of truth — persist it verbatim, but first
     // re-sync the (ingredient-controlled) mill stage against the resolved pantryId links.
     if (processType !== 'levain') {
@@ -8252,13 +8392,6 @@ ${notesHtml}
     const n = Number(raw);
     if (Number.isFinite(n) && n > 0) return { min: n, max: n + COLD_PROOF_WINDOW_WIDTH };
     return null;
-  }
-  // Bagels are boiled+baked in user-set batches (boil → top → bake per batch).
-  // Reads the batch-size input, falling back to the default when blank/invalid.
-  function getBagelBatchSize() {
-    const el = document.getElementById('batchsize-bagel-input');
-    const n = el ? Math.floor(Number(el.value)) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : SCHED.BAGEL_BATCH_SIZE;
   }
   // Titles of events that require the baker to be awake at a specific moment.
   // The auto cold-proof picker rejects schedules where any of these fall in
@@ -8436,7 +8569,6 @@ ${notesHtml}
       loafColdProofHours, muffinColdProofHours, bagelColdProofHours = null,
       loafBakeTime, muffinBakeTime, bagelBakeTime = null,
       loafColdProofMaxHr = null, muffinColdProofMaxHr = null, bagelColdProofMaxHr = null,
-      bagelBatchSize = null,
       focacciaDeadline = null, focacciaBakeTime = null,
       simpleDeadline = null, simpleBakeTime = null,
       enrichedDeadline = null, enrichedBakeTime = null,
@@ -8584,11 +8716,18 @@ ${notesHtml}
       ? muffinBatches * muffinAgg.bakeMin + Math.max(0, muffinBatches - 1) * SCHED.REHEAT_MIN
       : 0;
 
-    // Bagels: user-set batch size governs the morning boil→top→bake cycle.
-    // Each batch runs strictly sequentially (boil, then top, then bake) before
-    // the next batch's boil begins, so the total oven-occupancy span is just
-    // the per-batch cycle times the batch count.
-    const bagelBatchSizeEff = (bagelBatchSize && bagelBatchSize > 0) ? Math.floor(bagelBatchSize) : SCHED.BAGEL_BATCH_SIZE;
+    // Bagels: the per-recipe boil batch size governs the morning boil→top→bake cycle.
+    // Each batch runs strictly sequentially (boil, then top, then bake) before the next
+    // batch's boil begins. Batch size + boiling pot come from the bagel recipe(s); when
+    // several are combined, the smallest pot batch wins. The pot is the boil equipment.
+    const bagelBoilSizes = bagelRecipes.map(r => Math.floor(Number(r.boilBatchSize))).filter(n => Number.isFinite(n) && n > 0);
+    const bagelBatchSizeEff = bagelBoilSizes.length ? Math.min(...bagelBoilSizes) : SCHED.BAGEL_BATCH_SIZE;
+    const bagelPot = (() => {
+      const pid = bagelRecipes.map(r => r.preferredPotId).find(Boolean);
+      return pid ? userPots.find(p => p.id === pid) : null;
+    })();
+    const bagelPotLabel = bagelPot ? bagelPot.name : 'the pot';
+    const bagelPotEquip = bagelPot ? [bagelPot.name] : ['Pot'];
     const bagelBatches = totalBagels > 0 ? Math.ceil(totalBagels / bagelBatchSizeEff) : 0;
     const bagelCycleMin = SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN + (bagelAgg ? bagelAgg.bakeMin : PROCESS_TEMPLATES.bagel.bakeMin);
     const bagelOvenSpanMin = bagelBatches * bagelCycleMin;
@@ -9935,11 +10074,12 @@ ${notesHtml}
       const firstBoil = bagelSlot.firstBakeStart;
       const bagelOvenName = (bagelSlot && bagelSlot.ovenName) || '';
       const bagelOvenTag = bagelOvenName ? ` · ${bagelOvenName}` : '';
+      const bagelPotTag = bagelPot ? ` · ${bagelPot.name}` : '';
       events.push({
         time: addMinutes(firstBoil, -SCHED.BAGEL_KETTLE_HEATUP_MIN),
-        title: 'Bring kettle to a boil',
-        detail: `${SCHED.BAGEL_KETTLE_HEATUP_MIN} min · bagels are boiled straight from the cold fridge`,
-        process: 'bagel', equip: ['Kettle'],
+        title: `Bring ${bagelPotLabel} to a boil`,
+        detail: `${SCHED.BAGEL_KETTLE_HEATUP_MIN} min · bagels are boiled straight from the cold fridge${bagelPotTag}`,
+        process: 'bagel', equip: bagelPotEquip,
       });
       for (let b = 0; b < bagelBatches; b++) {
         const boilStart = addMinutes(firstBoil, b * bagelCycleMin);
@@ -9948,8 +10088,8 @@ ${notesHtml}
         events.push({
           time: boilStart,
           title: `Boil & top batch ${b + 1} of ${bagelBatches}`,
-          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_BOIL_MIN} min boil · ${SCHED.BAGEL_TOP_MIN} min top`,
-          process: 'bagel', equip: ['Kettle'],
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_BOIL_MIN} min boil · ${SCHED.BAGEL_TOP_MIN} min top${bagelPotTag}`,
+          process: 'bagel', equip: bagelPotEquip,
         });
         events.push({
           time: bakeStart,
@@ -10333,6 +10473,9 @@ ${notesHtml}
           } else if (s.type === 'mix') {
             const mx = mixerForRecipeG(r);
             if (mx) ev.equip = [mx.name];
+          } else if (s.type === 'boil') {
+            const pot = r.preferredPotId ? userPots.find(p => p.id === r.preferredPotId) : null;
+            if (pot) { ev.equip = [pot.name]; ev.equipStrip = ` · ${pot.name}`; ev.detail = `${unitsLabel} · ${fmtStageDur(dur)} · ${pot.name}`; }
           }
           if (s.type === 'chill') {
             const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
@@ -10753,7 +10896,7 @@ ${notesHtml}
     if (/^(Chill \/ rest|Into fridge|Muffins into fridge|Bagels into fridge)/.test(t)) return 'chill';
     // Warm/room-temp proofing — bulk ferment, warm-up out of the fridge, pan/final rise.
     if (/^(Bulk ferment|Muffins out of fridge|Pan rise|Final proof|Bulk rise)/.test(t)) return 'proof';
-    if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch|Bring kettle|Boil & top)/.test(t)) return 'bake';
+    if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch|Bring .* to a boil|Boil)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
   }
@@ -10927,7 +11070,6 @@ ${notesHtml}
     const loafColdProofRaw = document.getElementById('coldproof-loaf-input').value;
     const muffinColdProofRaw = document.getElementById('coldproof-muffin-input').value;
     const bagelColdProofRaw = document.getElementById('coldproof-bagel-input').value;
-    const bagelBatchSize = getBagelBatchSize();
     const clampColdProofWindow = (raw, fallbackMin) => {
       const parsed = parseColdProofWindow(raw);
       if (parsed) {
@@ -10954,7 +11096,6 @@ ${notesHtml}
           loafColdProofHours: loaf, muffinColdProofHours: muffin, bagelColdProofHours: bagel,
           loafBakeTime, muffinBakeTime, bagelBakeTime, focacciaBakeTime,
           loafColdProofMaxHr: loaf + COLD_PROOF_WINDOW_WIDTH, muffinColdProofMaxHr: muffin + COLD_PROOF_WINDOW_WIDTH, bagelColdProofMaxHr: bagel + COLD_PROOF_WINDOW_WIDTH,
-          bagelBatchSize,
         });
         const total = kind === 'loaf' ? trial.totalLoaves : (kind === 'muffin' ? (trial.totalMuffins || 0) : (trial.totalBagels || 0));
         const lateCount = total === 0 ? 0 : lateNightActiveSteps(trial.events, kind).length;
@@ -10990,7 +11131,6 @@ ${notesHtml}
         loafColdProofHours, muffinColdProofHours, bagelColdProofHours,
         loafBakeTime, muffinBakeTime, bagelBakeTime, focacciaBakeTime,
         loafColdProofMaxHr, muffinColdProofMaxHr, bagelColdProofMaxHr,
-        bagelBatchSize,
         simpleDeadline, simpleBakeTime, enrichedDeadline, enrichedBakeTime,
         recipeDeadlines: effRecipeDeadlines,
       },
@@ -12258,14 +12398,6 @@ ${notesHtml}
   bagelBaketimeInput.value = localStorage.getItem(BAGEL_BAKETIME_KEY) || '';
   bagelBaketimeInput.addEventListener('change', () => {
     localStorage.setItem(BAGEL_BAKETIME_KEY, bagelBaketimeInput.value);
-    renderSchedule();
-    renderTotals();
-  });
-  const bagelBatchsizeInput = document.getElementById('batchsize-bagel-input');
-  bagelBatchsizeInput.value = localStorage.getItem(BAGEL_BATCHSIZE_KEY) || '';
-  bagelBatchsizeInput.addEventListener('input', () => {
-    if (bagelBatchsizeInput.value) localStorage.setItem(BAGEL_BATCHSIZE_KEY, bagelBatchsizeInput.value);
-    else localStorage.removeItem(BAGEL_BATCHSIZE_KEY);
     renderSchedule();
     renderTotals();
   });
