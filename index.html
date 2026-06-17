@@ -2175,7 +2175,7 @@
     if (equip) parts.push(`<div class="tt-sec"><div class="tt-h">Equipment</div><div>${escapeHtml(equip).replace(/\n/g, '<br>')}</div></div>`);
     const ing = H.renderIngCol(ev);
     if (ing) parts.push(`<div class="tt-sec"><div class="tt-h">Ingredients</div><div class="tt-ings">${ing}</div></div>`);
-    const recipeNotes = recipeStageNotesForEvent(ev, H);
+    const recipeNotes = recipeNotesToShow(ev, H);
     if (recipeNotes.length) {
       const multi = H.allRecipeNames && H.allRecipeNames.length > 1;
       parts.push(`<div class="tt-sec tt-note"><div class="tt-h">Recipe notes</div>${recipeNotes.map(n =>
@@ -2244,8 +2244,39 @@
     }
     return out;
   }
+  // A stage can fan out into several scheduled steps (e.g. a boil → "Bring to a boil" +
+  // one "Boil & top batch N" per batch). To avoid repeating a recipe note on every one,
+  // each render pass builds this map first: the note shows only on the FIRST step (in
+  // display order) for a given recipe + stage type. Surfaces then read the deduped list.
+  let _recipeNotesByEvent = new Map();
+  function buildRecipeNotesByEvent(orderedEvents, H) {
+    const map = new Map();
+    if (!H || !Array.isArray(orderedEvents)) return map;
+    const seen = new Set();
+    for (const ev of orderedEvents) {
+      const all = recipeStageNotesForEvent(ev, H);
+      if (!all.length) continue;
+      const evType = eventStageType(ev) || '';
+      const fresh = [];
+      for (const n of all) {
+        const k = n.recipe + '|' + evType + '|' + n.note;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        fresh.push(n);
+      }
+      if (fresh.length) map.set(ev, fresh);
+    }
+    return map;
+  }
+  // Notes to actually show for an event: the deduped list from the current render pass
+  // if one was built, else the raw matches (isolated calls, e.g. tests).
+  function recipeNotesToShow(ev, H) {
+    if (_recipeNotesByEvent.has(ev)) return _recipeNotesByEvent.get(ev);
+    if (_recipeNotesByEvent.size) return [];  // map built this pass, this event was a repeat
+    return recipeStageNotesForEvent(ev, H);
+  }
   function recipeStageNotesHtml(ev, H) {
-    const ns = recipeStageNotesForEvent(ev, H);
+    const ns = recipeNotesToShow(ev, H);
     if (!ns.length) return '';
     const multi = !!(H && H.allRecipeNames && H.allRecipeNames.length > 1);
     return `<div class="recipe-note-list">${ns.map(n =>
@@ -11819,6 +11850,8 @@ ${notesHtml}
     // it in _scheduleHoverMap keyed by a per-render id; rows carry data-hover="id".
     _scheduleHoverMap = {};
     const _hoverHelpers = (result.events && result.events.length) ? buildBakeSheetHelpers() : null;
+    // Dedupe recipe notes across a stage's repeated steps (events are already in display order).
+    _recipeNotesByEvent = buildRecipeNotesByEvent(result.events, _hoverHelpers);
     let _hoverN = 0;
     const registerHover = (ev) => {
       if (!_hoverHelpers) return '';
@@ -12587,6 +12620,8 @@ ${notesHtml}
     // Group events by day (same display order as the schedule tab — same-recipe steps
     // at the same clock time stay contiguous).
     const sorted = [..._scheduleResult.events].sort(displayEventOrder);
+    // Dedupe recipe notes across a stage's repeated steps, in the same display order.
+    _recipeNotesByEvent = buildRecipeNotesByEvent(sorted, H);
     const groups = [];
     let curKey = null;
     for (const ev of sorted) {

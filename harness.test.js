@@ -108,7 +108,7 @@ const exportsTail = `
   fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
   proofTempFactor, fermentScale, getProofingTempF, setProofingTempF, proofingTempIsSet, pickLevainBuild,
   buildBakeSheetHelpers, hoverHtmlFor, noteControlHtml, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
-  recipeStageNotesForEvent, recipeStageNotesHtml, eventStageType,
+  recipeStageNotesForEvent, recipeStageNotesHtml, eventStageType, buildRecipeNotesByEvent,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -996,6 +996,31 @@ if (autoStage && mixStage) {
   hvOk &= hv('autolyse step shows ONLY the autolyse note', autoEv && notesOf(autoEv).includes('rest 60 min') && !notesOf(autoEv).includes('add salt last'));
   hvOk &= hv('mix step shows ONLY the mix note', mixEv && notesOf(mixEv).includes('add salt last') && !notesOf(mixEv).includes('rest 60 min'));
   delete autoStage.note; delete mixStage.note;
+}
+
+// A stage that fans out into many steps (bagel boil → "Bring to a boil" + per-batch
+// "Boil & top") shows its recipe note ONCE, on the first step, not on every one.
+const bagelRec = api.__recipes().find(r => r.id === SEED.bagel);
+const boilStage = bagelRec && (bagelRec.stages || []).find(s => s.type === 'boil');
+hvOk &= hv('seed bagel recipe has a boil stage', !!boilStage);
+if (boilStage) {
+  boilStage.note = 'malt in the water';
+  seedPlan({ [SEED.bagel]: 24 }); api.__setPlan({ [SEED.bagel]: 24 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const H4 = api.buildBakeSheetHelpers();
+  const sortedB = [...api.__sr().events].sort((a, b) => a.time - b.time);
+  const boilEvs = sortedB.filter(e => api.eventStageType(e) === 'boil');
+  hvOk &= hv('bagel plan produces multiple boil-type steps', boilEvs.length >= 2);
+  // raw matcher: the note matches EVERY boil step...
+  const rawHits = boilEvs.filter(e => api.recipeStageNotesForEvent(e, H4).some(n => n.note === 'malt in the water')).length;
+  // ...but the deduped render map shows it on exactly one.
+  const map = api.buildRecipeNotesByEvent(sortedB, H4);
+  const shownHits = boilEvs.filter(e => (map.get(e) || []).some(n => n.note === 'malt in the water')).length;
+  hvOk &= hv('raw matcher hits all boil steps', rawHits === boilEvs.length && rawHits >= 2);
+  hvOk &= hv('deduped map shows the boil note on exactly ONE step', shownHits === 1);
+  delete boilStage.note;
 }
 allOk &= hvOk;
 
