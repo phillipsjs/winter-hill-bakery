@@ -758,6 +758,36 @@
     background: repeating-linear-gradient(to bottom, transparent, transparent 29px,
       var(--border) 29px, var(--border) 30px); }
 
+  /* Per-step notes on the bake sheet */
+  .bs-note-wrap { margin-top: 5px; }
+  .bs-note { font-size: 0.82rem; color: #6b4f1d; background: #fbf1d6; border-left: 3px solid #d6ae63;
+    padding: 3px 7px; border-radius: 3px; margin-bottom: 4px; white-space: pre-wrap; }
+  .bs-note-btn { font-size: 0.74rem; padding: 1px 7px; background: transparent; color: var(--muted);
+    border: 1px dashed var(--border); border-radius: 10px; cursor: pointer; }
+  .bs-note-btn:hover { color: var(--accent-dark); border-color: var(--accent); }
+
+  /* Schedule step hover tooltip */
+  .schedule-row[data-hover], .schedule-event[data-hover] { cursor: help; }
+  .schedule-tooltip {
+    position: absolute; z-index: 1000; max-width: 320px; max-height: 60vh; overflow-y: auto;
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.18); padding: 10px 12px; font-size: 0.82rem; color: var(--text);
+  }
+  .schedule-tooltip .tt-title { font-weight: 600; margin-bottom: 6px; }
+  .schedule-tooltip .tt-recipes { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .schedule-tooltip .tt-tag { font-size: 0.72rem; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1px 7px; }
+  .schedule-tooltip .tt-sec { margin-top: 6px; }
+  .schedule-tooltip .tt-h { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--muted); margin-bottom: 2px; }
+  .schedule-tooltip .tt-ings table { width: 100%; border-collapse: collapse; }
+  .schedule-tooltip .tt-ings td { padding: 1px 0; }
+  .schedule-tooltip .tt-ings td.num { text-align: right; color: var(--muted); padding-left: 10px; white-space: nowrap; }
+  .schedule-tooltip .tt-ings .bs-recipe-label { font-weight: 600; margin: 4px 0 1px; }
+  .schedule-tooltip .tt-note { background: #fbf1d6; border-left: 3px solid #d6ae63; padding: 3px 7px;
+    border-radius: 3px; white-space: pre-wrap; }
+  .schedule-tooltip .tt-note .tt-h { color: #6b4f1d; }
+
   @media print {
     header, .nav-wrapper, .no-print { display: none !important; }
     main > section { display: none !important; }
@@ -766,6 +796,7 @@
     .bakesheet-table th { background: #efefef !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     .bakesheet-day-header { color: #333 !important; }
     .bs-time { color: #333 !important; }
+    .schedule-tooltip { display: none !important; }
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
@@ -2073,6 +2104,56 @@
   function fermentScale(min) {
     if (min == null || !isFinite(Number(min))) return min;
     return Math.round(Number(min) * proofTempFactor());
+  }
+  // ---- Per-step free-text notes ----
+  // Notes attach to a step (not a single scheduled event) so they survive re-scheduling.
+  // The key is the process + a number-normalized title, so "Bake 8 loaves" / "Bake 6
+  // loaves" share one note. Shown in the Bake Sheet and the Schedule hover tooltip.
+  const STEP_NOTES_KEY = 'whb-step-notes-v1';
+  let _stepNotes = null;
+  function loadStepNotes() {
+    if (_stepNotes) return _stepNotes;
+    try { const r = localStorage.getItem(STEP_NOTES_KEY); _stepNotes = r ? JSON.parse(r) : {}; } catch (e) { _stepNotes = {}; }
+    if (!_stepNotes || typeof _stepNotes !== 'object') _stepNotes = {};
+    return _stepNotes;
+  }
+  function saveStepNotes() { localStorage.setItem(STEP_NOTES_KEY, JSON.stringify(loadStepNotes())); }
+  function stepNoteKey(ev) {
+    const proc = ev.process || ev.columnKey || '';
+    const t = (ev.title || '').toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+    return proc + '|' + t;
+  }
+  function getStepNoteFor(ev) { const n = loadStepNotes()[stepNoteKey(ev)]; return typeof n === 'string' ? n : ''; }
+  function setStepNote(key, text) {
+    const notes = loadStepNotes();
+    const v = (text || '').trim();
+    if (v) notes[key] = v; else delete notes[key];
+    saveStepNotes();
+    if (getGistConfig()) pushSettingsToGist().catch(() => {});
+  }
+  function editStepNote(key) {
+    const cur = loadStepNotes()[key] || '';
+    const next = window.prompt('Note for this step (shown on the bake sheet and schedule hover):', cur);
+    if (next === null) return;  // cancelled
+    setStepNote(key, next);
+    try { if (document.getElementById('tab-bakesheet').style.display !== 'none') renderBakeSheet(); } catch (e) {}
+    try { renderSchedule(); } catch (e) {}
+  }
+  // Tooltip HTML for a schedule step: the extra Bake-Sheet info (recipes, equipment,
+  // ingredients) plus any note. Returns '' when there's nothing extra to show.
+  function hoverHtmlFor(ev, H) {
+    const parts = [];
+    const recipes = H.getEventRecipes(ev);
+    if (recipes.length && H.allRecipeNames.length > 1)
+      parts.push(`<div class="tt-recipes">${recipes.map(n => `<span class="tt-tag">${escapeHtml(n)}</span>`).join('')}</div>`);
+    const equip = H.getEventEquipment(ev);
+    if (equip) parts.push(`<div class="tt-sec"><div class="tt-h">Equipment</div><div>${escapeHtml(equip).replace(/\n/g, '<br>')}</div></div>`);
+    const ing = H.renderIngCol(ev);
+    if (ing) parts.push(`<div class="tt-sec"><div class="tt-h">Ingredients</div><div class="tt-ings">${ing}</div></div>`);
+    const note = getStepNoteFor(ev);
+    if (note) parts.push(`<div class="tt-sec tt-note"><div class="tt-h">Note</div><div>${escapeHtml(note)}</div></div>`);
+    if (!parts.length) return '';
+    return `<div class="tt-title">${escapeHtml(ev.title || '')}</div>${parts.join('')}`;
   }
   // Reflect the current unit in the toggle buttons + any static temperature labels.
   function refreshTempUnitUI() {
@@ -3848,7 +3929,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit(), proofingTempF: proofingTempIsSet() ? getProofingTempF() : null };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit(), proofingTempF: proofingTempIsSet() ? getProofingTempF() : null, stepNotes: loadStepNotes() };
   }
 
   function applyRemoteSettings(settings) {
@@ -3909,6 +3990,10 @@ ${notesHtml}
     if ('proofingTempF' in settings) {
       setProofingTempF(settings.proofingTempF);
       refreshProofingTempUI();
+    }
+    if (settings.stepNotes && typeof settings.stepNotes === 'object') {
+      _stepNotes = settings.stepNotes;
+      saveStepNotes();
     }
   }
 
@@ -11295,6 +11380,7 @@ ${notesHtml}
   }
 
   let _scheduleResult = null;
+  let _scheduleHoverMap = {};
 
   function getEventStage(ev) {
     if (ev.stage) return ev.stage; // event carries its own stage (simple/enriched use this)
@@ -11616,6 +11702,20 @@ ${notesHtml}
     const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
     const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
 
+    // Hover tooltips: precompute the extra Bake-Sheet info (+ notes) per step and stash
+    // it in _scheduleHoverMap keyed by a per-render id; rows carry data-hover="id".
+    _scheduleHoverMap = {};
+    const _hoverHelpers = (result.events && result.events.length) ? buildBakeSheetHelpers() : null;
+    let _hoverN = 0;
+    const registerHover = (ev) => {
+      if (!_hoverHelpers) return '';
+      let html = '';
+      try { html = hoverHtmlFor(ev, _hoverHelpers); } catch (e) { html = ''; }
+      if (!html) return '';
+      const id = ++_hoverN;
+      _scheduleHoverMap[id] = html;
+      return ` data-hover="${id}"`;
+    };
     const renderEventContent = (ev) => `
       <div class="schedule-title">${escapeHtml(ev.title)}</div>
       ${ev.detail ? `<div class="schedule-detail">${escapeHtml(ev.detail)}</div>` : ''}
@@ -11645,14 +11745,14 @@ ${notesHtml}
         ? `${renderClickableTime(ev)}<span class="schedule-time-end">to ${timeFmt.format(roundToFiveMin(ev.timeEnd))}</span>`
         : renderClickableTime(ev);
       const stage = noStage ? '' : getEventStage(ev);
-      return `<div class="schedule-row"${stage ? ` data-stage="${stage}"` : ''}>
+      return `<div class="schedule-row"${stage ? ` data-stage="${stage}"` : ''}${registerHover(ev)}>
         <div class="schedule-time">${timeCell}</div>
         <div>${renderEventContent(ev)}</div>
       </div>`;
     };
     const renderEventBlock = (ev, sharedClass) => {
       const stage = getEventStage(ev);
-      return `<div class="schedule-event${sharedClass ? ' ' + sharedClass : ''}"${stage ? ` data-stage="${stage}"` : ''}>
+      return `<div class="schedule-event${sharedClass ? ' ' + sharedClass : ''}"${stage ? ` data-stage="${stage}"` : ''}${registerHover(ev)}>
         <div class="schedule-event-time">${formatEventTime(ev)}</div>
         ${renderEventContent(ev)}
       </div>`;
@@ -11682,7 +11782,7 @@ ${notesHtml}
       } else {
         body = renderEventContent(ev);
       }
-      return `<div class="schedule-event schedule-event-shared"${stage ? ` data-stage="${stage}"` : ''}${extraStyle ? ` style="${extraStyle}"` : ''}>
+      return `<div class="schedule-event schedule-event-shared"${stage ? ` data-stage="${stage}"` : ''}${extraStyle ? ` style="${extraStyle}"` : ''}${registerHover(ev)}>
         <div class="schedule-event-time">${formatEventTime(ev)}</div>
         ${body}
       </div>`;
@@ -12052,26 +12152,10 @@ ${notesHtml}
     };
   }
 
-  function renderBakeSheet() {
-    const content = document.getElementById('bakesheet-content');
-    if (!content) return;
-
-    const printBar = document.getElementById('bakesheet-print-bar');
-    if (!_scheduleResult || !_scheduleResult.events || _scheduleResult.events.length === 0) {
-      content.innerHTML = '<div class="card"><p class="muted" style="margin:0">Set up your Bake Plan and Schedule to generate the bake sheet.</p></div>';
-      if (printBar) printBar.style.display = 'none';
-      return;
-    }
-    if (printBar) printBar.style.display = 'flex';
-
+  // Per-event info helpers (ingredients, equipment, recipes, title/detail) shared by
+  // the Bake Sheet and the Schedule hover tooltip. Computes the ingredient data once.
+  function buildBakeSheetHelpers() {
     const ingData = computeBakeSheetIngredientData();
-    const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-    const dayFmt  = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
-    const fmtTime = t => timeFmt.format(roundToFiveMin(t));
-    const fmtRange = ev => ev.timeEnd
-      ? `${fmtTime(ev.time)}&nbsp;–&nbsp;${fmtTime(ev.timeEnd)}`
-      : fmtTime(ev.time);
-
     const ingTableHtml = rows =>
       `<table><tbody>${rows.map(r =>
         `<tr><td>${escapeHtml(r.name)}</td><td class="num">${formatGrams(r.grams)}</td></tr>`
@@ -12360,6 +12444,31 @@ ${notesHtml}
       });
     };
 
+    return { ingData, ingTableHtml, getEventIngredients, recipeBlockHtml, batchedBlocks, renderIngCol, getEventContainer, getEventEquipment, bsTitle, allRecipeNames, getEventRecipes, bsDetail, getEventBatchRows };
+  }
+
+  function renderBakeSheet() {
+    const content = document.getElementById('bakesheet-content');
+    if (!content) return;
+
+    const printBar = document.getElementById('bakesheet-print-bar');
+    if (!_scheduleResult || !_scheduleResult.events || _scheduleResult.events.length === 0) {
+      content.innerHTML = '<div class="card"><p class="muted" style="margin:0">Set up your Bake Plan and Schedule to generate the bake sheet.</p></div>';
+      if (printBar) printBar.style.display = 'none';
+      return;
+    }
+    if (printBar) printBar.style.display = 'flex';
+
+    const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    const dayFmt  = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const fmtTime = t => timeFmt.format(roundToFiveMin(t));
+    const fmtRange = ev => ev.timeEnd
+      ? `${fmtTime(ev.time)}&nbsp;–&nbsp;${fmtTime(ev.timeEnd)}`
+      : fmtTime(ev.time);
+
+    const H = buildBakeSheetHelpers();
+    const { ingData, renderIngCol, getEventEquipment, getEventRecipes, getEventBatchRows, bsTitle, bsDetail, allRecipeNames } = H;
+
     // Group events by day (same display order as the schedule tab — same-recipe steps
     // at the same clock time stay contiguous).
     const sorted = [..._scheduleResult.events].sort(displayEventOrder);
@@ -12411,11 +12520,15 @@ ${notesHtml}
         const recipesLabel = (allRecipeNames.length > 1 && recipeNames.length)
           ? `<div class="bs-recipes">${recipeNames.map(n => `<span class="bs-recipe-tag">${escapeHtml(n)}</span>`).join('')}</div>`
           : '';
+        const noteKey = stepNoteKey(ev);
+        const noteText = getStepNoteFor(ev);
+        const noteHtml = `<div class="bs-note-wrap">${noteText ? `<div class="bs-note">📝 ${escapeHtml(noteText)}</div>` : ''}<button type="button" class="bs-note-btn no-print" data-note-key="${escapeAttr(noteKey)}" onclick="editStepNote(this.dataset.noteKey)">${noteText ? 'Edit note' : '+ Add note'}</button></div>`;
         const stepCell = `
           <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}${recipesLabel}</td>
           <td class="bs-step"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
             <strong>${escapeHtml(titleText)}</strong>
             ${detailText ? `<div class="bs-detail">${escapeHtml(detailText)}</div>` : ''}
+            ${noteHtml}
           </td>`;
         if (!batches) {
           return `
@@ -12926,6 +13039,17 @@ ${notesHtml}
     renderTotals();
   });
   document.getElementById('schedule-output').addEventListener('click', (e) => {
+    // Tap a step (but not its clickable time) to pin the info tooltip — for touch
+    // devices that have no hover.
+    if (!e.target.closest('.schedule-time-clickable')) {
+      const row = e.target.closest('[data-hover]');
+      if (row) {
+        const id = row.getAttribute('data-hover');
+        if (_scheduleTooltipPinned && _scheduleTooltipFor === id) { hideScheduleTooltip(); }
+        else { showScheduleTooltip(id, row, true); }
+        return;
+      }
+    }
     const target = e.target.closest('.schedule-time-clickable');
     if (!target) return;
     const title = target.dataset.eventTitle;
@@ -12933,6 +13057,68 @@ ${notesHtml}
     if (!title || !Number.isFinite(timeMs)) return;
     openAnchorModal(title, timeMs);
   });
+  // Hover tooltips on schedule steps.
+  let _scheduleTooltipEl = null, _scheduleTooltipFor = null, _scheduleTooltipPinned = false;
+  function ensureScheduleTooltip() {
+    if (_scheduleTooltipEl) return _scheduleTooltipEl;
+    const el = document.createElement('div');
+    el.id = 'schedule-tooltip';
+    el.className = 'schedule-tooltip';
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    _scheduleTooltipEl = el;
+    return el;
+  }
+  function positionScheduleTooltip(anchorEl) {
+    const el = _scheduleTooltipEl; if (!el || !anchorEl) return;
+    const r = anchorEl.getBoundingClientRect();
+    const margin = 8;
+    el.style.display = 'block';
+    const tw = el.offsetWidth, th = el.offsetHeight;
+    let left = r.left + window.scrollX;
+    let top = r.bottom + window.scrollY + 6;
+    if (left + tw > window.scrollX + document.documentElement.clientWidth - margin)
+      left = Math.max(window.scrollX + margin, window.scrollX + document.documentElement.clientWidth - tw - margin);
+    if (r.bottom + 6 + th > document.documentElement.clientHeight && r.top - 6 - th > 0)
+      top = r.top + window.scrollY - th - 6;
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+  }
+  function showScheduleTooltip(id, anchorEl, pinned) {
+    const html = _scheduleHoverMap[id];
+    if (!html) { hideScheduleTooltip(); return; }
+    const el = ensureScheduleTooltip();
+    el.innerHTML = html;
+    _scheduleTooltipFor = id;
+    _scheduleTooltipPinned = !!pinned;
+    positionScheduleTooltip(anchorEl);
+  }
+  function hideScheduleTooltip() {
+    if (_scheduleTooltipEl) _scheduleTooltipEl.style.display = 'none';
+    _scheduleTooltipFor = null;
+    _scheduleTooltipPinned = false;
+  }
+  (function wireScheduleHover() {
+    const out = document.getElementById('schedule-output');
+    out.addEventListener('mouseover', (e) => {
+      if (_scheduleTooltipPinned) return;
+      const row = e.target.closest('[data-hover]');
+      if (!row) return;
+      const id = row.getAttribute('data-hover');
+      if (id !== _scheduleTooltipFor) showScheduleTooltip(id, row, false);
+    });
+    out.addEventListener('mouseout', (e) => {
+      if (_scheduleTooltipPinned) return;
+      const row = e.target.closest('[data-hover]');
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('[data-hover]') : null;
+      if (row && to === row) return;
+      hideScheduleTooltip();
+    });
+    document.addEventListener('click', (e) => {
+      if (_scheduleTooltipPinned && !e.target.closest('[data-hover]') && !e.target.closest('#schedule-tooltip')) hideScheduleTooltip();
+    });
+    window.addEventListener('scroll', () => { if (!_scheduleTooltipPinned) hideScheduleTooltip(); }, true);
+  })();
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('anchor-modal').style.display !== 'none') {
       closeAnchorModal();

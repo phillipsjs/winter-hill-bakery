@@ -107,6 +107,7 @@ const exportsTail = `
   INGREDIENT_CATALOG, BUILTIN_CATEGORIES,
   fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
   proofTempFactor, fermentScale, getProofingTempF, setProofingTempF, proofingTempIsSet, pickLevainBuild,
+  buildBakeSheetHelpers, hoverHtmlFor, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -897,6 +898,46 @@ ptOk &= pt('integration: warmer kitchen → shorter bulk ferment than at 70F', t
 ptOk &= pt('integration: cooler kitchen → longer bulk ferment than at 70F', t70 != null && tCool != null && tCool > t70);
 api.setProofingTempF(null);
 allOk &= ptOk;
+
+console.log('\nStep-notes / hover assertions:');
+let hvOk = true;
+function hv(label, cond) { console.log(`  [notes] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+// stepNoteKey is stable across counts and includes the process.
+const evA = { process: 'loaf', title: 'Bake 8 loaves' };
+const evB = { process: 'loaf', title: 'Bake 6 loaves' };
+const evC = { process: 'muffin', title: 'Bake 8 loaves' };
+hvOk &= hv('stepNoteKey ignores counts (8 vs 6 loaves match)', api.stepNoteKey(evA) === api.stepNoteKey(evB));
+hvOk &= hv('stepNoteKey separates by process', api.stepNoteKey(evA) !== api.stepNoteKey(evC));
+// round-trip a note
+api.setStepNote(api.stepNoteKey(evA), '  use the blue box  ');
+hvOk &= hv('setStepNote trims + getStepNoteFor reads it back', api.getStepNoteFor(evA) === 'use the blue box');
+hvOk &= hv('note shared across same-key events (evB sees evA note)', api.getStepNoteFor(evB) === 'use the blue box');
+hvOk &= hv('getLocalSettings carries stepNotes', api.getLocalSettings().stepNotes[api.stepNoteKey(evA)] === 'use the blue box');
+api.applyRemoteSettings({ stepNotes: { 'x|y': 'remote note' } });
+hvOk &= hv('applyRemoteSettings adopts stepNotes', api.loadStepNotes()['x|y'] === 'remote note');
+api.setStepNote('x|y', '');  // clear
+hvOk &= hv('setStepNote empty clears the note', !('x|y' in api.loadStepNotes()));
+
+// Hover HTML is built from the real bake-sheet helpers for a scheduled event.
+seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+els['deadline-default-input'].value = fmtLocal(tomorrow8);
+['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+api.renderSchedule();
+const H = api.buildBakeSheetHelpers();
+const evs = api.__sr().events;
+const weigh = evs.find(e => /^Weigh ingredients/.test(e.title));
+const hoverWeigh = weigh ? api.hoverHtmlFor(weigh, H) : '';
+hvOk &= hv('hover for "Weigh ingredients" includes the Ingredients section', /Ingredients/.test(hoverWeigh) && /<table/.test(hoverWeigh));
+const bake = evs.find(e => /^Bake /.test(e.title));
+const hoverBake = bake ? api.hoverHtmlFor(bake, H) : '';
+hvOk &= hv('hover for a bake step is non-empty', !!hoverBake);
+// A note set on an event shows up in its hover tooltip.
+if (weigh) api.setStepNote(api.stepNoteKey(weigh), 'sift the flour');
+const hoverWeigh2 = weigh ? api.hoverHtmlFor(weigh, api.buildBakeSheetHelpers()) : '';
+hvOk &= hv('note appears in the step hover tooltip', /sift the flour/.test(hoverWeigh2) && /Note/.test(hoverWeigh2));
+if (weigh) api.setStepNote(api.stepNoteKey(weigh), '');
+allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
