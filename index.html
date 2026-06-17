@@ -1058,9 +1058,10 @@
         <span class="muted">grams</span>
       </div>
       <div class="row" id="r-batch-yield-row" style="display:none">
-        <label style="width:120px">Batch makes</label>
-        <input type="number" id="r-batch-yield" min="1" step="1" value="1" style="flex:none;width:70px" oninput="updateFlourSummary()" />
-        <span class="muted"><span id="r-unit-label-yield">loaf</span>(s) from the amounts below</span>
+        <label style="width:120px">Amounts for</label>
+        <input type="number" id="r-batch-yield" min="1" step="1" value="1" style="flex:none;width:70px" onchange="onBatchYieldChange()" />
+        <span class="muted"><span id="r-unit-label-yield">loaf</span>(s) — per unit derives from this</span>
+        <button type="button" id="r-batch-toggle-btn" class="secondary tiny" style="margin-left:8px" onclick="toggleBatchView()">View single unit</button>
       </div>
 
       <hr class="sep" />
@@ -6447,6 +6448,8 @@ ${notesHtml}
   let plan = loadPlan();      // { recipeId: count }
   let editingId = null;       // null = not editing
   let recipeEntryMode = 'percent'; // 'percent' | 'grams' — how ingredient amounts are entered
+  let _editorBatchYield = 1;       // the recipe's authored batch size (units), remembered + persisted
+  let _editorViewYield = 1;        // how many units the grams currently shown represent
 
   function ensureLevainFirst(list) {
     const seed = SEED_RECIPES.find(r => r.id === 'seed-levain');
@@ -6976,7 +6979,8 @@ ${notesHtml}
   // Add/remove a recipe from the bake plan (the "selected" state).
   function setInPlan(id, included) {
     if (included) {
-      if (!isInPlan(id)) plan[id] = 0;
+      // Default the count to the recipe's authored batch size, if it has one.
+      if (!isInPlan(id)) { const r = recipes.find(x => x.id === id); plan[id] = (r && r.batchYield > 1) ? Math.round(r.batchYield) : 0; }
     } else {
       delete plan[id];
     }
@@ -8785,6 +8789,7 @@ ${notesHtml}
 
   function startNewRecipe() {
     editingId = null;
+    _editorBatchYield = 1;
     resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'New recipe';
     document.getElementById('r-name').value = '';
@@ -8820,6 +8825,7 @@ ${notesHtml}
     const r = recipes.find(x => x.id === id);
     if (!r) return;
     editingId = id;
+    _editorBatchYield = Math.max(1, Math.round(Number(r.batchYield) || 1));
     resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'Edit recipe';
     document.getElementById('r-name').value = r.name;
@@ -9099,7 +9105,8 @@ ${notesHtml}
       if (batchSizeEl) { const bs = parseInt(batchSizeEl.value, 10); stepFields.batchSizeOverride = (Number.isFinite(bs) && bs > 0) ? bs : null; }
     }
 
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, preferredPotId, boilBatchSize, ...stepFields, ...overrides };
+    const batchYield = _editorBatchYield > 1 ? Math.round(_editorBatchYield) : undefined;
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, batchYield, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, preferredPotId, boilBatchSize, ...stepFields, ...overrides };
     // The edited stage list is the source of truth — persist it verbatim, but first
     // re-sync the (ingredient-controlled) mill stage against the resolved pantryId links.
     if (processType !== 'levain') {
@@ -13188,6 +13195,50 @@ ${notesHtml}
     el.innerHTML = s;
   }
 
+  // --- Single-unit ⇄ batch view (grams mode) ---
+  // Grams shown represent `_editorViewYield` units; per-unit is the invariant. Changing the
+  // count rescales the displayed grams. The authored batch (`_editorBatchYield`) is
+  // remembered so the user can toggle back to it and it persists as recipe.batchYield.
+  function rescaleEditorGrams(fromY, toY) {
+    if (!fromY || !toY || fromY === toY) return;
+    const scale = toY / fromY;
+    document.querySelectorAll('#r-ingredients .ing-pct').forEach(inp => {
+      const v = Number(inp.value);
+      if (Number.isFinite(v) && v !== 0) inp.value = round2(v * scale);
+    });
+  }
+  function updateBatchToggleLabel() {
+    const btn = document.getElementById('r-batch-toggle-btn');
+    if (!btn) return;
+    const cur = currentViewYield();
+    btn.textContent = cur > 1 ? 'View single unit' : `View batch (${Math.max(1, _editorBatchYield)})`;
+  }
+  function currentViewYield() {
+    const el = document.getElementById('r-batch-yield');
+    return Math.max(1, Math.round(Number(el ? el.value : 1) || 1));
+  }
+  // The yield input was edited directly: rescale and (re)define the remembered batch.
+  function onBatchYieldChange() {
+    if (recipeEntryMode !== 'grams') { updateFlourSummary(); return; }
+    const newY = currentViewYield();
+    rescaleEditorGrams(_editorViewYield, newY);
+    _editorViewYield = newY;
+    if (newY > 1) _editorBatchYield = newY;  // typing a count (re)defines the batch; keep the last >1 for the toggle
+    updateBatchToggleLabel();
+    updateFlourSummary();
+  }
+  // Toggle button: flip between one unit and the remembered batch.
+  function toggleBatchView() {
+    if (recipeEntryMode !== 'grams') return;
+    const cur = currentViewYield();
+    const target = cur > 1 ? 1 : Math.max(1, _editorBatchYield);
+    rescaleEditorGrams(cur, target);
+    const el = document.getElementById('r-batch-yield');
+    if (el) el.value = target;
+    _editorViewYield = target;
+    updateBatchToggleLabel();
+    updateFlourSummary();
+  }
   // Set ingredient-amount input placeholders to match the current entry mode.
   function applyEntryModePlaceholders() {
     document.querySelectorAll('#r-ingredients .ing-pct').forEach(function(inp) {
@@ -13200,7 +13251,8 @@ ${notesHtml}
   function resetRecipeEntryModeToPercent() {
     recipeEntryMode = 'percent';
     const yieldEl = document.getElementById('r-batch-yield');
-    if (yieldEl) yieldEl.value = 1;
+    if (yieldEl) yieldEl.value = Math.max(1, _editorBatchYield);
+    _editorViewYield = Math.max(1, _editorBatchYield);
     document.getElementById('r-weight-row').style.display = '';
     document.getElementById('r-batch-yield-row').style.display = 'none';
     document.getElementById('r-mode-hint-percent').style.display = '';
@@ -13239,6 +13291,7 @@ ${notesHtml}
     }
 
     recipeEntryMode = mode;
+    if (mode === 'grams') { _editorViewYield = yld; updateBatchToggleLabel(); }
     // Toggle UI chrome.
     document.getElementById('r-weight-row').style.display = mode === 'grams' ? 'none' : '';
     document.getElementById('r-batch-yield-row').style.display = mode === 'grams' ? '' : 'none';

@@ -1144,7 +1144,7 @@ if (loafFold) {
 // withMigratedStages, so every stage field — including notes/sub-notes/ingredient tags —
 // survives. Simulate that round-trip and confirm nothing is dropped.
 const rt = JSON.parse(JSON.stringify({
-  id: 'rt', name: 'RT', processType: 'sourdough-loaf', loafWeight: 900, unit: 'loaf',
+  id: 'rt', name: 'RT', processType: 'sourdough-loaf', loafWeight: 900, unit: 'loaf', batchYield: 8,
   ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }],
   stages: [
     { type: 'weigh', duration: { kind: 'fixed', min: 5 }, ings: ['Bread flour'] },
@@ -1159,6 +1159,7 @@ const lWeigh = rtLoaded.stages.find(s => s.type === 'weigh');
 hvOk &= hv('gist round-trip preserves stage notes', lFold.note === 'gentle' && lBake.note === 'steam');
 hvOk &= hv('gist round-trip preserves stage sub-notes', lFold.subNotes.f1 === 'coil' && lFold.subNotes.f3 === 'tension' && lBake.subNotes.preheat === 'sharp' && lBake.subNotes.ovenoff === 'crack door');
 hvOk &= hv('gist round-trip preserves ingredient tags + tempF', lWeigh.ings[0] === 'Bread flour' && lBake.tempF === 500);
+hvOk &= hv('gist round-trip preserves the authored batch yield', rtLoaded.batchYield === 8);
 
 // Levain container choice: pickLevainContainer honors a per-stream preference (and
 // falls back to auto when unset or the chosen container is gone), and it syncs.
