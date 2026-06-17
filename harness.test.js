@@ -107,7 +107,7 @@ const exportsTail = `
   INGREDIENT_CATALOG, BUILTIN_CATEGORIES,
   fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
   proofTempFactor, fermentScale, getProofingTempF, setProofingTempF, proofingTempIsSet, pickLevainBuild,
-  buildBakeSheetHelpers, hoverHtmlFor, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
+  buildBakeSheetHelpers, hoverHtmlFor, noteControlHtml, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -937,6 +937,14 @@ if (weigh) api.setStepNote(api.stepNoteKey(weigh), 'sift the flour');
 const hoverWeigh2 = weigh ? api.hoverHtmlFor(weigh, api.buildBakeSheetHelpers()) : '';
 hvOk &= hv('note appears in the step hover tooltip', /sift the flour/.test(hoverWeigh2) && /Note/.test(hoverWeigh2));
 if (weigh) api.setStepNote(api.stepNoteKey(weigh), '');
+// Schedule inline note control: add/edit button is present and no-print.
+const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
+hvOk &= hv('schedule note control shows "+ note" button when empty', /\+ note/.test(ncEmpty) && /class="schedule-note-btn no-print"/.test(ncEmpty));
+hvOk &= hv('schedule note button is no-print', /schedule-note-btn no-print/.test(ncEmpty));
+api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Mix dough' }), 'cold water');
+const ncSet = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
+hvOk &= hv('schedule note control shows the note + "Edit note"', /cold water/.test(ncSet) && /Edit note/.test(ncSet));
+api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Mix dough' }), '');
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');

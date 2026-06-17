@@ -766,6 +766,14 @@
     border: 1px dashed var(--border); border-radius: 10px; cursor: pointer; }
   .bs-note-btn:hover { color: var(--accent-dark); border-color: var(--accent); }
 
+  /* Inline note + add/edit control on schedule steps */
+  .schedule-note-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .schedule-note { font-size: 0.78rem; color: #6b4f1d; background: #fbf1d6; border-left: 3px solid #d6ae63;
+    padding: 2px 6px; border-radius: 3px; white-space: pre-wrap; }
+  .schedule-note-btn { font-size: 0.72rem; padding: 0 7px; line-height: 1.5; background: transparent;
+    color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; cursor: pointer; }
+  .schedule-note-btn:hover { color: var(--accent-dark); border-color: var(--accent); }
+
   /* Schedule step hover tooltip */
   .schedule-row[data-hover], .schedule-event[data-hover] { cursor: help; }
   .schedule-tooltip {
@@ -2154,6 +2162,13 @@
     if (note) parts.push(`<div class="tt-sec tt-note"><div class="tt-h">Note</div><div>${escapeHtml(note)}</div></div>`);
     if (!parts.length) return '';
     return `<div class="tt-title">${escapeHtml(ev.title || '')}</div>${parts.join('')}`;
+  }
+  // Inline note + add/edit control for a schedule step. The button is no-print (the
+  // schedule isn't printed anyway, but keep it consistent with the bake sheet).
+  function noteControlHtml(ev) {
+    const key = stepNoteKey(ev);
+    const note = getStepNoteFor(ev);
+    return `<div class="schedule-note-wrap">${note ? `<span class="schedule-note">📝 ${escapeHtml(note)}</span>` : ''}<button type="button" class="schedule-note-btn no-print" data-note-key="${escapeAttr(key)}" onclick="event.stopPropagation();editStepNote(this.dataset.noteKey)">${note ? 'Edit note' : '+ note'}</button></div>`;
   }
   // Reflect the current unit in the toggle buttons + any static temperature labels.
   function refreshTempUnitUI() {
@@ -11719,6 +11734,7 @@ ${notesHtml}
     const renderEventContent = (ev) => `
       <div class="schedule-title">${escapeHtml(ev.title)}</div>
       ${ev.detail ? `<div class="schedule-detail">${escapeHtml(ev.detail)}</div>` : ''}
+      ${noteControlHtml(ev)}
     `;
     const renderClickableTime = (ev) => {
       const display = timeFmt.format(roundToFiveMin(ev.time));
