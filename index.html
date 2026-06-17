@@ -774,6 +774,17 @@
     color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; cursor: pointer; }
   .schedule-note-btn:hover { color: var(--accent-dark); border-color: var(--accent); }
 
+  /* Recipe-stage notes (authored in the recipe editor), shown read-only on schedule + bake sheet */
+  .recipe-note-list { margin-top: 4px; }
+  .recipe-note { font-size: 0.78rem; color: #3a4a55; background: #eaf1f4; border-left: 3px solid #4F6A73;
+    padding: 2px 6px; border-radius: 3px; margin-bottom: 3px; white-space: pre-wrap; }
+  .schedule-tooltip .tt-note + .tt-note { margin-top: 4px; }
+
+  /* Per-stage note control in the recipe editor */
+  .stage-note-btn { white-space: nowrap; }
+  .stage-note-text { flex-basis: 100%; font-size: 0.78rem; color: #3a4a55; background: #eaf1f4;
+    border-left: 3px solid #4F6A73; padding: 2px 7px; border-radius: 3px; white-space: pre-wrap; }
+
   /* Schedule step hover tooltip */
   .schedule-row[data-hover], .schedule-event[data-hover] { cursor: help; }
   .schedule-tooltip {
@@ -2158,10 +2169,47 @@
     if (equip) parts.push(`<div class="tt-sec"><div class="tt-h">Equipment</div><div>${escapeHtml(equip).replace(/\n/g, '<br>')}</div></div>`);
     const ing = H.renderIngCol(ev);
     if (ing) parts.push(`<div class="tt-sec"><div class="tt-h">Ingredients</div><div class="tt-ings">${ing}</div></div>`);
+    const recipeNotes = recipeStageNotesForEvent(ev, H);
+    if (recipeNotes.length) {
+      const multi = H.allRecipeNames && H.allRecipeNames.length > 1;
+      parts.push(`<div class="tt-sec tt-note"><div class="tt-h">Recipe notes</div>${recipeNotes.map(n =>
+        `<div>📋 ${multi ? `<strong>${escapeHtml(n.recipe)}</strong> · ` : ''}${escapeHtml(n.note)}</div>`).join('')}</div>`);
+    }
     const note = getStepNoteFor(ev);
     if (note) parts.push(`<div class="tt-sec tt-note"><div class="tt-h">Note</div><div>${escapeHtml(note)}</div></div>`);
     if (!parts.length) return '';
     return `<div class="tt-title">${escapeHtml(ev.title || '')}</div>${parts.join('')}`;
+  }
+  // Recipe-stage notes (authored in the recipe editor) that apply to this event: any
+  // in-plan recipe touching the step whose stage category matches the event's stage and
+  // carries a note. Shown read-only on the schedule + bake sheet whenever the recipe runs.
+  function recipeStageNotesForEvent(ev, H) {
+    if (!H) return [];
+    const cat = getEventStage(ev);
+    if (!cat) return [];
+    let names;
+    try { names = new Set(H.getEventRecipes(ev)); } catch (e) { return []; }
+    if (!names.size) return [];
+    const out = [];
+    for (const r of recipes) {
+      if (!names.has(r.name)) continue;
+      const stages = Array.isArray(r.stages) ? r.stages : [];
+      for (const st of stages) {
+        const note = st && typeof st.note === 'string' ? st.note.trim() : '';
+        if (!note) continue;
+        const pal = STAGE_PALETTE[st.type];
+        if (!pal || pal.stage !== cat) continue;
+        out.push({ recipe: r.name, label: st.label || pal.label || st.type, note });
+      }
+    }
+    return out;
+  }
+  function recipeStageNotesHtml(ev, H) {
+    const ns = recipeStageNotesForEvent(ev, H);
+    if (!ns.length) return '';
+    const multi = !!(H && H.allRecipeNames && H.allRecipeNames.length > 1);
+    return `<div class="recipe-note-list">${ns.map(n =>
+      `<div class="recipe-note">📋 ${multi ? `<strong>${escapeHtml(n.recipe)}</strong> · ` : ''}${escapeHtml(n.note)}</div>`).join('')}</div>`;
   }
   // Inline note + add/edit control for a schedule step. The button is no-print (the
   // schedule isn't printed anyway, but keep it consistent with the bake sheet).
@@ -8155,9 +8203,11 @@ ${notesHtml}
           <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
           ${_stageDurationHtml(s, i)}
           ${vessel}
+          <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
           ${locked
             ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
             : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`}
+          ${(s.note || '').trim() ? `<span class="stage-note-text">📝 ${escapeHtml(s.note)}</span>` : ''}
         </div>`;
       }).join('');
     }
@@ -8222,6 +8272,14 @@ ${notesHtml}
   function stageEditorReset() {
     const pt = document.getElementById('r-process-type').value || 'sourdough-loaf';
     _editorStages = stageTemplateFor(pt);
+    renderStageEditor();
+  }
+  function editStageNote(i) {
+    const s = _editorStages[i]; if (!s) return;
+    const next = window.prompt('Note for this step (shown on the schedule & bake sheet whenever this recipe is used):', s.note || '');
+    if (next === null) return;  // cancelled
+    const v = (next || '').trim();
+    if (v) s.note = v; else delete s.note;
     renderStageEditor();
   }
   function stageEditorSetLabel(i, v) { if (_editorStages[i]) _editorStages[i].label = v; }
@@ -11734,6 +11792,7 @@ ${notesHtml}
     const renderEventContent = (ev) => `
       <div class="schedule-title">${escapeHtml(ev.title)}</div>
       ${ev.detail ? `<div class="schedule-detail">${escapeHtml(ev.detail)}</div>` : ''}
+      ${recipeStageNotesHtml(ev, _hoverHelpers)}
       ${noteControlHtml(ev)}
     `;
     const renderClickableTime = (ev) => {
@@ -12538,12 +12597,14 @@ ${notesHtml}
           : '';
         const noteKey = stepNoteKey(ev);
         const noteText = getStepNoteFor(ev);
+        const recipeNotesHtml = recipeStageNotesHtml(ev, H);
         const noteHtml = `<div class="bs-note-wrap">${noteText ? `<div class="bs-note">📝 ${escapeHtml(noteText)}</div>` : ''}<button type="button" class="bs-note-btn no-print" data-note-key="${escapeAttr(noteKey)}" onclick="editStepNote(this.dataset.noteKey)">${noteText ? 'Edit note' : '+ Add note'}</button></div>`;
         const stepCell = `
           <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}${recipesLabel}</td>
           <td class="bs-step"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
             <strong>${escapeHtml(titleText)}</strong>
             ${detailText ? `<div class="bs-detail">${escapeHtml(detailText)}</div>` : ''}
+            ${recipeNotesHtml}
             ${noteHtml}
           </td>`;
         if (!batches) {

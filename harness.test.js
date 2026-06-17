@@ -108,6 +108,7 @@ const exportsTail = `
   fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
   proofTempFactor, fermentScale, getProofingTempF, setProofingTempF, proofingTempIsSet, pickLevainBuild,
   buildBakeSheetHelpers, hoverHtmlFor, noteControlHtml, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
+  recipeStageNotesForEvent, recipeStageNotesHtml,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -945,6 +946,28 @@ api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Mix dough' }), 'cold 
 const ncSet = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
 hvOk &= hv('schedule note control shows the note + "Edit note"', /cold water/.test(ncSet) && /Edit note/.test(ncSet));
 api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Mix dough' }), '');
+
+// Recipe-stage notes (authored on a recipe's stage) appear on the matching step.
+const loafRec = api.__recipes().find(r => r.id === SEED.batard);
+const bulkStage = (loafRec.stages || []).find(s => s.type === 'bulk');
+hvOk &= hv('seed loaf recipe has a bulk stage to annotate', !!bulkStage);
+if (bulkStage) {
+  bulkStage.note = 'score deeply';
+  seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const H2 = api.buildBakeSheetHelpers();
+  const evsR = api.__sr().events;
+  const bulkEv = evsR.find(e => /^Bulk ferment/.test(e.title));
+  const rn = bulkEv ? api.recipeStageNotesForEvent(bulkEv, H2) : [];
+  hvOk &= hv('recipe-stage note maps onto the matching Bulk ferment step', rn.some(n => n.note === 'score deeply'));
+  hvOk &= hv('recipeStageNotesHtml renders the note text', /score deeply/.test(bulkEv ? api.recipeStageNotesHtml(bulkEv, H2) : ''));
+  const bakeEv = evsR.find(e => /^Bake /.test(e.title));
+  hvOk &= hv('recipe-stage note does NOT bleed onto a different-stage (bake) step',
+    !bakeEv || !api.recipeStageNotesForEvent(bakeEv, H2).some(n => n.note === 'score deeply'));
+  delete bulkStage.note;
+}
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
