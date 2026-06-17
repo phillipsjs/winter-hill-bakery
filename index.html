@@ -2814,6 +2814,7 @@
     FOLDS_COUNT: 5,
     FOLD_INTERVAL_MIN: 30,
     FOLD_ACTIVE_MIN: 5,
+    CHILL_ACTIVE_MIN: 3,   // hands-on minutes to move dough into the fridge (rest of cold proof is passive)
     BULK_AFTER_FOLDS_MIN: 240,
     PRESHAPE_MIN_PER_LOAF: 4,
     BENCH_REST_TARGET_MIN: 20,
@@ -3043,6 +3044,37 @@
     if (Array.isArray(s.ings)) c.ings = s.ings.slice();
     if (s.subNotes) c.subNotes = { ...s.subNotes };
     return c;
+  }
+  // --- Active (hands-on) vs passive time. Every stage has an editable `active` flag
+  // (overrides the STAGE_PALETTE default for its type) and an optional
+  // `duration.activeMin` = the hands-on minutes at the START of the step. A long but
+  // mostly-passive step (cold proof, machine mixing, autolyse) carries a small
+  // activeMin; the scheduler treats only that opening window as labor — the part that
+  // must fall inside kitchen hours and that can't overlap another hands-on step. The
+  // long inactive tail is free to run unattended (and overnight). ---
+  function stageIsActive(s) {
+    const pal = STAGE_PALETTE[s && s.type] || STAGE_PALETTE.step;
+    return (s && s.active != null) ? !!s.active : !!pal.active;
+  }
+  // Default hands-on minutes when no explicit activeMin is set on an active stage.
+  function stageDefaultActiveMin(s, elapsedMin) {
+    const d = (s && s.duration) || {};
+    const elapsed = Math.max(0, Math.round(Number(elapsedMin) || 0));
+    switch (d.kind) {
+      case 'range': return Math.min(SCHED.CHILL_ACTIVE_MIN, elapsed || SCHED.CHILL_ACTIVE_MIN); // e.g. just moving dough to the fridge
+      case 'countInterval': return (Number(d.count) || 0) * SCHED.FOLD_ACTIVE_MIN; // brief active burst per fold
+      case 'anchored': return 0; // bake — passive unless the baker flags it otherwise
+      default: return elapsed; // fixed / perUnit: hands-on for the whole step unless told otherwise
+    }
+  }
+  // Hands-on minutes for a stage. 0 when passive; an explicit duration.activeMin when set
+  // (clamped ≥0); otherwise a sensible per-kind default. elapsedMin is the stage's own
+  // elapsed duration (so a fixed step with no override counts as fully active).
+  function stageActiveMinutes(s, elapsedMin) {
+    if (!stageIsActive(s)) return 0;
+    const am = Number(s && s.duration && s.duration.activeMin);
+    if (Number.isFinite(am) && am >= 0) return Math.round(am);
+    return Math.round(stageDefaultActiveMin(s, elapsedMin));
   }
   // The stage list a scheduler should walk for a recipe: its saved stages (or a freshly
   // derived list), with the ingredient-controlled mill stage re-synced so the schedule is
@@ -8398,21 +8430,29 @@ ${notesHtml}
       + `</select>`;
   }
 
+  // The hands-on (active) minutes input — only meaningful on an active step. Blank means
+  // "the whole step is hands-on"; a smaller number splits a long step into a short active
+  // opening (e.g. loading a mixer, moving dough to the fridge) + a passive tail.
+  function _stageActiveMinHtml(s, i) {
+    if (!stageIsActive(s)) return '';
+    const v = s.duration && s.duration.activeMin != null ? s.duration.activeMin : '';
+    return ` · <input type="number" min="0" step="any" value="${v}" placeholder="all" title="Hands-on minutes at the start of this step (blank = the whole step is hands-on). The passive remainder runs unattended." style="width:46px" oninput="stageEditorSetActiveMin(${i},this.value)" /> min&nbsp;active`;
+  }
   function _stageDurationHtml(s, i) {
     const d = s.duration || {};
     const numIn = (key, val, w) => `<input type="number" min="0" step="any" value="${val == null ? '' : val}" style="width:${w || 60}px" oninput="stageEditorSetDur(${i},'${key}',this.value)" />`;
     switch (d.kind) {
       case 'perUnit':
-        return `<span class="stage-dur">${numIn('minPerUnit', d.minPerUnit)} min/unit</span>`;
+        return `<span class="stage-dur">${numIn('minPerUnit', d.minPerUnit)} min/unit${_stageActiveMinHtml(s, i)}</span>`;
       case 'countInterval':
         return `<span class="stage-dur">${numIn('count', d.count, 52)} × ${numIn('intervalMin', d.intervalMin)} min apart</span>`;
       case 'range':
-        if (d.auto) return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" checked onchange="stageEditorSetAuto(${i},false)" /> auto (scheduler picks)</label></span>`;
-        return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" onchange="stageEditorSetAuto(${i},true)" /> auto</label> ${numIn('minHr', d.minHr, 48)}–${numIn('maxHr', d.maxHr, 48)} hr</span>`;
+        if (d.auto) return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" checked onchange="stageEditorSetAuto(${i},false)" /> auto (scheduler picks)</label>${_stageActiveMinHtml(s, i)}</span>`;
+        return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" onchange="stageEditorSetAuto(${i},true)" /> auto</label> ${numIn('minHr', d.minHr, 48)}–${numIn('maxHr', d.maxHr, 48)} hr${_stageActiveMinHtml(s, i)}</span>`;
       case 'anchored':
         return `<span class="stage-dur">${numIn('min', d.min)} min · <input type="number" min="0" step="5" value="${tempInputValue(s.tempF)}" style="width:60px" oninput="stageEditorSetTemp(${i},this.value)" />${tempUnitLabel()}</span>`;
       default:
-        return `<span class="stage-dur">${numIn('min', d.min)} min</span>`;
+        return `<span class="stage-dur">${numIn('min', d.min)} min${_stageActiveMinHtml(s, i)}</span>`;
     }
   }
 
@@ -8443,6 +8483,7 @@ ${notesHtml}
           <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
           ${_stageDurationHtml(s, i)}
           ${vessel}
+          <button type="button" class="stage-active-btn tiny${stageIsActive(s) ? '' : ' secondary'}" onclick="toggleStageActive(${i})" title="${stageIsActive(s) ? 'Hands-on step — the scheduler keeps it inside kitchen hours and warns if it overlaps other active work. Click to mark passive.' : 'Passive step — runs unattended (and may fall outside kitchen hours). Click to mark hands-on.'}">${stageIsActive(s) ? '⚡ active' : '💤 passive'}</button>
           <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
           <button type="button" id="stage-ing-btn-${i}" class="stage-ing-btn tiny${(s.ings || []).length ? '' : ' secondary'}" onclick="toggleStageIngPanel(${i})" title="Tag which ingredients are used at this step (shown in the bake sheet)">🧂 ${(s.ings || []).length ? (s.ings.length + ' ing') : 'ingredients'}</button>
           ${substepsForStage(s) ? `<button type="button" id="stage-sub-btn-${i}" class="stage-sub-btn tiny secondary" onclick="toggleStageSubPanel(${i})" title="Expand to add notes on this step's sub-steps">${subToggleLabel(i)}</button>` : ''}
@@ -8509,6 +8550,26 @@ ${notesHtml}
     renderStageEditor();
   }
   function stageEditorRemove(i) { _editorStages.splice(i, 1); renderStageEditor(); }
+  // Toggle a step between hands-on (active) and unattended (passive). Stores an explicit
+  // `active` override only when it differs from the stage type's palette default, so a
+  // step left at its default round-trips without a redundant field.
+  function toggleStageActive(i) {
+    const s = _editorStages[i];
+    if (!s) return;
+    const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
+    const next = !stageIsActive(s);
+    if (next === !!pal.active) delete s.active; else s.active = next;
+    renderStageEditor(); // re-renders so the hands-on input shows/hides with the flag
+  }
+  // Hands-on minutes for a step (no re-render — keep the input focused while typing).
+  function stageEditorSetActiveMin(i, val) {
+    const s = _editorStages[i];
+    if (!s) return;
+    s.duration = s.duration || {};
+    if (val === '' || val == null) { delete s.duration.activeMin; return; }
+    const n = Number(val);
+    if (Number.isFinite(n) && n >= 0) s.duration.activeMin = n;
+  }
   function stageEditorAdd() {
     const sel = document.getElementById('r-stage-add-type');
     _editorStages.push(_defaultStageOfType(sel ? sel.value : 'step'));
@@ -9322,7 +9383,9 @@ ${notesHtml}
     /^Shape enriched/,
     /^Glaze \/ ice/,
   ];
-  function isActiveStep(ev, kind) {
+  // Original title-pattern / activeStep classification — the fallback used when an event
+  // has no annotated activeMin (i.e. no editable stage drives it).
+  function _legacyIsActiveStep(ev, kind) {
     if (typeof ev.activeStep === 'boolean') return ev.activeStep; // explicit flag (simple/enriched)
     const patterns = kind === 'loaf' ? ACTIVE_LOAF_TITLE_PATTERNS
       : kind === 'bagel' ? ACTIVE_BAGEL_TITLE_PATTERNS
@@ -9331,8 +9394,92 @@ ${notesHtml}
       : ACTIVE_MUFFIN_TITLE_PATTERNS;
     return patterns.some(p => p.test(ev.title));
   }
+  function isActiveStep(ev, kind) {
+    if (typeof ev.activeMin === 'number') return ev.activeMin > 0; // editable active flag / time (once annotated)
+    return _legacyIsActiveStep(ev, kind);
+  }
   function lateNightActiveSteps(events, kind) {
+    annotateActiveMinutes(events); // ensure the editable active flags drive this
     return events.filter(ev => ev.time && !ev.timeEnd && isActiveStep(ev, kind) && isLateNight(ev.time));
+  }
+  // Process → recipe processType(s), mirroring getEventRecipes' process fallback.
+  const _PROCESS_TO_RECIPE_TYPES = {
+    loaf: ['sourdough-loaf'], muffin: ['sourdough-muffin'], bagel: ['bagel'],
+    focaccia: ['focaccia'], shared: ['sourdough-loaf', 'sourdough-muffin'],
+  };
+  function _eventActiveRecipes(ev) {
+    const inPlan = recipes.filter(r => (plan[r.id] || 0) > 0);
+    const pts = _PROCESS_TO_RECIPE_TYPES[ev.process];
+    const out = pts ? inPlan.filter(r => pts.includes(getProcessType(r))) : [];
+    inPlan.forEach(r => { if (ev.title && ev.title.includes(r.name) && !out.includes(r)) out.push(r); });
+    return out;
+  }
+  // Reasonable hands-on estimate for a legacy active event with no editable stage
+  // override: reuse the engine's own "N min active" detail text when present, else a
+  // modest default so the active window is non-empty for overlap checks.
+  function _legacyActiveFallbackMin(ev) {
+    const m = (ev.detail || '').match(/(\d+)\s*min\s*active/i);
+    return m ? Number(m[1]) : 10;
+  }
+  // Stamp ev.activeMin on every event so isActiveStep / overlap detection reflect each
+  // recipe's editable active flags + active-time. Generic-engine events already carry an
+  // exact activeMin (skipped). For the hardcoded bread engines, reverse-map each event to
+  // its recipe stage(s) by type: an editable override wins; otherwise fall back to the
+  // current title-pattern behavior so nothing changes unless the baker edits a step.
+  function annotateActiveMinutes(events) {
+    for (const ev of events || []) {
+      if (typeof ev.activeMin === 'number') continue;
+      const evType = eventStageType(ev);
+      let resolved = false, flag = false, override = null;
+      if (evType) {
+        for (const r of _eventActiveRecipes(ev)) {
+          const st = (Array.isArray(r.stages) ? r.stages : []).find(x => x.type === evType);
+          if (!st) continue;
+          resolved = true;
+          if (stageIsActive(st)) {
+            flag = true;
+            const am = Number(st.duration && st.duration.activeMin);
+            if (Number.isFinite(am) && am >= 0) override = Math.max(override == null ? 0 : override, am);
+          }
+        }
+      }
+      if (resolved) ev.activeMin = flag ? (override != null ? override : _legacyActiveFallbackMin(ev)) : 0;
+      else ev.activeMin = _legacyIsActiveStep(ev, ev.process) ? _legacyActiveFallbackMin(ev) : 0;
+    }
+    return events;
+  }
+  // Detect labor conflicts: two hands-on steps whose active windows [start, start+activeMin]
+  // overlap mean the baker would have to be in two places at once. Returns at most a handful
+  // of soft notices (overlaps are sometimes acceptable), deduped by the pair of step titles.
+  function detectActiveOverlaps(events) {
+    annotateActiveMinutes(events);
+    const items = [];
+    for (const ev of events || []) {
+      if (!ev.time || ev.timeEnd) continue; // active steps are point-start; skip bakes/proofs/chills
+      const am = Number(ev.activeMin);
+      if (!Number.isFinite(am) || am <= 0) continue;
+      const start = ev.time.getTime();
+      items.push({ ev, start, end: start + am * 60000 });
+    }
+    items.sort((a, b) => a.start - b.start);
+    const clock = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    const warns = [], seen = new Set();
+    for (let i = 0; i < items.length && warns.length < 5; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        if (items[j].start >= items[i].end) break; // sorted by start: nothing later overlaps i
+        const A = items[i], B = items[j];
+        if (A.ev.title === B.ev.title && A.start === B.start) continue; // same logical step across columns
+        const key = [A.ev.title, B.ev.title].sort().join(' || ');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        warns.push({
+          msg: `Hands-on steps overlap: "${A.ev.title}" and "${B.ev.title}" both need you around ${clock.format(A.ev.time)}. You can only do one at a time — consider staggering them.`,
+          issue: 'active-overlap', type: 'info', titles: [A.ev.title, B.ev.title],
+        });
+        if (warns.length >= 5) break;
+      }
+    }
+    return warns;
   }
   // Generic deck-by-deck planner. Each deck's effective capacity is the
   // minimum deckCap of the recipes in that deck — so a deck of pure batards
@@ -11369,7 +11516,8 @@ ${notesHtml}
           const dur = stageDurationMin(s, batchUnits);
           const start = addMinutes(cursor, -dur);
           const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
-          const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, stageType: s.type, activeStep: !!pal.active };
+          const aMin = stageActiveMinutes(s, dur);
+          const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, stageType: s.type, activeStep: aMin > 0, activeMin: aMin };
           if (s.type === 'weigh') {
             ev.batchIngredients = ingsForUnits(r, batchUnits);
           } else if (s.type === 'mill') {
@@ -11837,6 +11985,8 @@ ${notesHtml}
     switch (w.issue) {
       case 'late-night':
         return lateNightActiveSteps(events, w.kind).map(e => e.title);
+      case 'active-overlap':
+        return Array.isArray(w.titles) ? w.titles : [];
       case 'bake-late':
       case 'oven-overlap-late':
       case 'oven-shifted': {
@@ -12307,6 +12457,9 @@ ${notesHtml}
 
     const equipWarns = detectEquipmentConflicts(result.equipClaims);
     if (equipWarns.length) { result.warnings = result.warnings || []; result.warnings.push(...equipWarns); }
+
+    const overlapWarns = detectActiveOverlaps(result.events);
+    if (overlapWarns.length) { result.warnings = result.warnings || []; result.warnings.push(...overlapWarns); }
 
     if (!proofingTempIsSet() && result.events && result.events.length) {
       result.warnings = result.warnings || [];

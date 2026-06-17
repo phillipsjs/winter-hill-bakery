@@ -112,6 +112,10 @@ const exportsTail = `
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
+  stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
+  toggleStageActive, stageEditorSetActiveMin,
+  annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
+  __setRecipes: (r) => { recipes = r; },
   __editorStages: () => _editorStages,
   __sr: () => _scheduleResult,
   __setPlan: (p) => { plan = p; },
@@ -1147,7 +1151,8 @@ const rt = JSON.parse(JSON.stringify({
   id: 'rt', name: 'RT', processType: 'sourdough-loaf', loafWeight: 900, unit: 'loaf', batchYield: 8,
   ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }],
   stages: [
-    { type: 'weigh', duration: { kind: 'fixed', min: 5 }, ings: ['Bread flour'] },
+    { type: 'weigh', duration: { kind: 'fixed', min: 5 }, ings: ['Bread flour'], active: false },
+    { type: 'mix', duration: { kind: 'fixed', min: 30, activeMin: 8 } },
     { type: 'fold', duration: { kind: 'countInterval', count: 3, intervalMin: 30 }, note: 'gentle', subNotes: { f1: 'coil', f3: 'tension' } },
     { type: 'bake', duration: { kind: 'anchored', min: 40 }, tempF: 500, note: 'steam', subNotes: { preheat: 'sharp', ovenoff: 'crack door' } },
   ],
@@ -1160,6 +1165,75 @@ hvOk &= hv('gist round-trip preserves stage notes', lFold.note === 'gentle' && l
 hvOk &= hv('gist round-trip preserves stage sub-notes', lFold.subNotes.f1 === 'coil' && lFold.subNotes.f3 === 'tension' && lBake.subNotes.preheat === 'sharp' && lBake.subNotes.ovenoff === 'crack door');
 hvOk &= hv('gist round-trip preserves ingredient tags + tempF', lWeigh.ings[0] === 'Bread flour' && lBake.tempF === 500);
 hvOk &= hv('gist round-trip preserves the authored batch yield', rtLoaded.batchYield === 8);
+const rtMix = rtLoaded.stages.find(s => s.type === 'mix');
+hvOk &= hv('gist round-trip preserves the editable active flag', lWeigh.active === false);
+hvOk &= hv('gist round-trip preserves the per-step active (hands-on) minutes', rtMix.duration.activeMin === 8);
+
+// --- Active vs passive time (editable per step) ---
+const palMixActive = api.stageIsActive({ type: 'mix' });            // palette default for mix is active
+const palBakeActive = api.stageIsActive({ type: 'bake' });           // palette default for bake is passive
+hvOk &= hv('stageIsActive reads the palette default (mix active, bake passive)', palMixActive === true && palBakeActive === false);
+hvOk &= hv('stageIsActive honors an explicit override either way', api.stageIsActive({ type: 'mix', active: false }) === false && api.stageIsActive({ type: 'bake', active: true }) === true);
+hvOk &= hv('a passive step contributes 0 hands-on minutes', api.stageActiveMinutes({ type: 'mix', active: false, duration: { kind: 'fixed', min: 30 } }, 30) === 0);
+hvOk &= hv('an active fixed step with no override is hands-on for the whole step', api.stageActiveMinutes({ type: 'mix', duration: { kind: 'fixed', min: 30 } }, 30) === 30);
+hvOk &= hv('an explicit activeMin splits a long step (mixer: load then run)', api.stageActiveMinutes({ type: 'mix', duration: { kind: 'fixed', min: 30, activeMin: 8 } }, 30) === 8);
+hvOk &= hv('a passive cold proof contributes 0 hands-on minutes by default', api.stageActiveMinutes({ type: 'chill', duration: { kind: 'range', auto: true } }, 600) === 0);
+hvOk &= hv('marking a cold proof active gives a tiny default hands-on window (move to fridge)', api.stageActiveMinutes({ type: 'chill', active: true, duration: { kind: 'range', auto: true } }, 600) === 3);
+hvOk &= hv('an active cold proof can carry a custom hands-on window', api.stageActiveMinutes({ type: 'chill', active: true, duration: { kind: 'range', minHr: 8, maxHr: 12, activeMin: 5 } }, 600) === 5);
+
+// --- annotateActiveMinutes drives bread warnings off the editable flag ---
+const _savedRecipes = api.__recipes();
+const _savedPlan = JSON.parse(JSON.stringify({}));
+api.__setRecipes([{
+  id: 'tl', name: 'TestLoaf', processType: 'sourdough-loaf', loafWeight: 900, unit: 'loaf',
+  ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }],
+  stages: [
+    { type: 'mix', duration: { kind: 'fixed', min: 0, activeMin: 10 } },
+    { type: 'bake', duration: { kind: 'anchored', min: 40 }, tempF: 480 },
+  ],
+}]);
+api.__setPlan({ tl: 4 });
+const mkEv = () => ({ title: 'Mix TestLoaf dough', process: 'loaf', detail: '10 min active', time: new Date(2030, 0, 1, 2, 0) });
+let mixEvA = mkEv();
+api.annotateActiveMinutes([mixEvA]);
+hvOk &= hv('annotate reads the recipe mix stage active-time (10 min)', mixEvA.activeMin === 10);
+hvOk &= hv('isActiveStep is true for an annotated active step', api.isActiveStep(mixEvA, 'loaf') === true);
+// Mark the mix stage passive — the same step should drop out of active classification.
+api.__setRecipes([{
+  id: 'tl', name: 'TestLoaf', processType: 'sourdough-loaf', loafWeight: 900, unit: 'loaf',
+  ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }],
+  stages: [
+    { type: 'mix', active: false, duration: { kind: 'fixed', min: 0, activeMin: 10 } },
+    { type: 'bake', duration: { kind: 'anchored', min: 40 }, tempF: 480 },
+  ],
+}]);
+let mixEvB = mkEv();
+api.annotateActiveMinutes([mixEvB]);
+hvOk &= hv('a step marked passive contributes 0 active minutes', mixEvB.activeMin === 0);
+hvOk &= hv('a passive step is excluded from late-night active steps', api.lateNightActiveSteps([mkEvPassive()], 'loaf').length === 0);
+function mkEvPassive() { const e = mkEv(); return e; }
+api.__setRecipes(_savedRecipes);
+
+// --- detectActiveOverlaps: two hands-on steps the baker can't do at once ---
+const T = (h, m) => new Date(2030, 0, 1, h, m);
+const overlapEvents = [
+  { title: 'Mix loaf dough', process: 'loaf', activeMin: 15, time: T(6, 0) },
+  { title: 'Shape muffins', process: 'muffin', activeMin: 15, time: T(6, 5) },   // overlaps the mix
+  { title: 'Bake bread', process: 'loaf', activeMin: 40, time: T(9, 0), timeEnd: T(9, 40) }, // passive bake — ignored
+];
+const ov = api.detectActiveOverlaps(overlapEvents);
+hvOk &= hv('overlapping hands-on steps raise an active-overlap notice', ov.length === 1 && ov[0].issue === 'active-overlap');
+hvOk &= hv('the overlap notice names both conflicting steps', ov[0].titles.includes('Mix loaf dough') && ov[0].titles.includes('Shape muffins'));
+const noOverlap = api.detectActiveOverlaps([
+  { title: 'Mix loaf dough', process: 'loaf', activeMin: 10, time: T(6, 0) },
+  { title: 'Shape muffins', process: 'muffin', activeMin: 10, time: T(7, 0) }, // 60 min apart — no overlap
+]);
+hvOk &= hv('well-separated hands-on steps raise no overlap notice', noOverlap.length === 0);
+const sameStep = api.detectActiveOverlaps([
+  { title: 'Weigh ingredients', process: 'loaf', activeMin: 10, time: T(6, 0) },
+  { title: 'Weigh ingredients', process: 'muffin', activeMin: 10, time: T(6, 0) }, // same logical step, two columns
+]);
+hvOk &= hv('the same logical step across columns is not flagged as a conflict', sameStep.length === 0);
 
 // Levain container choice: pickLevainContainer honors a per-stream preference (and
 // falls back to auto when unset or the chosen container is gone), and it syncs.
