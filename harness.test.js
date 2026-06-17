@@ -120,6 +120,8 @@ const exportsTail = `
   __setMixers: (m) => { userMixers = m; },
   __setPots: (p) => { userPots = p; },
   __setOvens: (o) => { userOvens = o; },
+  __setContainers: (c) => { userContainers = c; },
+  pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
   __recipes: () => recipes,
 };`;
 
@@ -1157,6 +1159,24 @@ const lWeigh = rtLoaded.stages.find(s => s.type === 'weigh');
 hvOk &= hv('gist round-trip preserves stage notes', lFold.note === 'gentle' && lBake.note === 'steam');
 hvOk &= hv('gist round-trip preserves stage sub-notes', lFold.subNotes.f1 === 'coil' && lFold.subNotes.f3 === 'tension' && lBake.subNotes.preheat === 'sharp' && lBake.subNotes.ovenoff === 'crack door');
 hvOk &= hv('gist round-trip preserves ingredient tags + tempF', lWeigh.ings[0] === 'Bread flour' && lBake.tempF === 500);
+
+// Levain container choice: pickLevainContainer honors a per-stream preference (and
+// falls back to auto when unset or the chosen container is gone), and it syncs.
+api.__setContainers([
+  { id: 'lc-small', name: 'Quart jar', maxDoughGrams: 500, processTag: 'levain' },
+  { id: 'lc-big', name: 'Big tub', maxDoughGrams: 5000, processTag: 'levain' },
+]);
+api.setLevainContainerPref('shared', '');
+hvOk &= hv('levain container auto-picks smallest that fits when unset', api.pickLevainContainer(300, 'shared').id === 'lc-small');
+api.setLevainContainerPref('shared', 'lc-big');
+hvOk &= hv('levain container honors the chosen container even if larger than needed', api.pickLevainContainer(300, 'shared').id === 'lc-big');
+hvOk &= hv('levain container choice is per-stream (muffin still auto)', api.pickLevainContainer(300, 'muffin').id === 'lc-small');
+hvOk &= hv('getLocalSettings carries levainContainers', api.getLocalSettings().levainContainers.shared === 'lc-big');
+api.applyRemoteSettings({ levainContainers: { bagel: 'lc-small' } });
+hvOk &= hv('applyRemoteSettings adopts levainContainers', api.getLevainContainerPref('bagel') === 'lc-small');
+api.setLevainContainerPref('shared', 'gone-id');
+hvOk &= hv('a removed preferred container falls back to auto', api.pickLevainContainer(300, 'shared').id === 'lc-small');
+api.setLevainContainerPref('shared', ''); api.setLevainContainerPref('bagel', '');
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
