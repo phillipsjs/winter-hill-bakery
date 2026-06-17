@@ -1094,16 +1094,6 @@
     </div>
 
     <div class="card">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <h2 style="margin:0;font-size:1rem">Proofing temperature</h2>
-        <input type="number" id="proofing-temp-input" min="40" max="110" step="1" placeholder="70" style="width:80px;flex:none" oninput="onProofingTempChange()" />
-        <span class="muted" id="proofing-temp-unit" style="font-size:0.9rem">°F</span>
-        <button type="button" class="secondary tiny" onclick="clearProofingTemp()">Use default</button>
-      </div>
-      <p class="muted" id="proofing-temp-note" style="margin:8px 0 0;font-size:0.85rem"></p>
-    </div>
-
-    <div class="card">
       <details class="plan-details" id="ingredient-costs-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
@@ -1244,6 +1234,22 @@
           <div id="pot-list" style="margin-top:4px"></div>
         </div>
 
+      </details>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <details class="plan-details" id="proofing-temp-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Proofing temperature</h2>
+          <span class="muted" style="font-size:0.85rem;font-weight:normal">How warm your kitchen/proofer runs — affects fermentation & levain timing</span>
+        </summary>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+          <input type="number" id="proofing-temp-input" min="40" max="110" step="1" placeholder="70" style="width:80px;flex:none" oninput="onProofingTempChange()" />
+          <span class="muted" id="proofing-temp-unit" style="font-size:0.9rem">°F</span>
+          <button type="button" class="secondary tiny" onclick="clearProofingTemp()">Use default</button>
+        </div>
+        <p class="muted" id="proofing-temp-note" style="margin:8px 0 0;font-size:0.85rem"></p>
       </details>
     </div>
 
