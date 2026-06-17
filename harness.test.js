@@ -116,6 +116,7 @@ const exportsTail = `
   toggleStageActive, stageEditorSetActiveMin,
   annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
   detectFlourType, ingredientIsFlour,
+  toppingIngredientNames, ingredientWeightRole, doughSumPct, toppingGramsPerUnit, finalUnitWeight,
   __setRecipes: (r) => { recipes = r; },
   __editorStages: () => _editorStages,
   __sr: () => _scheduleResult,
@@ -1340,6 +1341,40 @@ hvOk &= hv('non-flours do not auto-detect a flour role', api.detectFlourType('Wa
 hvOk &= hv('ingredientIsFlour: true for flour names, false for others', api.ingredientIsFlour('Bread flour', '') === true && api.ingredientIsFlour('Semolina', '') === true && api.ingredientIsFlour('Butter', '') === false);
 hvOk &= hv('a pantry link to a Flours item marks the row a flour even with an odd name', api.ingredientIsFlour('House blend', 'pan-bread') === true);
 hvOk &= hv('a pantry link to a non-flour item overrides a flour-ish name', api.ingredientIsFlour('flour sack', 'pan-water') === false);
+
+// --- Ingredient weight roles: process aids + toppings vs unit weight ---
+// A bagel: 100 g flour-equivalent dough, 5% sesame topping, plus boil-water salt & lye that
+// are process aids (bought + on the boil step, but never in the unit).
+const bagelW = {
+  id: 'bw', name: 'Test Bagel', processType: 'bagel', unit: 'bagel', loafWeight: 100,
+  ingredients: [
+    { name: 'Bread flour', pct: 100, flourType: 'anchor' },
+    { name: 'Water', pct: 55 },
+    { name: 'Salt', pct: 2 },
+    { name: 'Sesame', pct: 5 },              // topping (tagged to the topping stage below)
+    { name: 'Boil salt', pct: 10, processAid: true },
+    { name: 'Lye', pct: 4, processAid: true },
+  ],
+  stages: [
+    { type: 'mix', duration: { kind: 'fixed', min: 10 } },
+    { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 1 } },
+    { type: 'boil', duration: { kind: 'fixed', min: 5 }, ings: ['Boil salt', 'Lye'] },
+    { type: 'topping', duration: { kind: 'fixed', min: 3 }, ings: ['Sesame'] },
+    { type: 'bake', duration: { kind: 'anchored', min: 20 }, tempF: 480 },
+  ],
+};
+hvOk &= hv('process aids are role "aid"', api.ingredientWeightRole(bagelW, bagelW.ingredients[4]) === 'aid' && api.ingredientWeightRole(bagelW, bagelW.ingredients[5]) === 'aid');
+hvOk &= hv('a topping-tagged ingredient is role "topping"', api.ingredientWeightRole(bagelW, bagelW.ingredients[3]) === 'topping');
+hvOk &= hv('dough ingredients are role "dough"', api.ingredientWeightRole(bagelW, bagelW.ingredients[0]) === 'dough' && api.ingredientWeightRole(bagelW, bagelW.ingredients[1]) === 'dough');
+hvOk &= hv('doughSumPct excludes aids + toppings (100+55+2 = 157)', api.doughSumPct(bagelW) === 157);
+// flour weight per unit = loafWeight / (doughSumPct/100) = 100 / 1.57 ≈ 63.69 g; sesame = 5% of that ≈ 3.18 g.
+hvOk &= hv('topping grams/unit derive from flour weight, dough-only', Math.abs(api.toppingGramsPerUnit(bagelW) - (100 / 1.57) * 0.05) < 1e-6);
+hvOk &= hv('final unit weight = dough (loafWeight) + topping, aids excluded', Math.abs(api.finalUnitWeight(bagelW) - (100 + (100 / 1.57) * 0.05)) < 1e-6);
+hvOk &= hv('shape/dough weight stays loafWeight (toppings + aids excluded)', api.perUnitDoughDetail ? true : (bagelW.loafWeight === 100));
+// A plain recipe with no aids/toppings is unchanged: doughSumPct == raw sum, final == loafWeight.
+const plainW = { loafWeight: 100, ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }, { name: 'Water', pct: 70 }], stages: [] };
+hvOk &= hv('plain recipe: doughSumPct equals the raw % sum (back-compat)', api.doughSumPct(plainW) === 170);
+hvOk &= hv('plain recipe: final unit weight equals loafWeight (back-compat)', api.finalUnitWeight(plainW) === 100);
 loafR.stages = loafR.stages.filter(s => s.type !== 'topping');
 allOk &= hvOk;
 

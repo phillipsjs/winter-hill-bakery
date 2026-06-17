@@ -229,7 +229,8 @@
     background: white;
     color: var(--ink);
   }
-  .ing-anchor-ctrl {
+  .ing-role-cell { min-width: 0; }
+  .ing-anchor-ctrl, .ing-aid-ctrl {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -238,7 +239,8 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  .ing-anchor-ctrl input { margin: 0; flex: none; }
+  .ing-aid-ctrl { color: var(--muted); }
+  .ing-anchor-ctrl input, .ing-aid-ctrl input { margin: 0; flex: none; }
   .ing-anchor-help { color: var(--muted); font-size: 0.82rem; pointer-events: none; }
   .bake-row {
     display: grid;
@@ -3114,6 +3116,64 @@
     if (list.length === 1) return `${formatGrams(list[0].loafWeight)} ${unitWord ? `per ${unitWord}` : 'each'}`;
     return list.map(r => `${formatGrams(r.loafWeight)} per ${r.name}`).join(' · ');
   }
+
+  // --- Ingredient weight roles. Not every ingredient adds mass to the finished unit, and
+  // not every ingredient is present from the start. `loafWeight` stays the DOUGH weight per
+  // unit (what's mixed + shaped); these helpers carve out the two exceptions:
+  //   • process aid (ing.processAid) — added to a bath/surface and discarded (boil-water
+  //     salt & lye, dusting flour). Bought + costed, but never in the unit or the dough math.
+  //   • topping — tagged to a topping stage, so it joins AFTER shaping: counts toward the
+  //     final unit weight but not the dough / shape-step weight. ---
+  function toppingIngredientNames(recipe) {
+    const names = new Set();
+    for (const s of (recipe && recipe.stages) || []) {
+      if (s.type === 'topping' && Array.isArray(s.ings)) s.ings.forEach(n => names.add(n));
+    }
+    return names;
+  }
+  function ingredientWeightRole(recipe, ing, toppingNames) {
+    if (ing && ing.processAid) return 'aid';
+    const tn = toppingNames || toppingIngredientNames(recipe);
+    if (ing && tn.has(ing.name)) return 'topping';
+    return 'dough';
+  }
+  // Σ baker's-% of the DOUGH ingredients only (excludes process aids + toppings) — the
+  // denominator that turns the per-unit dough weight into a flour weight. Falls back to the
+  // raw sum if a recipe somehow has no dough ingredients, so flourWeight is never /0.
+  function doughSumPct(recipe) {
+    const tn = toppingIngredientNames(recipe);
+    let dough = 0, all = 0;
+    for (const i of (recipe && recipe.ingredients) || []) {
+      const pct = Number(i.pct) || 0;
+      all += pct;
+      if (ingredientWeightRole(recipe, i, tn) === 'dough') dough += pct;
+    }
+    return dough > 0 ? dough : all;
+  }
+  function flourWeightPerUnit(recipe) {
+    const sp = doughSumPct(recipe);
+    return sp > 0 ? (Number(recipe.loafWeight) || 0) / (sp / 100) : 0;
+  }
+  // Grams of topping that end up on each unit (flour-relative %, like every other amount).
+  function toppingGramsPerUnit(recipe) {
+    const tn = toppingIngredientNames(recipe);
+    if (!tn.size) return 0;
+    const fw = flourWeightPerUnit(recipe);
+    return (recipe.ingredients || []).reduce((s, i) =>
+      s + (tn.has(i.name) && !i.processAid ? fw * (Number(i.pct) || 0) / 100 : 0), 0);
+  }
+  // Weight of the finished unit: dough (loafWeight) + anything added on top after shaping.
+  function finalUnitWeight(recipe) {
+    return (Number(recipe.loafWeight) || 0) + toppingGramsPerUnit(recipe);
+  }
+  // "<final> g per <unit>", spelling out the dough + topping split when there is a topping.
+  function unitWeightMeta(recipe, unitWord) {
+    const dough = Number(recipe.loafWeight) || 0;
+    const t = toppingGramsPerUnit(recipe);
+    const u = escapeHtml(unitWord || recipe.unit || 'unit');
+    if (t <= 0.5) return `${Math.round(dough)} g per ${u}`;
+    return `${Math.round(dough + t)} g per ${u} (${Math.round(dough)} g dough + ${Math.round(t)} g topping)`;
+  }
   // Build the editable stage list for a recipe: template defaults overlaid with the
   // recipe's saved overrides (so legacy recipes round-trip to identical scheduler params).
   function stagesFromRecipe(recipe) {
@@ -4392,7 +4452,7 @@ ${notesHtml}
     if (!levainRecipe || !levainRecipe.ingredients || !levainRecipe.loafWeight) return null;
     const sumPct = levainRecipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
     if (sumPct <= 0) return null;
-    const flourWeight = levainRecipe.loafWeight / (sumPct / 100);
+    const flourWeight = levainRecipe.loafWeight / (doughSumPct(levainRecipe) / 100);
     let total = 0, anyLinked = false;
     for (const ing of levainRecipe.ingredients) {
       if (!ing.pantryId) continue;
@@ -4410,7 +4470,7 @@ ${notesHtml}
     if (!recipe || !recipe.ingredients || !recipe.loafWeight) return null;
     const sumPct = recipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
     if (sumPct <= 0) return null;
-    const flourWeight = recipe.loafWeight / (sumPct / 100);
+    const flourWeight = recipe.loafWeight / (doughSumPct(recipe) / 100);
     let total = 0, anyLinked = false;
     for (const ing of recipe.ingredients) {
       // Levain: cost from the levain recipe. Either explicitly linked (__levain__) or
@@ -6352,17 +6412,19 @@ ${notesHtml}
       const iname = row.querySelector('.ing-name').value.trim();
       const ipct = Number(row.querySelector('.ing-pct').value);
       const flourType = row.querySelector('.ing-flour-type').value;
+      const aidEl = row.querySelector('.ing-process-aid');
       const pantrySelect = row.querySelector('.ing-pantry');
       const pantryId = pantrySelect ? pantrySelect.value : '';
       if (iname && Number.isFinite(ipct) && ipct >= 0) {
         const ing = { name: iname, pct: ipct };
         if (flourType) ing.flourType = flourType;
+        if (aidEl && aidEl.value) ing.processAid = true;
         if (pantryId) ing.pantryId = pantryId;
         ingredients.push(ing);
       }
     });
     const weight = Number(document.getElementById('r-weight') ? document.getElementById('r-weight').value : 0);
-    const tmpRecipe = { ingredients, loafWeight: weight };
+    const tmpRecipe = { ingredients, loafWeight: weight, stages: _editorStages };
     const cost = computeRecipeCostPerItem(tmpRecipe);
 
     if (cost != null) {
@@ -6783,7 +6845,7 @@ ${notesHtml}
   function computeIngredientWeights(recipe, loaves) {
     const sumPct = recipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
     if (sumPct <= 0) return [];
-    const flourWeight = (recipe.loafWeight * loaves) / (sumPct / 100);
+    const flourWeight = (recipe.loafWeight * loaves) / (doughSumPct(recipe) / 100);
     return recipe.ingredients.map(i => ({
       name: i.name,
       pct: i.pct,
@@ -6831,7 +6893,7 @@ ${notesHtml}
         row.innerHTML = `
           <div>
             <div><strong>${escapeHtml(r.name)}</strong></div>
-            <div class="meta">${r.loafWeight} g per ${escapeHtml(unit)}</div>
+            <div class="meta">${unitWeightMeta(r, unit)}</div>
           </div>
           <div>
             <input type="number" min="0" step="1" value="${count > 0 ? count : ''}"
@@ -7962,7 +8024,7 @@ ${notesHtml}
     if (!recipe || !recipe.ingredients || !count) return [];
     const sumPct = recipe.ingredients.reduce((s, i) => s + (Number(i.pct) || 0), 0);
     if (!sumPct) return [];
-    const totalFlourG = (recipe.loafWeight * count) / (sumPct / 100);
+    const totalFlourG = (recipe.loafWeight * count) / (doughSumPct(recipe) / 100);
     return recipe.ingredients
       .filter(i => i.flourType === 'anchor' || i.flourType === 'specialty')
       .map(i => ({ name: i.name, grams: totalFlourG * (Number(i.pct) / 100) }));
@@ -8005,7 +8067,7 @@ ${notesHtml}
       }
       const weightPill = isLevainType
         ? `<span class="pill">${r.loafWeight} g yield</span>`
-        : `<span class="pill">${r.loafWeight} g/${escapeHtml(r.unit || 'loaf')}</span>`;
+        : `<span class="pill" title="${escapeAttr(unitWeightMeta(r, r.unit || 'loaf'))}">${Math.round(finalUnitWeight(r))} g/${escapeHtml(r.unit || 'loaf')}</span>`;
       const planBtn = isLevainType ? '' : `
             <button class="plan-btn${inPlan ? ' on' : ''}" onclick="setInPlan('${r.id}', ${!inPlan})">
               ${inPlan ? '✓ In bake plan' : '+ Add to bake plan'}
@@ -8962,6 +9024,7 @@ ${notesHtml}
     const name = prefill ? prefill.name : '';
     const pct = prefill && prefill.pct !== undefined ? prefill.pct : '';
     const flourType = prefill ? (prefill.flourType || detectFlourType(name)) : '';
+    const processAid = !!(prefill && prefill.processAid);
     const amountPlaceholder = recipeEntryMode === 'grams' ? 'g' : '%';
     // Pre-fill the kitchen-ingredient link: the saved one, else a suggestion by name so
     // existing recipes surface (and persist on save) a match against the default pantry.
@@ -8969,19 +9032,27 @@ ${notesHtml}
     row.innerHTML = `
       <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
       <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
-      <label class="ing-anchor-ctrl" title="${ANCHOR_FLOUR_HELP}">
-        <input type="checkbox" class="ing-anchor-cb" onchange="onAnchorToggle(this)" />
-        <span>Anchor flour</span>
-        <span class="ing-anchor-help" aria-hidden="true">ⓘ</span>
-      </label>
+      <span class="ing-role-cell">
+        <label class="ing-anchor-ctrl" title="${ANCHOR_FLOUR_HELP}">
+          <input type="checkbox" class="ing-anchor-cb" onchange="onAnchorToggle(this)" />
+          <span>Anchor flour</span>
+          <span class="ing-anchor-help" aria-hidden="true">ⓘ</span>
+        </label>
+        <label class="ing-aid-ctrl" title="${UNIT_WEIGHT_HELP}">
+          <input type="checkbox" class="ing-unit-cb" onchange="onUnitWeightToggle(this)"${processAid ? '' : ' checked'} />
+          <span>In unit wt</span>
+          <span class="ing-anchor-help" aria-hidden="true">ⓘ</span>
+        </label>
+      </span>
       <input type="hidden" class="ing-flour-type" value="${flourType}" />
+      <input type="hidden" class="ing-process-aid" value="${processAid ? '1' : ''}" />
       <select class="ing-pantry" onchange="onIngredientPantryChange(this)" title="Link to a kitchen ingredient — drives cost and flags whether this flour needs milling">
         ${pantryLinkOptionsHtml(linkId, editorAllowsLevainLink())}
       </select>
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
     wrap.appendChild(row);
-    updateRowFlourUI(row); // show the Anchor control only when this ingredient is a flour
+    updateRowFlourUI(row); // show the right contextual control (Anchor for flours, In-unit for the rest)
     updateFlourSummary();
   }
 
@@ -9090,6 +9161,8 @@ ${notesHtml}
       const iname = row.querySelector('.ing-name').value.trim();
       const ipct = Number(row.querySelector('.ing-pct').value);
       const flourType = row.querySelector('.ing-flour-type').value;
+      const aidEl = row.querySelector('.ing-process-aid');
+      const processAid = !!(aidEl && aidEl.value);
       const pantryId = row.querySelector('.ing-pantry') ? row.querySelector('.ing-pantry').value || undefined : undefined;
       if (!iname) continue;
       if (!Number.isFinite(ipct) || ipct < 0) {
@@ -9098,6 +9171,7 @@ ${notesHtml}
       }
       const ing = { name: iname, pct: ipct };
       if (flourType) ing.flourType = flourType;
+      if (processAid) ing.processAid = true;
       if (pantryId) ing.pantryId = pantryId;
       ingredients.push(ing);
     }
@@ -9868,7 +9942,7 @@ ${notesHtml}
     const ingsForUnits = (r, units) => {
       const sumPct = (r.ingredients || []).reduce((s, i) => s + (Number(i.pct) || 0), 0);
       if (sumPct <= 0 || units <= 0) return [];
-      const flourWeight = (r.loafWeight * units) / (sumPct / 100);
+      const flourWeight = (r.loafWeight * units) / (doughSumPct(r) / 100);
       return (r.ingredients || []).map(i => ({ name: i.name, grams: flourWeight * (Number(i.pct) || 0) / 100 }));
     };
 
@@ -10653,7 +10727,7 @@ ${notesHtml}
         const count = plan[r.id] || 0;
         if (count === 0) continue;
         const sumPct = (r.ingredients || []).reduce((s, i) => s + (Number(i.pct) || 0), 0);
-        const flourWeight = sumPct > 0 ? (r.loafWeight * count) / (sumPct / 100) : 0;
+        const flourWeight = sumPct > 0 ? (r.loafWeight * count) / (doughSumPct(r) / 100) : 0;
         for (const i of r.ingredients) {
           if (isLevainIngredient(i.name)) {
             total += flourWeight * ((Number(i.pct) || 0) / 100);
@@ -12705,7 +12779,7 @@ ${notesHtml}
       .map(r => {
         const count = plan[r.id];
         const sumPct = (r.ingredients || []).reduce((s, i) => s + (Number(i.pct) || 0), 0);
-        const flourWeight = sumPct > 0 ? (r.loafWeight * count) / (sumPct / 100) : 0;
+        const flourWeight = sumPct > 0 ? (r.loafWeight * count) / (doughSumPct(r) / 100) : 0;
         return {
           id: r.id,
           name: r.name,
@@ -13289,6 +13363,8 @@ ${notesHtml}
   }
   // Tooltip explaining what an anchor flour is (shown on the Anchor checkbox + ⓘ).
   const ANCHOR_FLOUR_HELP = escapeAttr('Anchor flours (bread flour, all-purpose) are the base of the dough — the app auto-adjusts them so all flours sum to 100%. Leave unchecked for a specialty flour (rye, whole wheat, spelt…) whose percentage you set yourself.');
+  // Tooltip for the "In unit wt" checkbox (process-aid control on non-flour rows).
+  const UNIT_WEIGHT_HELP = escapeAttr('Does this end up in the finished unit? Leave checked for dough ingredients and toppings. Uncheck for a process aid that\'s discarded — e.g. salt or lye added to the boiling water — so it\'s still bought and costed but doesn\'t add to the unit weight.');
   // Is this ingredient a flour? Trust an explicit link to a kitchen ingredient's category
   // first, otherwise detect from the name (so anything the baker types as a flour reveals
   // the Anchor option without a per-ingredient dropdown).
@@ -13306,20 +13382,35 @@ ${notesHtml}
     if (!row) return;
     const hidden = row.querySelector('.ing-flour-type');
     const ctrl = row.querySelector('.ing-anchor-ctrl');
+    const aidCtrl = row.querySelector('.ing-aid-ctrl');
     const cb = row.querySelector('.ing-anchor-cb');
     if (!hidden || !ctrl) return;
     const name = (row.querySelector('.ing-name').value || '').trim();
     const pantryEl = row.querySelector('.ing-pantry');
     const pantryId = pantryEl ? pantryEl.value : '';
     const isFlour = !!hidden.value || ingredientIsFlour(name, pantryId);
-    ctrl.style.visibility = isFlour ? 'visible' : 'hidden';
+    // Same grid cell (.ing-role-cell, always a grid item so rows stay aligned) hosts either
+    // control: flours get Anchor, everything else gets the "In unit weight" toggle.
+    ctrl.style.display = isFlour ? '' : 'none';
+    if (aidCtrl) aidCtrl.style.display = isFlour ? 'none' : '';
     if (isFlour) {
       if (!hidden.value) hidden.value = detectFlourType(name) || 'specialty'; // first time we detect it
       if (cb) cb.checked = hidden.value === 'anchor';
+      const aid = row.querySelector('.ing-process-aid'); // flours are always part of the dough
+      if (aid && aid.value) { aid.value = ''; const ucb = row.querySelector('.ing-unit-cb'); if (ucb) ucb.checked = true; }
     } else if (hidden.value) {
       hidden.value = ''; // no longer a flour (e.g. relinked to a non-flour ingredient)
       if (cb) cb.checked = false;
     }
+  }
+  // "In unit weight" checkbox: unchecked → process aid (discarded; excluded from unit weight
+  // + dough math). Checked → counts toward the unit.
+  function onUnitWeightToggle(cb) {
+    const row = cb.closest('.ingredient-edit-row');
+    const aid = row && row.querySelector('.ing-process-aid');
+    if (!aid) return;
+    aid.value = cb.checked ? '' : '1';
+    updateFlourSummary();
   }
   // Anchor checkbox: checked → anchor flour, unchecked → specialty. Rebalances anchors so
   // flours still sum to 100% in percent mode.
@@ -13362,18 +13453,33 @@ ${notesHtml}
     updateFlourSummary();
   }
 
-  // Read the editor's ingredient rows as {name, amount, flourType, isLiquid}.
+  // Read the editor's ingredient rows as {name, amount, flourType, processAid, role, isLiquid}.
   function readEditorRows() {
+    const toppings = editorToppingNames();
     return Array.from(document.querySelectorAll('#r-ingredients .ingredient-edit-row')).map(function(row) {
       const name = row.querySelector('.ing-name').value.trim();
+      const aidEl = row.querySelector('.ing-process-aid');
+      const processAid = !!(aidEl && aidEl.value);
+      const role = processAid ? 'aid' : (toppings.has(name) ? 'topping' : 'dough');
       return {
         row,
         name,
         amount: Number(row.querySelector('.ing-pct').value) || 0,
         flourType: row.querySelector('.ing-flour-type').value,
+        processAid,
+        role,
         isLiquid: /water|milk|buttermilk/.test(name.toLowerCase()),
       };
     });
+  }
+  // Topping ingredient names from the CURRENT editor stage list (parallels
+  // toppingIngredientNames but reads _editorStages, which the editor mutates live).
+  function editorToppingNames() {
+    const names = new Set();
+    for (const s of _editorStages || []) {
+      if (s.type === 'topping' && Array.isArray(s.ings)) s.ings.forEach(n => names.add(n));
+    }
+    return names;
   }
 
   // Live readout under the ingredient list. In percent mode: do flours sum to 100% + hydration.
@@ -13384,11 +13490,14 @@ ${notesHtml}
     const el = document.getElementById('r-flour-summary');
     if (!el) return;
     const rows = readEditorRows();
-    let flourTotal = 0, liquidTotal = 0, grandTotal = 0;
+    let flourTotal = 0, liquidTotal = 0, grandTotal = 0, doughTotal = 0, toppingTotal = 0, aidTotal = 0;
     rows.forEach(function(r) {
       grandTotal += r.amount;
       if (r.flourType) flourTotal += r.amount;
-      if (r.isLiquid) liquidTotal += r.amount;
+      if (r.isLiquid && r.role === 'dough') liquidTotal += r.amount;
+      if (r.role === 'dough') doughTotal += r.amount;
+      else if (r.role === 'topping') toppingTotal += r.amount;
+      else if (r.role === 'aid') aidTotal += r.amount;
     });
 
     if (recipeEntryMode === 'grams') {
@@ -13399,9 +13508,11 @@ ${notesHtml}
       if (flourTotal === 0) {
         s = '<span style="color:var(--danger)">Mark at least one ingredient as flour so we can convert to baker\'s %.</span>';
       } else {
-        const perUnit = Math.round(grandTotal / yld);
-        s = 'Flour: <strong>' + Math.round(flourTotal) + ' g</strong> · Total dough: <strong>' + Math.round(grandTotal) + ' g</strong> · Per ' + escapeHtml(unit) + ': <strong>' + perUnit + ' g</strong>';
+        const doughPerUnit = Math.round(doughTotal / yld);
+        s = 'Flour: <strong>' + Math.round(flourTotal) + ' g</strong> · Dough: <strong>' + Math.round(doughTotal) + ' g</strong> · Per ' + escapeHtml(unit) + ': <strong>' + doughPerUnit + ' g</strong>';
         if (liquidTotal > 0) s += ' · Hydration: ' + Math.round((liquidTotal / flourTotal) * 100) + '%';
+        if (toppingTotal > 0) s += ' · + topping ' + Math.round(toppingTotal / yld) + ' g → <strong>' + Math.round((doughTotal + toppingTotal) / yld) + ' g</strong>/' + escapeHtml(unit);
+        if (aidTotal > 0) s += ' · <span class="muted">' + Math.round(aidTotal) + ' g process aid (not in unit)</span>';
       }
       el.innerHTML = s;
       return;
@@ -13490,24 +13601,28 @@ ${notesHtml}
     const yld = Math.max(1, Math.round(Number(document.getElementById('r-batch-yield').value) || 1));
 
     if (mode === 'grams') {
-      // Convert baker's % → grams for the whole batch.
-      const sumAllPct = rows.reduce((s, r) => s + r.amount, 0);
+      // Convert baker's % → grams for the whole batch. loafWeight is the DOUGH weight per
+      // unit, so the flour weight derives from the dough-only % sum (excludes process aids +
+      // toppings); each ingredient's grams are still flour-relative.
+      const doughPct = rows.reduce((s, r) => s + (r.role === 'dough' ? r.amount : 0), 0);
       const loafWeight = Number(document.getElementById('r-weight').value) || 0;
-      if (sumAllPct > 0 && loafWeight > 0) {
-        const totalFlourG = (loafWeight * yld) / (sumAllPct / 100);
+      const denom = doughPct > 0 ? doughPct : rows.reduce((s, r) => s + r.amount, 0);
+      if (denom > 0 && loafWeight > 0) {
+        const totalFlourG = (loafWeight * yld) / (denom / 100);
         rows.forEach(function(r) {
           r.row.querySelector('.ing-pct').value = Math.round(r.amount / 100 * totalFlourG);
         });
       }
     } else {
-      // Convert grams → baker's % (flour = 100%) and derive weight per unit.
+      // Convert grams → baker's % (flour = 100%) and derive the per-unit DOUGH weight (only
+      // ingredients that end up in the dough — process aids + toppings are excluded).
       const flourG = rows.filter(r => r.flourType).reduce((s, r) => s + r.amount, 0);
-      const totalG = rows.reduce((s, r) => s + r.amount, 0);
+      const doughG = rows.reduce((s, r) => s + (r.role === 'dough' ? r.amount : 0), 0);
       if (flourG > 0) {
         rows.forEach(function(r) {
           r.row.querySelector('.ing-pct').value = round2(r.amount / flourG * 100);
         });
-        document.getElementById('r-weight').value = Math.round(totalG / yld);
+        document.getElementById('r-weight').value = Math.round(doughG / yld);
       }
     }
 
