@@ -3094,6 +3094,15 @@
     const v = s && s.duration ? Number(s.duration.min) : NaN;
     return Number.isFinite(v) ? v : fallbackMin;
   }
+  // Per-unit dough weight for a shape/portion/divide step, so the baker knows how heavy to
+  // make each piece (e.g. "300 g each" bagels). One recipe → "300 g each"; several →
+  // "300 g per Sesame · 110 g per Plain". Empty when no weights are known.
+  function perUnitDoughDetail(recipeList, unitWord) {
+    const list = (recipeList || []).filter(r => Number(r && r.loafWeight) > 0);
+    if (!list.length) return '';
+    if (list.length === 1) return `${formatGrams(list[0].loafWeight)} ${unitWord ? `per ${unitWord}` : 'each'}`;
+    return list.map(r => `${formatGrams(r.loafWeight)} per ${r.name}`).join(' · ');
+  }
   // Build the editable stage list for a recipe: template defaults overlaid with the
   // recipe's saved overrides (so legacy recipes round-trip to identical scheduler params).
   function stagesFromRecipe(recipe) {
@@ -10493,9 +10502,11 @@ ${notesHtml}
           const isLast = k === focacciaAgg.foldsCount - 1;
           events.push({ time: addMinutes(focacciaFirstFoldTime, k * FOCACCIA_FOLD_INTERVAL_MIN), title: `Stretch & fold ${k + 1} of ${focacciaAgg.foldsCount}${isLast ? ' (last)' : ''} — focaccia`, detail: isLast ? `5 min active · then ${focacciaAgg.bulkMin} min bulk ferment` : `5 min active · next fold in ${FOCACCIA_FOLD_INTERVAL_MIN} min`, process: 'focaccia' });
         }
-        const focacciaShapeDetail = focacciaRecipes.length === 1
+        const focacciaWeightStr = perUnitDoughDetail(focacciaRecipes, 'pan');
+        const focacciaShapeDetail = (focacciaRecipes.length === 1
           ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
-          : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`;
+          : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`)
+          + (focacciaWeightStr ? ` · ${focacciaWeightStr}` : '');
         events.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia' });
         // Oven-on is triggered by the recipe's bake temp + assigned oven's preheat curve.
         const focOven = (focacciaSlot && focacciaSlot.ovenId) ? userOvens.find(o => o.id === focacciaSlot.ovenId) : null;
@@ -11208,11 +11219,13 @@ ${notesHtml}
       const muffinBulkEv = events[events.length - 1];
       addClaim('container', 'Muffin bulk ferment', muffinBulkCont && muffinBulkCont.name, 1, muffinTimes.muffinBulkStart, muffinTimes.muffinShapeStart, null,
         muffinBulkCont ? { candidates: containerCandidates(['any', 'loaf'], muffinDoughG), relabel: (newName) => { muffinBulkEv.container = newName; muffinMixEv.container = newName; } } : null);
-      const muffinShapeDetail = muffinRecipes.length === 1
+      const muffinWeightStr = perUnitDoughDetail(muffinRecipes);
+      const muffinShapeDetail = (muffinRecipes.length === 1
         ? `${getRecipeSpec(muffinRecipes[0]).shapeMinPerUnit} min × ${totalMuffins} muffins = ${totalMuffinShapeMin} min total`
         : muffinRecipes
             .map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`)
-            .join(' + ') + ` = ${totalMuffinShapeMin} min total`;
+            .join(' + ') + ` = ${totalMuffinShapeMin} min total`)
+        + (muffinWeightStr ? ` · ${muffinWeightStr}` : '');
       events.push({
         time: muffinTimes.muffinShapeStart,
         title: 'Shape muffins',
@@ -11304,11 +11317,13 @@ ${notesHtml}
         addClaim('container', 'Bagel bulk ferment', bagelBulkCont && bagelBulkCont.name, 1, bagelTimes.bagelBulkStart, bagelTimes.bagelShapeStart, null,
           bagelBulkCont ? { candidates: containerCandidates(['any', 'loaf'], bagelDoughG), relabel: (newName) => { bagelBulkEv.container = newName; bagelMixEv.container = newName; } } : null);
       }
-      const bagelShapeDetail = bagelRecipes.length === 1
+      const bagelWeightStr = perUnitDoughDetail(bagelRecipes);
+      const bagelShapeDetail = (bagelRecipes.length === 1
         ? `${getRecipeSpec(bagelRecipes[0]).shapeMinPerUnit} min × ${totalBagels} bagels = ${totalBagelShapeMin} min total`
         : bagelRecipes
             .map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`)
-            .join(' + ') + ` = ${totalBagelShapeMin} min total`;
+            .join(' + ') + ` = ${totalBagelShapeMin} min total`)
+        + (bagelWeightStr ? ` · divide into ${bagelWeightStr}` : '');
       events.push({
         time: bagelTimes.bagelShapeStart,
         title: 'Shape bagels',
@@ -11518,6 +11533,10 @@ ${notesHtml}
           const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
           const aMin = stageActiveMinutes(s, dur);
           const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, stageType: s.type, activeStep: aMin > 0, activeMin: aMin };
+          if (s.type === 'shape' || s.type === 'preshape') {
+            const w = perUnitDoughDetail([r], r.unit && r.unit !== 'unit' ? r.unit : '');
+            if (w) ev.detail += ` · ${w}`;
+          }
           if (s.type === 'weigh') {
             ev.batchIngredients = ingsForUnits(r, batchUnits);
           } else if (s.type === 'mill') {
