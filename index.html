@@ -793,6 +793,15 @@
     margin-top: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
   .stage-ing-opt { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; cursor: pointer; }
 
+  /* Per-stage sub-step notes in the recipe editor */
+  .stage-sub-btn { white-space: nowrap; }
+  .stage-sub-panel { flex-basis: 100%; flex-direction: column; gap: 5px; padding: 6px 8px; margin-top: 2px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+  .stage-sub-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .stage-sub-label { font-size: 0.82rem; min-width: 150px; }
+  .stage-sub-note { font-size: 0.78rem; color: #4a3618; background: #f3ead4; border-left: 3px solid #D6AE63;
+    padding: 2px 7px; border-radius: 3px; }
+
   /* Mixed-tagging warning in the bake-sheet / hover ingredient column */
   .bs-ing-warn { font-size: 0.76rem; color: #8a5a00; background: #fdf3da; border: 1px solid #e8c879;
     border-radius: 4px; padding: 3px 6px; margin-bottom: 5px; }
@@ -2220,13 +2229,32 @@
     if (/into fridge/i.test(t)) return 'chill';
     if (/out of fridge|^Pan rise/.test(t)) return 'warmup';
     if (/^Final proof/.test(t)) return 'proof';
-    if (/ to a boil$|^Boil/.test(t)) return 'boil';
+    if (/ to a boil$/.test(t)) return '';   // "Bring to a boil" is a boil sub-step (heat), not the main boil
+    if (/^Boil/.test(t)) return 'boil';
     if (/^Bake/.test(t)) return 'bake';
-    if (/^(Turn on oven|Turn off|Set .* to )/.test(t)) return '';   // oven control — not a recipe stage
+    if (/^(Turn on oven|Turn off|Set .* to )/.test(t)) return '';   // oven control — bake sub-steps
     if (/out — (start )?cool/i.test(t)) return 'cool';
     if (/^Glaze \/ ice/.test(t)) return 'glaze';
     if (/ready for sale|^Package/.test(t)) return '';
     return null;
+  }
+  // Finer than eventStageType: the EXTRA sub-step a scheduler step represents within a
+  // fan-out stage (bake preheat/temp-change/oven-off, boil heat). Returns { type, key }
+  // matching STAGE_SUBSTEPS, or null. The stage's primary step (the bake / the boil) is
+  // covered by the stage's own note, so it isn't a sub-step here.
+  function eventSubstep(ev) {
+    const t = ev.title || '';
+    if (/^Turn on oven/.test(t)) return { type: 'bake', key: 'preheat' };
+    if (/^Set .* to /.test(t)) return { type: 'bake', key: 'tempchange' };
+    if (/^Turn off/.test(t)) return { type: 'bake', key: 'ovenoff' };
+    if (/ to a boil$/.test(t)) return { type: 'boil', key: 'heat' };
+    return null;
+  }
+  // The dedupe/identity scope for a recipe note on an event: its sub-step if any, else its
+  // stage type. Keeps a preheat note distinct from a temp-change note on the same stage.
+  function eventNoteScope(ev) {
+    const sub = eventSubstep(ev);
+    return sub ? sub.type + ':' + sub.key : eventStageType(ev);
   }
   // Recipe-stage notes (authored in the recipe editor) that apply to this event: each
   // in-plan recipe touching the step whose stage matches the event's SPECIFIC stage type
@@ -2234,10 +2262,11 @@
   // read-only on the schedule + bake sheet whenever the recipe runs.
   function recipeStageNotesForEvent(ev, H) {
     if (!H) return [];
-    const evType = eventStageType(ev);   // '' = scheduler sub-step → no recipe note
+    const evType = eventStageType(ev);   // '' = scheduler sub-step (may still carry a sub-note)
+    const sub = eventSubstep(ev);        // { type, key } for an extra sub-step, else null
     const cat = getEventStage(ev);
-    if (evType === '') return [];
-    if (evType == null && !cat) return [];
+    if (evType === '' && !sub) return [];
+    if (evType == null && !cat && !sub) return [];
     let names;
     try { names = new Set(H.getEventRecipes(ev)); } catch (e) { return []; }
     if (!names.size) return [];
@@ -2246,13 +2275,22 @@
       if (!names.has(r.name)) continue;
       const stages = Array.isArray(r.stages) ? r.stages : [];
       for (const st of stages) {
-        const note = st && typeof st.note === 'string' ? st.note.trim() : '';
-        if (!note) continue;
         const pal = STAGE_PALETTE[st.type];
         if (!pal) continue;
-        const match = evType != null ? st.type === evType : pal.stage === cat;
-        if (!match) continue;
-        out.push({ recipe: r.name, label: st.label || pal.label || st.type, note });
+        // Stage-level note → the stage's primary step.
+        const note = typeof st.note === 'string' ? st.note.trim() : '';
+        if (note && evType !== '') {
+          const match = evType != null ? st.type === evType : pal.stage === cat;
+          if (match) out.push({ recipe: r.name, label: st.label || pal.label || st.type, note });
+        }
+        // Sub-step note → the matching extra step (preheat, oven-off, …).
+        if (sub && st.type === sub.type && st.subNotes && typeof st.subNotes[sub.key] === 'string') {
+          const sn = st.subNotes[sub.key].trim();
+          if (sn) {
+            const def = (STAGE_SUBSTEPS[st.type] || []).find(x => x.key === sub.key);
+            out.push({ recipe: r.name, label: def ? def.label : sub.key, note: sn });
+          }
+        }
       }
     }
     return out;
@@ -2269,10 +2307,10 @@
     for (const ev of orderedEvents) {
       const all = recipeStageNotesForEvent(ev, H);
       if (!all.length) continue;
-      const evType = eventStageType(ev) || '';
+      const scope = eventNoteScope(ev) || '';
       const fresh = [];
       for (const n of all) {
-        const k = n.recipe + '|' + evType + '|' + n.note;
+        const k = n.recipe + '|' + scope + '|' + n.note;
         if (seen.has(k)) continue;
         seen.add(k);
         fresh.push(n);
@@ -2809,6 +2847,20 @@
     chill:  { bg: '#4F6A73', fg: '#eef4f6' }, boil:   { bg: '#C0492E', fg: '#fbf6ec' },
     bake:   { bg: '#5E3413', fg: '#fbf6ec' }, done:   { bg: '#1F4D2E', fg: '#fbf6ec' },
   };
+  // Some stages fan out into several scheduled steps. These are the EXTRA sub-steps a
+  // baker can annotate (the stage's main note still covers the primary step — the bake
+  // itself / the boil). Each maps to scheduler events via eventSubstep(). Stored on the
+  // stage as `subNotes: { <key>: text }` and shown on the matching schedule/bake-sheet step.
+  const STAGE_SUBSTEPS = {
+    bake: [
+      { key: 'preheat',    label: 'Preheat (turn on oven)' },
+      { key: 'tempchange', label: 'Temperature change between bakes' },
+      { key: 'ovenoff',    label: 'Oven off' },
+    ],
+    boil: [
+      { key: 'heat', label: 'Bring to a boil' },
+    ],
+  };
   // Default stage list per process — the numbers mirror PROCESS_TEMPLATES so a recipe
   // with no overrides derives back to identical scheduler params.
   const STAGE_TEMPLATES = {
@@ -2916,12 +2968,20 @@
     }
     return stages;
   }
+  // Deep-ish clone of a stage for editing/scheduling: nested duration, ingredient tags,
+  // and sub-step notes are copied so the editor can't mutate a saved recipe in place.
+  function _cloneStage(s) {
+    const c = { ...s, duration: { ...s.duration } };
+    if (Array.isArray(s.ings)) c.ings = s.ings.slice();
+    if (s.subNotes) c.subNotes = { ...s.subNotes };
+    return c;
+  }
   // The stage list a scheduler should walk for a recipe: its saved stages (or a freshly
   // derived list), with the ingredient-controlled mill stage re-synced so the schedule is
   // correct even when the persisted stages predate a pantry milling-flag change.
   function stagesForScheduling(recipe) {
     const base = (Array.isArray(recipe.stages) && recipe.stages.length)
-      ? recipe.stages.map(s => ({ ...s, duration: { ...s.duration } }))
+      ? recipe.stages.map(_cloneStage)
       : stagesFromRecipe(recipe);
     syncMillStage(base, recipeUsesMilledFlour(recipe), SCHED.MILL_ACTIVE_MIN);
     return base;
@@ -8289,12 +8349,14 @@ ${notesHtml}
           ${vessel}
           <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
           <button type="button" id="stage-ing-btn-${i}" class="stage-ing-btn tiny${(s.ings || []).length ? '' : ' secondary'}" onclick="toggleStageIngPanel(${i})" title="Tag which ingredients are used at this step (shown in the bake sheet)">🧂 ${(s.ings || []).length ? (s.ings.length + ' ing') : 'ingredients'}</button>
+          ${STAGE_SUBSTEPS[s.type] ? `<button type="button" id="stage-sub-btn-${i}" class="stage-sub-btn tiny secondary" onclick="toggleStageSubPanel(${i})" title="Expand to add notes on this step's sub-steps">${subToggleLabel(i)}</button>` : ''}
           ${locked
             ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
             : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`}
           ${(s.note || '').trim() ? `<span class="stage-note-text">📝 ${escapeHtml(s.note)}</span>` : ''}
           ${(s.ings || []).length ? `<span class="stage-ing-text">🧂 ${escapeHtml(s.ings.join(', '))}</span>` : ''}
           <div class="stage-ing-panel" id="stage-ing-panel-${i}" style="display:none"></div>
+          ${STAGE_SUBSTEPS[s.type] ? `<div class="stage-sub-panel" id="stage-sub-panel-${i}" style="display:none"></div>` : ''}
         </div>`;
       }).join('');
     }
@@ -8368,6 +8430,48 @@ ${notesHtml}
     const v = (next || '').trim();
     if (v) s.note = v; else delete s.note;
     renderStageEditor();
+  }
+  // Sub-step note controls (recipe editor): expand a fan-out stage to annotate its extra
+  // steps (bake → preheat / temp-change / oven-off; boil → bring-to-a-boil). The stage's
+  // main "+ note" still covers the primary step.
+  function subToggleLabel(i) {
+    const s = _editorStages[i];
+    const n = s && s.subNotes ? Object.keys(s.subNotes).filter(k => (s.subNotes[k] || '').trim()).length : 0;
+    return `🔧 sub-steps${n ? ` (${n})` : ''}`;
+  }
+  function stageSubPanelInner(i) {
+    const s = _editorStages[i]; if (!s) return '';
+    const subs = STAGE_SUBSTEPS[s.type] || [];
+    const main = `<div class="stage-sub-row"><span class="stage-sub-label">${escapeHtml(STAGE_PALETTE[s.type] ? STAGE_PALETTE[s.type].label : s.type)} <span class="muted" style="font-size:0.72rem">(main step — use the 📝 note button)</span></span></div>`;
+    const rows = subs.map(sub => {
+      const note = ((s.subNotes && s.subNotes[sub.key]) || '').trim();
+      return `<div class="stage-sub-row">
+        <span class="stage-sub-label">${escapeHtml(sub.label)}</span>
+        <button type="button" class="stage-note-btn tiny${note ? '' : ' secondary'}" onclick="editStageSubNote(${i},'${sub.key}')">${note ? '📝 note' : '+ note'}</button>
+        ${note ? `<span class="stage-sub-note">📝 ${escapeHtml(note)}</span>` : ''}
+      </div>`;
+    }).join('');
+    return main + rows;
+  }
+  function toggleStageSubPanel(i) {
+    const panel = document.getElementById(`stage-sub-panel-${i}`);
+    if (!panel) return;
+    if (panel.style.display === 'none') { panel.innerHTML = stageSubPanelInner(i); panel.style.display = 'flex'; }
+    else panel.style.display = 'none';
+  }
+  function editStageSubNote(i, key) {
+    const s = _editorStages[i]; if (!s) return;
+    const def = (STAGE_SUBSTEPS[s.type] || []).find(x => x.key === key);
+    const cur = (s.subNotes && s.subNotes[key]) || '';
+    const next = window.prompt(`Note for "${def ? def.label : key}" (shown on that step whenever this recipe is used):`, cur);
+    if (next === null) return;
+    const v = (next || '').trim();
+    if (v) { if (!s.subNotes) s.subNotes = {}; s.subNotes[key] = v; }
+    else if (s.subNotes) { delete s.subNotes[key]; if (!Object.keys(s.subNotes).length) delete s.subNotes; }
+    const panel = document.getElementById(`stage-sub-panel-${i}`);
+    if (panel) panel.innerHTML = stageSubPanelInner(i);
+    const btn = document.getElementById(`stage-sub-btn-${i}`);
+    if (btn) btn.textContent = subToggleLabel(i);
   }
   // Current ingredient names typed into the editor's ingredient rows.
   function editorIngredientNames() {
@@ -8664,7 +8768,7 @@ ${notesHtml}
     });
     // Load the recipe's saved stages (or migrate on the fly), cloned for editing.
     _editorStages = isLevain ? []
-      : (Array.isArray(r.stages) && r.stages.length ? r.stages.map(s => ({ ...s, duration: { ...s.duration } })) : stagesFromRecipe(r));
+      : (Array.isArray(r.stages) && r.stages.length ? r.stages.map(_cloneStage) : stagesFromRecipe(r));
     migrateStageEquipmentVessels(_editorStages, r); // reflect saved oven/pot on the bake/boil rows
     renderStageEditor();
     applyOverridePlaceholders(processType);
@@ -8908,7 +9012,7 @@ ${notesHtml}
     // re-sync the (ingredient-controlled) mill stage against the resolved pantryId links.
     if (processType !== 'levain') {
       syncMillStage(_editorStages, recipeUsesMilledFlour({ ingredients }), SCHED.MILL_ACTIVE_MIN);
-      base.stages = _editorStages.map(s => ({ ...s, duration: { ...s.duration } }));
+      base.stages = _editorStages.map(_cloneStage);
     }
 
     let recipeId;

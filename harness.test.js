@@ -108,7 +108,7 @@ const exportsTail = `
   fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
   proofTempFactor, fermentScale, getProofingTempF, setProofingTempF, proofingTempIsSet, pickLevainBuild,
   buildBakeSheetHelpers, hoverHtmlFor, noteControlHtml, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
-  recipeStageNotesForEvent, recipeStageNotesHtml, eventStageType, buildRecipeNotesByEvent,
+  recipeStageNotesForEvent, recipeStageNotesHtml, eventStageType, eventSubstep, buildRecipeNotesByEvent,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -1081,6 +1081,34 @@ if (bAuto && blAuto && batard.ingredients && batard.ingredients.length) {
   const res2 = autoEv2 ? H7.getEventIngredients(autoEv2) : null;
   hvOk &= hv('no warning when all recipes tag the step', !!res2 && !res2.mixedTagging);
   delete bAuto.ings; delete blAuto.ings;
+}
+
+// Sub-step notes: the bake stage fans out into preheat / bake / oven-off; a sub-note
+// shows on its own step, while the stage's main note stays on the bake itself.
+hvOk &= hv('eventSubstep maps oven control + boil heat to sub-steps',
+  api.eventSubstep({ title: 'Turn on oven to 500°F' }).key === 'preheat' &&
+  api.eventSubstep({ title: 'Set Deck oven to 450°F' }).key === 'tempchange' &&
+  api.eventSubstep({ title: 'Turn off Deck oven' }).key === 'ovenoff' &&
+  api.eventSubstep({ title: 'Bring Big pot to a boil' }).key === 'heat' &&
+  api.eventSubstep({ title: 'Bake 8 of 8' }) === null);
+const loafBake = (loafRec.stages || []).find(s => s.type === 'bake');
+hvOk &= hv('loaf recipe has a bake stage', !!loafBake);
+if (loafBake) {
+  loafBake.subNotes = { preheat: 'preheat to 500 sharp' };
+  loafBake.note = 'steam first 15 min';
+  seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const H8 = api.buildBakeSheetHelpers();
+  const evsX = api.__sr().events;
+  const preheatEv = evsX.find(e => /^Turn on oven/.test(e.title));
+  const bakeEv2 = evsX.find(e => /^Bake /.test(e.title));
+  const notesOf = (e) => e ? api.recipeStageNotesForEvent(e, H8).map(n => n.note) : [];
+  hvOk &= hv('preheat sub-step shows the preheat note', preheatEv && notesOf(preheatEv).includes('preheat to 500 sharp'));
+  hvOk &= hv('preheat sub-step does NOT show the main bake note', preheatEv && !notesOf(preheatEv).includes('steam first 15 min'));
+  hvOk &= hv('bake step shows the main note, not the preheat note', bakeEv2 && notesOf(bakeEv2).includes('steam first 15 min') && !notesOf(bakeEv2).includes('preheat to 500 sharp'));
+  delete loafBake.subNotes; delete loafBake.note;
 }
 allOk &= hvOk;
 
