@@ -2186,13 +2186,45 @@
     if (!parts.length) return '';
     return `<div class="tt-title">${escapeHtml(ev.title || '')}</div>${parts.join('')}`;
   }
-  // Recipe-stage notes (authored in the recipe editor) that apply to this event: any
-  // in-plan recipe touching the step whose stage category matches the event's stage and
-  // carries a note. Shown read-only on the schedule + bake sheet whenever the recipe runs.
+  // The SPECIFIC recipe-stage type an event represents (not just its broad category), so
+  // notes attach to the exact step. Generic (simple/enriched) events carry ev.stageType;
+  // bread-engine events are scheduler-titled, so infer from the title. Returns a stage-
+  // palette type, '' for scheduler-only sub-steps that hold no recipe note (oven on/off/
+  // set, package), or null when unrecognized (caller falls back to category match).
+  function eventStageType(ev) {
+    if (ev.stageType) return ev.stageType;
+    const t = ev.title || '';
+    if (/^Levain Build/.test(t)) return 'levain';
+    if (/^Weigh /.test(t)) return 'weigh';
+    if (/^Mill /.test(t)) return 'mill';
+    if (/^(Start autolyse|Autolyse)/.test(t)) return 'autolyse';
+    if (/bulk ferment|bulk rise/i.test(t)) return 'bulk';
+    if (/^Mix /.test(t)) return 'mix';
+    if (/^Stretch & fold/.test(t)) return 'fold';
+    if (/^(Start preshape|Preshape)/.test(t)) return 'preshape';
+    if (/^Bench rest/.test(t)) return 'bench';
+    if (/^(Final shape|Shape )/.test(t)) return 'shape';
+    if (/into fridge/i.test(t)) return 'chill';
+    if (/out of fridge|^Pan rise/.test(t)) return 'warmup';
+    if (/^Final proof/.test(t)) return 'proof';
+    if (/ to a boil$|^Boil/.test(t)) return 'boil';
+    if (/^Bake/.test(t)) return 'bake';
+    if (/^(Turn on oven|Turn off|Set .* to )/.test(t)) return '';   // oven control — not a recipe stage
+    if (/out — (start )?cool/i.test(t)) return 'cool';
+    if (/^Glaze \/ ice/.test(t)) return 'glaze';
+    if (/ready for sale|^Package/.test(t)) return '';
+    return null;
+  }
+  // Recipe-stage notes (authored in the recipe editor) that apply to this event: each
+  // in-plan recipe touching the step whose stage matches the event's SPECIFIC stage type
+  // (falling back to the broad category only when the type can't be determined). Shown
+  // read-only on the schedule + bake sheet whenever the recipe runs.
   function recipeStageNotesForEvent(ev, H) {
     if (!H) return [];
+    const evType = eventStageType(ev);   // '' = scheduler sub-step → no recipe note
     const cat = getEventStage(ev);
-    if (!cat) return [];
+    if (evType === '') return [];
+    if (evType == null && !cat) return [];
     let names;
     try { names = new Set(H.getEventRecipes(ev)); } catch (e) { return []; }
     if (!names.size) return [];
@@ -2204,7 +2236,9 @@
         const note = st && typeof st.note === 'string' ? st.note.trim() : '';
         if (!note) continue;
         const pal = STAGE_PALETTE[st.type];
-        if (!pal || pal.stage !== cat) continue;
+        if (!pal) continue;
+        const match = evType != null ? st.type === evType : pal.stage === cat;
+        if (!match) continue;
         out.push({ recipe: r.name, label: st.label || pal.label || st.type, note });
       }
     }
@@ -11040,7 +11074,7 @@ ${notesHtml}
           const dur = stageDurationMin(s, batchUnits);
           const start = addMinutes(cursor, -dur);
           const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
-          const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, activeStep: !!pal.active };
+          const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, stageType: s.type, activeStep: !!pal.active };
           if (s.type === 'weigh') {
             ev.batchIngredients = ingsForUnits(r, batchUnits);
           } else if (s.type === 'mill') {

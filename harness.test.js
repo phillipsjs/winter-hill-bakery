@@ -108,7 +108,7 @@ const exportsTail = `
   fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
   proofTempFactor, fermentScale, getProofingTempF, setProofingTempF, proofingTempIsSet, pickLevainBuild,
   buildBakeSheetHelpers, hoverHtmlFor, noteControlHtml, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
-  recipeStageNotesForEvent, recipeStageNotesHtml,
+  recipeStageNotesForEvent, recipeStageNotesHtml, eventStageType,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -967,6 +967,35 @@ if (bulkStage) {
   hvOk &= hv('recipe-stage note does NOT bleed onto a different-stage (bake) step',
     !bakeEv || !api.recipeStageNotesForEvent(bakeEv, H2).some(n => n.note === 'score deeply'));
   delete bulkStage.note;
+}
+
+// eventStageType maps each title to its specific stage type.
+hvOk &= hv('eventStageType: bulk variants → bulk', api.eventStageType({ title: 'Muffin dough bulk ferment' }) === 'bulk' && api.eventStageType({ title: 'Bulk ferment' }) === 'bulk');
+hvOk &= hv('eventStageType: preshape / bench / shape distinct', api.eventStageType({ title: 'Start preshape' }) === 'preshape' && api.eventStageType({ title: 'Bench rest' }) === 'bench' && api.eventStageType({ title: 'Final shape' }) === 'shape');
+hvOk &= hv('eventStageType: oven-control steps hold no recipe note', api.eventStageType({ title: 'Turn on oven to 500°F' }) === '' && api.eventStageType({ title: 'Set oven to 450°F' }) === '');
+hvOk &= hv('eventStageType: prefers explicit ev.stageType', api.eventStageType({ title: 'Whatever the baker named it', stageType: 'proof' }) === 'proof');
+
+// THE FIX: notes on two SAME-CATEGORY stages (autolyse + mix are both 'mix') separate
+// to their own steps instead of all showing on each (the old category-match behavior).
+const autoStage = (loafRec.stages || []).find(s => s.type === 'autolyse');
+const mixStage = (loafRec.stages || []).find(s => s.type === 'mix');
+hvOk &= hv('seed loaf has same-category autolyse + mix stages', !!autoStage && !!mixStage &&
+  api.recipeStageNotesForEvent && true);
+if (autoStage && mixStage) {
+  autoStage.note = 'rest 60 min';
+  mixStage.note = 'add salt last';
+  seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const H3 = api.buildBakeSheetHelpers();
+  const evsS = api.__sr().events;
+  const autoEv = evsS.find(e => /^Start autolyse/.test(e.title));
+  const mixEv = evsS.find(e => /^Mix in salt/.test(e.title));
+  const notesOf = (e) => e ? api.recipeStageNotesForEvent(e, H3).map(n => n.note) : [];
+  hvOk &= hv('autolyse step shows ONLY the autolyse note', autoEv && notesOf(autoEv).includes('rest 60 min') && !notesOf(autoEv).includes('add salt last'));
+  hvOk &= hv('mix step shows ONLY the mix note', mixEv && notesOf(mixEv).includes('add salt last') && !notesOf(mixEv).includes('rest 60 min'));
+  delete autoStage.note; delete mixStage.note;
 }
 allOk &= hvOk;
 
