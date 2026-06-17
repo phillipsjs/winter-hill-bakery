@@ -1044,6 +1044,16 @@
     </div>
 
     <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <h2 style="margin:0;font-size:1rem">Proofing temperature</h2>
+        <input type="number" id="proofing-temp-input" min="40" max="110" step="1" placeholder="70" style="width:80px;flex:none" oninput="onProofingTempChange()" />
+        <span class="muted" id="proofing-temp-unit" style="font-size:0.9rem">°F</span>
+        <button type="button" class="secondary tiny" onclick="clearProofingTemp()">Use default</button>
+      </div>
+      <p class="muted" id="proofing-temp-note" style="margin:8px 0 0;font-size:0.85rem"></p>
+    </div>
+
+    <div class="card">
       <details class="plan-details" id="ingredient-costs-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
@@ -2041,6 +2051,29 @@
     if (prevF != null && Math.round(fToC(prevF)) === Math.round(n)) return prevF;
     return Math.round(cToF(n));
   }
+  // ---- Proofing temperature → fermentation timing ----
+  // The kitchen/proofer temperature sets how fast warm fermentation runs. Stored in F
+  // (display respects the unit preference). If unset we assume 70°F for all timing.
+  const PROOFING_TEMP_KEY = 'whb-proofing-temp-v1';
+  const DEFAULT_PROOFING_TEMP_F = 70;
+  const FERMENT_DOUBLING_F = 17;  // fermentation rate ~doubles per 17°F (≈9.4°C)
+  function proofingTempIsSet() { const v = localStorage.getItem(PROOFING_TEMP_KEY); return v != null && v !== '' && isFinite(Number(v)); }
+  function getProofingTempF() { return proofingTempIsSet() ? Number(localStorage.getItem(PROOFING_TEMP_KEY)) : DEFAULT_PROOFING_TEMP_F; }
+  function setProofingTempF(f) {
+    if (f == null || f === '' || !isFinite(Number(f))) localStorage.removeItem(PROOFING_TEMP_KEY);
+    else localStorage.setItem(PROOFING_TEMP_KEY, String(Math.round(Number(f))));
+  }
+  // Multiplier on WARM fermentation durations vs the 70°F baseline: >1 cooler (slower),
+  // <1 warmer (faster). Cold-proof (fridge) timing is NOT affected by this. Clamped so
+  // extreme temps can't produce absurd schedules. At the 70°F default this is exactly 1.
+  function proofTempFactor() {
+    const t = Math.max(55, Math.min(90, getProofingTempF()));
+    return Math.pow(2, (DEFAULT_PROOFING_TEMP_F - t) / FERMENT_DOUBLING_F);
+  }
+  function fermentScale(min) {
+    if (min == null || !isFinite(Number(min))) return min;
+    return Math.round(Number(min) * proofTempFactor());
+  }
   // Reflect the current unit in the toggle buttons + any static temperature labels.
   function refreshTempUnitUI() {
     const u = getTempUnit();
@@ -2051,6 +2084,42 @@
     refreshOvenPresetLabels();
     const manualLabels = document.querySelectorAll('.manual-temp-unit');
     manualLabels.forEach(el => { el.textContent = tempUnitLabel(); });
+    refreshProofingTempUI();
+  }
+  function refreshProofingTempUI() {
+    const el = document.getElementById('proofing-temp-input');
+    if (el) {
+      el.value = proofingTempIsSet() ? tempInputValue(getProofingTempF()) : '';
+      el.placeholder = tempInputValue(DEFAULT_PROOFING_TEMP_F);
+    }
+    const unit = document.getElementById('proofing-temp-unit');
+    if (unit) unit.textContent = tempUnitLabel();
+    updateProofingTempNote();
+  }
+  function updateProofingTempNote() {
+    const note = document.getElementById('proofing-temp-note');
+    if (!note) return;
+    const defStr = fmtTemp(DEFAULT_PROOFING_TEMP_F);
+    if (proofingTempIsSet()) {
+      const f = proofTempFactor();
+      const rel = f < 0.97 ? `~${(Math.round((1 / f) * 10) / 10)}× faster than` : f > 1.03 ? `~${(Math.round(f * 10) / 10)}× slower than` : 'about the same as';
+      note.textContent = `Fermentation and levain timing are scaled for ${fmtTemp(getProofingTempF())} — ${rel} the ${defStr} baseline.`;
+    } else {
+      note.textContent = `No proofing temperature set — using a ${defStr} default for all fermentation and levain timing. Set yours for more accurate scheduling.`;
+    }
+  }
+  function onProofingTempChange() {
+    const el = document.getElementById('proofing-temp-input');
+    setProofingTempF(el && el.value !== '' ? tempFromInput(el.value) : null);
+    updateProofingTempNote();
+    try { renderSchedule(); } catch (e) {}
+    if (getGistConfig()) pushSettingsToGist().catch(() => {});
+  }
+  function clearProofingTemp() {
+    setProofingTempF(null);
+    refreshProofingTempUI();
+    try { renderSchedule(); } catch (e) {}
+    if (getGistConfig()) pushSettingsToGist().catch(() => {});
   }
   function refreshOvenPresetLabels() {
     [['oven-preheat-350-label', 350], ['oven-preheat-425-label', 425], ['oven-preheat-500-label', 500]].forEach(([id, f]) => {
@@ -3779,7 +3848,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit() };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit(), proofingTempF: proofingTempIsSet() ? getProofingTempF() : null };
   }
 
   function applyRemoteSettings(settings) {
@@ -3836,6 +3905,10 @@ ${notesHtml}
     if (settings.tempUnit === 'F' || settings.tempUnit === 'C') {
       setTempUnit(settings.tempUnit);
       refreshTempUnitUI();
+    }
+    if ('proofingTempF' in settings) {
+      setProofingTempF(settings.proofingTempF);
+      refreshProofingTempUI();
     }
   }
 
@@ -8870,7 +8943,12 @@ ${notesHtml}
   }
 
   function pickLevainBuild(buildKey, refTime, override) {
-    const opts = LEVAIN_RATIOS[buildKey];
+    // Scale each build's ripen window by the proofing-temperature factor so a warmer
+    // kitchen ripens levain faster (builds start later) and a cooler one slower.
+    const f = proofTempFactor();
+    const raw = LEVAIN_RATIOS[buildKey];
+    const sc = (o) => ({ ...o, min: o.min * f, max: o.max * f, mid: o.mid * f });
+    const opts = { fast: sc(raw.fast), medium: sc(raw.medium), slow: sc(raw.slow) };
     if (override === 'fast')   return { ...opts.fast,   kind: 'fast',   manual: true };
     if (override === 'medium') return { ...opts.medium, kind: 'medium', manual: true };
     if (override === 'slow')   return { ...opts.slow,   kind: 'slow',   manual: true };
@@ -8966,29 +9044,29 @@ ${notesHtml}
       ovenCapacity: minOr(loafSpecs.map(s => s.ovenCapacity), SCHED.OVEN_CAPACITY),
       deckCapacity: minOr(loafSpecs.map(s => s.deckCapacity), 4),
       autolyseMin:  maxOr(loafSpecs.map(s => s.autolyseMin), SCHED.AUTOLYSE_MIN),
-      bulkMin:      maxOr(loafSpecs.map(s => s.bulkMin), SCHED.BULK_AFTER_FOLDS_MIN),
+      bulkMin:      fermentScale(maxOr(loafSpecs.map(s => s.bulkMin), SCHED.BULK_AFTER_FOLDS_MIN)),
       foldsCount:   maxOr(loafSpecs.map(s => s.foldsCount), SCHED.FOLDS_COUNT),
     };
     const muffinAgg = totalMuffins > 0 ? {
       bakeMin:      maxOr(muffinSpecs.map(s => s.bakeMin), SCHED.BAKE_MIN),
       bakeTempF:    breadBakeTempF(muffinRecipes, 'sourdough-muffin'),
       ovenCapacity: minOr(muffinSpecs.map(s => s.ovenCapacity), SCHED.MUFFIN_DECK_CAPACITY * 3),
-      bulkMin:      maxOr(muffinSpecs.map(s => s.bulkMin), SCHED.MUFFIN_BULK_MIN),
-      warmupMin:    maxOr(muffinSpecs.map(s => s.warmupMin), SCHED.MUFFIN_WARMUP_MIN),
+      bulkMin:      fermentScale(maxOr(muffinSpecs.map(s => s.bulkMin), SCHED.MUFFIN_BULK_MIN)),
+      warmupMin:    fermentScale(maxOr(muffinSpecs.map(s => s.warmupMin), SCHED.MUFFIN_WARMUP_MIN)),
     } : null;
     const bagelSpecs = bagelRecipes.map(getRecipeSpec);
     const bagelAgg = totalBagels > 0 ? {
       bakeMin:    maxOr(bagelSpecs.map(s => s.bakeMin), PROCESS_TEMPLATES.bagel.bakeMin),
       bakeTempF:  breadBakeTempF(bagelRecipes, 'bagel'),
-      bulkMin:    maxOr(bagelSpecs.map(s => s.bulkMin), PROCESS_TEMPLATES.bagel.bulkMin),
+      bulkMin:    fermentScale(maxOr(bagelSpecs.map(s => s.bulkMin), PROCESS_TEMPLATES.bagel.bulkMin)),
       shapeMinPerUnit: maxOr(bagelSpecs.map(s => s.shapeMinPerUnit), PROCESS_TEMPLATES.bagel.shapeMinPerUnit),
     } : null;
     const focacciaSpecs = focacciaRecipes.map(getRecipeSpec);
     const focacciaAgg = totalFocaccia > 0 ? {
       bakeMin:         maxOr(focacciaSpecs.map(s => s.bakeMin),         PROCESS_TEMPLATES.focaccia.bakeMin),
       ovenCapacity:    Math.min(...(focacciaSpecs.length ? focacciaSpecs.map(s => s.ovenCapacity) : [PROCESS_TEMPLATES.focaccia.ovenCapacity])),
-      warmupMin:       maxOr(focacciaSpecs.map(s => s.warmupMin),       PROCESS_TEMPLATES.focaccia.warmupMin),
-      bulkMin:         maxOr(focacciaSpecs.map(s => s.bulkMin),         PROCESS_TEMPLATES.focaccia.bulkMin),
+      warmupMin:       fermentScale(maxOr(focacciaSpecs.map(s => s.warmupMin),       PROCESS_TEMPLATES.focaccia.warmupMin)),
+      bulkMin:         fermentScale(maxOr(focacciaSpecs.map(s => s.bulkMin),         PROCESS_TEMPLATES.focaccia.bulkMin)),
       foldsCount:      maxOr(focacciaSpecs.map(s => s.foldsCount),      PROCESS_TEMPLATES.focaccia.foldsCount),
       shapeMinPerUnit: maxOr(focacciaSpecs.map(s => s.shapeMinPerUnit), PROCESS_TEMPLATES.focaccia.shapeMinPerUnit),
       autolyseMin:     maxOr(focacciaSpecs.map(s => s.autolyseMin),     PROCESS_TEMPLATES.focaccia.autolyseMin),
@@ -9328,10 +9406,10 @@ ${notesHtml}
           g.chillHr = recsG.reduce((m, r) => Math.max(m, parseHrWindow(r.chillWindow)), 0);
           g.postBakeMin = tmpl.coolMin;
         } else {
-          g.bulkMin = recsG.reduce((m, r) => Math.max(m, getRecipeSpec(r).bulkMin || tmpl.bulkMin), 0) || tmpl.bulkMin;
+          g.bulkMin = fermentScale(recsG.reduce((m, r) => Math.max(m, getRecipeSpec(r).bulkMin || tmpl.bulkMin), 0) || tmpl.bulkMin);
           g.cold = recsG.some(r => r.finalProofMode === 'cold');
           g.coldHr = recsG.filter(r => r.finalProofMode === 'cold').reduce((m, r) => Math.max(m, parseHrWindow(r.finalProofColdWindow || '8-12')), 0) || 10;
-          g.warmMin = recsG.reduce((m, r) => Math.max(m, Number(r.finalProofWarmMin) || tmpl.finalProofWarmMin), 0) || tmpl.finalProofWarmMin;
+          g.warmMin = fermentScale(recsG.reduce((m, r) => Math.max(m, Number(r.finalProofWarmMin) || tmpl.finalProofWarmMin), 0) || tmpl.finalProofWarmMin);
           g.glaze = recsG.some(r => r.glazeEnabled);
           g.glazeMin = recsG.filter(r => r.glazeEnabled).reduce((m, r) => Math.max(m, Number(r.glazeMin) || tmpl.glazeMin), 0) || tmpl.glazeMin;
           g.postBakeMin = tmpl.coolMin + (g.glaze ? g.glazeMin : 0);
@@ -11694,6 +11772,14 @@ ${notesHtml}
 
     const equipWarns = detectEquipmentConflicts(result.equipClaims);
     if (equipWarns.length) { result.warnings = result.warnings || []; result.warnings.push(...equipWarns); }
+
+    if (!proofingTempIsSet() && result.events && result.events.length) {
+      result.warnings = result.warnings || [];
+      result.warnings.push({
+        msg: `Fermentation and levain timing assume a ${fmtTemp(DEFAULT_PROOFING_TEMP_F)} proofing temperature (default). Set your kitchen's proofing temp in the Kitchen tab for more accurate timing.`,
+        issue: 'proofing-temp-default', type: 'info',
+      });
+    }
 
     let html = '';
     if (result.warnings && result.warnings.length) {

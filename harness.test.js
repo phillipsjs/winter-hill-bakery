@@ -106,6 +106,7 @@ const exportsTail = `
   pantryLinkOptionsHtml, SEED_PANTRY, suggestPantryLinkFor, withMigratedStages,
   INGREDIENT_CATALOG, BUILTIN_CATEGORIES,
   fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
+  proofTempFactor, fermentScale, getProofingTempF, setProofingTempF, proofingTempIsSet, pickLevainBuild,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -856,6 +857,46 @@ api.applyRemoteSettings({ tempUnit: 'bogus' });
 tuOk &= tt('applyRemoteSettings ignores invalid tempUnit', api.getTempUnit() === 'C');
 api.setTempUnit('F');
 allOk &= tuOk;
+
+console.log('\nProofing-temperature / fermentation assertions:');
+let ptOk = true;
+function pt(label, cond) { console.log(`  [proofing] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+api.setProofingTempF(null);
+ptOk &= pt('default: unset, 70F, factor exactly 1', !api.proofingTempIsSet() && api.getProofingTempF() === 70 && api.proofTempFactor() === 1);
+ptOk &= pt('default: fermentScale is identity (240 -> 240)', api.fermentScale(240) === 240);
+api.setProofingTempF(87);
+ptOk &= pt('70+17F warmer: factor ~0.5 (doubling rule)', Math.abs(api.proofTempFactor() - 0.5) < 1e-9);
+ptOk &= pt('warmer: fermentScale halves (240 -> 120)', api.fermentScale(240) === 120);
+ptOk &= pt('warmer: levain build window scales down (fast build2 mid 5 -> 2.5)',
+  Math.abs(api.pickLevainBuild('build2', new Date(), 'fast').mid - 2.5) < 1e-9);
+api.setProofingTempF(53);
+ptOk &= pt('cooler: factor > 1 (slower)', api.proofTempFactor() > 1);
+ptOk &= pt('cooler: clamped at 55F (not below)', Math.abs(api.proofTempFactor() - Math.pow(2, (70 - 55) / 17)) < 1e-9);
+api.setProofingTempF(72);
+ptOk &= pt('getLocalSettings carries proofingTempF', api.getLocalSettings().proofingTempF === 72);
+api.applyRemoteSettings({ proofingTempF: 80 });
+ptOk &= pt('applyRemoteSettings adopts proofingTempF', api.getProofingTempF() === 80);
+api.applyRemoteSettings({ proofingTempF: null });
+ptOk &= pt('applyRemoteSettings null clears to default', !api.proofingTempIsSet() && api.getProofingTempF() === 70);
+
+// Integration: a warmer kitchen makes warm ferments shorter, so the bulk-ferment
+// step starts LATER (closer to the fixed bake), and cooler makes it start earlier.
+function loafBulkStart() {
+  seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const ev = api.__sr().events.find(e => e.title === 'Bulk ferment' || e.title.startsWith('Bulk ferment'));
+  return ev && ev.timeEnd ? (ev.timeEnd.getTime() - ev.time.getTime()) / 60000 : null;
+}
+api.setProofingTempF(70); const t70 = loafBulkStart();
+api.setProofingTempF(85); const tWarm = loafBulkStart();
+api.setProofingTempF(58); const tCool = loafBulkStart();
+ptOk &= pt('integration: warmer kitchen → shorter bulk ferment than at 70F', t70 != null && tWarm != null && tWarm < t70);
+ptOk &= pt('integration: cooler kitchen → longer bulk ferment than at 70F', t70 != null && tCool != null && tCool > t70);
+api.setProofingTempF(null);
+allOk &= ptOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
