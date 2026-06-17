@@ -229,6 +229,17 @@
     background: white;
     color: var(--ink);
   }
+  .ing-anchor-ctrl {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    color: var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ing-anchor-ctrl input { margin: 0; flex: none; }
+  .ing-anchor-help { color: var(--muted); font-size: 0.82rem; pointer-events: none; }
   .bake-row {
     display: grid;
     grid-template-columns: 1fr 90px auto auto;
@@ -1073,8 +1084,8 @@
           <button type="button" id="r-mode-grams-btn" class="secondary tiny" onclick="setRecipeEntryMode('grams')">Grams</button>
         </div>
       </div>
-      <p class="muted" id="r-mode-hint-percent" style="margin-top:0">Flours sum to 100%. Mark each flour as <strong>Anchor</strong> (bread, AP — auto-adjusts) or <strong>Specialty</strong> (rye, whole grain — set manually). Changing a specialty flour rescales anchors proportionally. <strong>Link</strong> each ingredient to a kitchen ingredient — that drives costing and adds a milling step when the linked flour needs milling.</p>
-      <p class="muted" id="r-mode-hint-grams" style="margin-top:0;display:none">Enter each ingredient's weight in grams for the whole batch, and set how many units the batch makes above. Mark which ingredients are flour. We'll convert to baker's percentages on save.</p>
+      <p class="muted" id="r-mode-hint-percent" style="margin-top:0">Flours sum to 100%. Flours are detected automatically — tick <strong>Anchor flour</strong> on your base flours (bread, AP) and the app keeps all flours summing to 100%; leave specialty flours (rye, whole grain) unticked and set their percentage yourself. <strong>Link</strong> each ingredient to a kitchen ingredient — that drives costing and adds a milling step when the linked flour needs milling.</p>
+      <p class="muted" id="r-mode-hint-grams" style="margin-top:0;display:none">Enter each ingredient's weight in grams for the whole batch, and set how many units the batch makes above. Flours are detected automatically (tick <strong>Anchor flour</strong> on your base flours). We'll convert to baker's percentages on save.</p>
       <div id="r-ingredients"></div>
       <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
       <div id="r-flour-summary" class="muted" style="font-size:0.85rem;margin-top:8px"></div>
@@ -8958,17 +8969,19 @@ ${notesHtml}
     row.innerHTML = `
       <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
       <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
-      <select class="ing-flour-type" onchange="onFlourTypeChange(this)" title="Flour role">
-        <option value=""${flourType === '' ? ' selected' : ''}>— not flour —</option>
-        <option value="anchor"${flourType === 'anchor' ? ' selected' : ''}>Anchor flour</option>
-        <option value="specialty"${flourType === 'specialty' ? ' selected' : ''}>Specialty flour</option>
-      </select>
+      <label class="ing-anchor-ctrl" title="${ANCHOR_FLOUR_HELP}">
+        <input type="checkbox" class="ing-anchor-cb" onchange="onAnchorToggle(this)" />
+        <span>Anchor flour</span>
+        <span class="ing-anchor-help" aria-hidden="true">ⓘ</span>
+      </label>
+      <input type="hidden" class="ing-flour-type" value="${flourType}" />
       <select class="ing-pantry" onchange="onIngredientPantryChange(this)" title="Link to a kitchen ingredient — drives cost and flags whether this flour needs milling">
         ${pantryLinkOptionsHtml(linkId, editorAllowsLevainLink())}
       </select>
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
     wrap.appendChild(row);
+    updateRowFlourUI(row); // show the Anchor control only when this ingredient is a flour
     updateFlourSummary();
   }
 
@@ -9030,6 +9043,8 @@ ${notesHtml}
       return;
     }
     sel.dataset.prevValue = sel.value;
+    const row = sel.closest('.ingredient-edit-row');
+    if (row) updateRowFlourUI(row);  // a flour link reveals the Anchor option (and vice-versa)
     updateFlourSummary();            // re-sync the ingredient-controlled mill stage
     updateRecipeEditorCostDisplay(); // refresh the live cost readout
   }
@@ -13272,6 +13287,50 @@ ${notesHtml}
     if (/flour|\brye\b|redeemer|whole wheat|whole grain|spelt|einkorn|buckwheat|kamut|durum|semolina|red wheat/.test(n)) return 'specialty';
     return '';
   }
+  // Tooltip explaining what an anchor flour is (shown on the Anchor checkbox + ⓘ).
+  const ANCHOR_FLOUR_HELP = escapeAttr('Anchor flours (bread flour, all-purpose) are the base of the dough — the app auto-adjusts them so all flours sum to 100%. Leave unchecked for a specialty flour (rye, whole wheat, spelt…) whose percentage you set yourself.');
+  // Is this ingredient a flour? Trust an explicit link to a kitchen ingredient's category
+  // first, otherwise detect from the name (so anything the baker types as a flour reveals
+  // the Anchor option without a per-ingredient dropdown).
+  function ingredientIsFlour(name, pantryId) {
+    if (pantryId && pantryId !== '__levain__' && pantryId !== '__free__') {
+      const p = pantryItems.find(x => x.id === pantryId);
+      if (p) return (p.category || categIngredient(p.name)) === 'Flours';
+    }
+    return !!detectFlourType(name) || categIngredient(name) === 'Flours';
+  }
+  // Show the Anchor-flour control only on rows detected as flour; keep the hidden
+  // .ing-flour-type field (the value all of save/load/rebalance read) in sync. The control
+  // stays in its grid cell via visibility (not display) so non-flour rows still align.
+  function updateRowFlourUI(row) {
+    if (!row) return;
+    const hidden = row.querySelector('.ing-flour-type');
+    const ctrl = row.querySelector('.ing-anchor-ctrl');
+    const cb = row.querySelector('.ing-anchor-cb');
+    if (!hidden || !ctrl) return;
+    const name = (row.querySelector('.ing-name').value || '').trim();
+    const pantryEl = row.querySelector('.ing-pantry');
+    const pantryId = pantryEl ? pantryEl.value : '';
+    const isFlour = !!hidden.value || ingredientIsFlour(name, pantryId);
+    ctrl.style.visibility = isFlour ? 'visible' : 'hidden';
+    if (isFlour) {
+      if (!hidden.value) hidden.value = detectFlourType(name) || 'specialty'; // first time we detect it
+      if (cb) cb.checked = hidden.value === 'anchor';
+    } else if (hidden.value) {
+      hidden.value = ''; // no longer a flour (e.g. relinked to a non-flour ingredient)
+      if (cb) cb.checked = false;
+    }
+  }
+  // Anchor checkbox: checked → anchor flour, unchecked → specialty. Rebalances anchors so
+  // flours still sum to 100% in percent mode.
+  function onAnchorToggle(cb) {
+    const row = cb.closest('.ingredient-edit-row');
+    const hidden = row && row.querySelector('.ing-flour-type');
+    if (!hidden) return;
+    hidden.value = cb.checked ? 'anchor' : 'specialty';
+    rebalanceAnchors();
+    updateFlourSummary();
+  }
 
   function onIngredientPctInput(input) {
     const row = input.closest('.ingredient-edit-row');
@@ -13280,21 +13339,11 @@ ${notesHtml}
     updateFlourSummary();
   }
 
-  function onFlourTypeChange(select) {
-    rebalanceAnchors();
-    updateFlourSummary();
-  }
-
   function onIngredientNameBlur(input) {
     const row = input.closest('.ingredient-edit-row');
-    const select = row.querySelector('.ing-flour-type');
-    if (!select.value) {
-      const detected = detectFlourType(input.value);
-      if (detected) {
-        select.value = detected;
-        rebalanceAnchors();
-      }
-    }
+    const before = row.querySelector('.ing-flour-type').value;
+    updateRowFlourUI(row); // reveal/hide the Anchor control + seed the detected role
+    if (row.querySelector('.ing-flour-type').value !== before) rebalanceAnchors();
     // Auto-link to a matching kitchen ingredient (or the levain) when the row isn't linked
     // yet, so recipe ingredients stay aligned to the pantry (and milling flags) by default.
     const pantrySel = row.querySelector('.ing-pantry');

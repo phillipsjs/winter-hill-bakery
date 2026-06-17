@@ -115,6 +115,7 @@ const exportsTail = `
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
   annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
+  detectFlourType, ingredientIsFlour,
   __setRecipes: (r) => { recipes = r; },
   __editorStages: () => _editorStages,
   __sr: () => _scheduleResult,
@@ -1326,6 +1327,19 @@ hvOk &= hv('loaf with no topping stage has no Top step', hasTopLoaf() === null);
 const loafBakeIdx = loafR.stages.findIndex(s => s.type === 'bake');
 loafR.stages.splice(loafBakeIdx < 0 ? loafR.stages.length : loafBakeIdx, 0, { type: 'topping', duration: { kind: 'fixed', min: 4 } });
 hvOk &= hv('loaf with a topping stage gets a "Top loaves" step (topping type)', hasTopLoaf() === 'topping');
+
+// --- Flour auto-detection (drives the contextual Anchor-flour control). Last, since it
+// swaps the pantry. ---
+api.__setPantry([
+  { id: 'pan-bread', name: 'Bread flour', category: 'Flours' },
+  { id: 'pan-water', name: 'Water', category: 'Water' },
+]);
+hvOk &= hv('bread/AP flours auto-detect as anchor', api.detectFlourType('Bread flour') === 'anchor' && api.detectFlourType('All purpose flour') === 'anchor');
+hvOk &= hv('rye/whole-grain flours auto-detect as specialty', api.detectFlourType('Whole rye') === 'specialty' && api.detectFlourType('Spelt flour') === 'specialty');
+hvOk &= hv('non-flours do not auto-detect a flour role', api.detectFlourType('Water') === '' && api.detectFlourType('Olive oil') === '');
+hvOk &= hv('ingredientIsFlour: true for flour names, false for others', api.ingredientIsFlour('Bread flour', '') === true && api.ingredientIsFlour('Semolina', '') === true && api.ingredientIsFlour('Butter', '') === false);
+hvOk &= hv('a pantry link to a Flours item marks the row a flour even with an odd name', api.ingredientIsFlour('House blend', 'pan-bread') === true);
+hvOk &= hv('a pantry link to a non-flour item overrides a flour-ish name', api.ingredientIsFlour('flour sack', 'pan-water') === false);
 loafR.stages = loafR.stages.filter(s => s.type !== 'topping');
 allOk &= hvOk;
 
