@@ -11551,6 +11551,27 @@ ${notesHtml}
     return { ...prepRes, events };
   }
 
+  // Post-pass: insert a "Top <label>" step just before the first bake of any bread process
+  // whose in-plan recipe carries a 'topping' stage (loaf seeds, focaccia rosemary, muffin
+  // cornmeal). Bagels already split boil/top in the engine, so they're excluded here.
+  function insertToppingSteps(events) {
+    if (!Array.isArray(events)) return events;
+    [
+      { proc: 'loaf', label: 'loaves', types: ['sourdough-loaf'] },
+      { proc: 'muffin', label: 'muffins', types: ['sourdough-muffin'] },
+      { proc: 'focaccia', label: 'focaccia', types: ['focaccia'] },
+    ].forEach(({ proc, label, types }) => {
+      const recs = recipes.filter(r => types.includes(getProcessType(r)) && (plan[r.id] || 0) > 0
+        && Array.isArray(r.stages) && r.stages.some(s => s.type === 'topping'));
+      if (!recs.length) return;
+      const bakeEvs = events.filter(e => e.process === proc && /^Bake/.test(e.title));
+      if (!bakeEvs.length) return;
+      const firstBake = bakeEvs.reduce((a, b) => (a.time <= b.time ? a : b));
+      const dur = Math.max(...recs.map(r => stageDurationOf(r, 'topping', 3)));
+      events.push({ time: addMinutes(firstBake.time, -dur), title: `Top ${label}`, detail: `${dur} min — add toppings before baking`, process: proc });
+    });
+    return events;
+  }
   function buildScheduleAcrossLoafGroups(baseOpts) {
     const rd = baseOpts.recipeDeadlines || {};
     const dlMs = (r) => { const d = rd[r.id] || baseOpts.loafDeadline; return d ? new Date(d).getTime() : null; };
@@ -11562,7 +11583,7 @@ ${notesHtml}
       groupsMap.get(key).recipes.push(r);
     });
     const groups = [...groupsMap.values()].sort((a, b) => (a.ms || 0) - (b.ms || 0));
-    if (groups.length <= 1) return buildSchedule(baseOpts);
+    if (groups.length <= 1) { const r = buildSchedule(baseOpts); insertToppingSteps(r.events); return r; }
 
     const windowWidthHr = Math.max(0, (Number(baseOpts.loafColdProofMaxHr) || 0) - (Number(baseOpts.loafColdProofHours) || 0));
     const combineSigs = loadCombineDoughs();
@@ -11642,6 +11663,7 @@ ${notesHtml}
         issue: 'same-dough-combined', kind: 'loaf', type: 'info', combineSig: sig, combined: true,
       });
     });
+    insertToppingSteps(merged.events);
     return merged;
   }
 

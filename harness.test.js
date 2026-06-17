@@ -1231,6 +1231,24 @@ const ti = topEv ? Ht.getEventIngredients(topEv) : null;
 const tnames = ti && ti.type === 'byRecipe' ? ti.recipes.flatMap(r => r.ingredients.map(i => i.name)) : [];
 hvOk &= hv('tagged topping ingredient shows on the Top step', tnames.length === 1 && tnames[0] === topIng);
 delete topStage.ings;
+
+// Loaf/focaccia (other bread engines) get a "Top <process>" step via the post-pass when
+// the recipe has a topping stage — and NOT when it doesn't.
+const loafR = api.__recipes().find(r => r.id === SEED.batard);
+const hasTopLoaf = () => {
+  seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const e = api.__sr().events.find(ev => /^Top loaves/.test(ev.title));
+  return e ? api.getEventStage(e) : null;
+};
+hvOk &= hv('loaf with no topping stage has no Top step', hasTopLoaf() === null);
+const loafBakeIdx = loafR.stages.findIndex(s => s.type === 'bake');
+loafR.stages.splice(loafBakeIdx < 0 ? loafR.stages.length : loafBakeIdx, 0, { type: 'topping', duration: { kind: 'fixed', min: 4 } });
+hvOk &= hv('loaf with a topping stage gets a "Top loaves" step (topping type)', hasTopLoaf() === 'topping');
+loafR.stages = loafR.stages.filter(s => s.type !== 'topping');
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
