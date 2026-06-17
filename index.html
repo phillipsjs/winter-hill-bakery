@@ -698,6 +698,21 @@
     color: var(--ink);
     font-family: inherit;
   }
+  /* Equipment dropdowns inside the Bake Plan cards: match the app's select aesthetic,
+     compact, with a custom chevron and accent hover/focus so they sit in the cards. */
+  .bp-equip-select {
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    font-size: 0.82rem;
+    padding: 4px 26px 4px 9px;
+    max-width: 100%;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%231f4d2e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  }
+  .bp-equip-select:hover { border-color: var(--accent); }
+  .bp-equip-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(31, 77, 46, 0.15); }
   #bake-chart-card { display:none }
   #bake-chart-card canvas { max-height: 320px }
   #bake-chart-card button.tiny.active { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -7494,7 +7509,7 @@ ${notesHtml}
   // `current` is the selected value ('' = the auto/default option).
   function bakePlanEquipSelect(kind, recipeIds, current, options) {
     const ids = (Array.isArray(recipeIds) ? recipeIds : [recipeIds]).join(',');
-    return `<select class="bp-equip-select" style="font-size:0.82rem;padding:2px 6px;max-width:100%" onchange="onBakePlanEquipChange(this)" data-kind="${kind}" data-recipes="${escapeAttr(ids)}">`
+    return `<select class="settings-select bp-equip-select" onchange="onBakePlanEquipChange(this)" data-kind="${kind}" data-recipes="${escapeAttr(ids)}">`
       + options.map(([v, l]) => `<option value="${escapeAttr(v)}"${(current || '') === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')
       + `</select>`;
   }
