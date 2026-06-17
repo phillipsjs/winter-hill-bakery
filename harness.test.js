@@ -1050,6 +1050,38 @@ if (muffMix && muffIngNames.length >= 2) {
   hvOk &= hv('untagged weigh step still lists all ingredients (heuristic intact)', wNames.length > 1);
   delete muffMix.ings;
 }
+
+// Mixed tagging: when one recipe tags a step but another (same process) does not, the
+// untagged one falls back to the heuristic AND a warning is surfaced.
+const batard = api.__recipes().find(r => r.id === SEED.batard);
+const boule = api.__recipes().find(r => r.id === SEED.boule);
+const bAuto = batard && (batard.stages || []).find(s => s.type === 'autolyse');
+const blAuto = boule && (boule.stages || []).find(s => s.type === 'autolyse');
+hvOk &= hv('two loaf seeds both have an autolyse stage', !!bAuto && !!blAuto);
+if (bAuto && blAuto && batard.ingredients && batard.ingredients.length) {
+  bAuto.ings = [batard.ingredients[0].name];   // tag batard only
+  seedPlan({ [SEED.batard]: 4, [SEED.boule]: 4 }); api.__setPlan({ [SEED.batard]: 4, [SEED.boule]: 4 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const H6 = api.buildBakeSheetHelpers();
+  const autoEv = api.__sr().events.find(e => api.eventStageType(e) === 'autolyse' && e.process === 'loaf');
+  const res = autoEv ? H6.getEventIngredients(autoEv) : null;
+  hvOk &= hv('mixed tagging is flagged with the untagged recipe named', !!res && res.mixedTagging === true && res.fallbackRecipes.includes(boule.name));
+  const byName = {};
+  (res ? res.recipes : []).forEach(r => { byName[r.name] = r.ingredients.map(i => i.name); });
+  hvOk &= hv('tagged recipe shows only its tagged ingredient', byName[batard.name] && byName[batard.name].length === 1);
+  hvOk &= hv('untagged recipe falls back to the heuristic (flours+water)', byName[boule.name] && byName[boule.name].length > 1);
+  hvOk &= hv('ingredient column renders the mixed-tagging warning', autoEv && /bs-ing-warn/.test(H6.renderIngCol(autoEv)));
+  // When BOTH tag, no warning.
+  blAuto.ings = [boule.ingredients[0].name];
+  api.renderSchedule();
+  const H7 = api.buildBakeSheetHelpers();
+  const autoEv2 = api.__sr().events.find(e => api.eventStageType(e) === 'autolyse' && e.process === 'loaf');
+  const res2 = autoEv2 ? H7.getEventIngredients(autoEv2) : null;
+  hvOk &= hv('no warning when all recipes tag the step', !!res2 && !res2.mixedTagging);
+  delete bAuto.ings; delete blAuto.ings;
+}
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');

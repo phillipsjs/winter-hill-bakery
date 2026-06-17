@@ -793,6 +793,11 @@
     margin-top: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
   .stage-ing-opt { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; cursor: pointer; }
 
+  /* Mixed-tagging warning in the bake-sheet / hover ingredient column */
+  .bs-ing-warn { font-size: 0.76rem; color: #8a5a00; background: #fdf3da; border: 1px solid #e8c879;
+    border-radius: 4px; padding: 3px 6px; margin-bottom: 5px; }
+  .schedule-tooltip .tt-ings .bs-ing-warn { font-size: 0.74rem; }
+
   /* Schedule step hover tooltip */
   .schedule-row[data-hover], .schedule-event[data-hover] { cursor: help; }
   .schedule-tooltip {
@@ -12393,21 +12398,42 @@ ${notesHtml}
         (proc === 'focaccia' && r.processType === 'focaccia')
       );
 
+      // The per-recipe ingredient subset the title-based heuristic would show at this
+      // step (used as the fallback for recipes that DON'T tag this stage).
+      const heuristicFilter =
+        /Weigh ingredients/.test(t) ? (r => r.ingredients) :
+        /autolyse|Autolyse/.test(t) ? (r => r.ingredients.filter(i => i.flourType === 'anchor' || i.flourType === 'specialty' || i.name.toLowerCase().includes('water'))) :
+        /Mix muffin|Mix bagel|Mix focaccia/.test(t) ? (r => r.ingredients) :
+        /Mix in salt/.test(t) ? (r => r.ingredients.filter(i => !i.flourType && !i.name.toLowerCase().includes('water'))) :
+        null;
+
       // Explicit per-stage ingredient tags (set in the recipe editor) take precedence:
-      // when a relevant recipe's matching stage tags specific ingredients, show exactly
-      // those here. Recipes without a tagged stage of this type fall through to heuristics.
+      // when a relevant recipe's matching stage tags ingredients, show exactly those. A
+      // recipe WITHOUT a tag for this stage falls back to the heuristic, and we flag the
+      // mix so the bake sheet/hover can warn that some recipes use defaults here.
       const evType = eventStageType(ev);
       if (evType) {
-        const tagged = byProc.map(r => {
+        let anyTagged = false;
+        const fallbackRecipes = [];
+        const list = byProc.map(r => {
           const recipe = recipes.find(x => x.id === r.id);
           const st = recipe && Array.isArray(recipe.stages)
             ? recipe.stages.find(s => s.type === evType && Array.isArray(s.ings) && s.ings.length) : null;
-          if (!st) return null;
-          const wanted = new Set(st.ings);
-          const ings = r.ingredients.filter(i => wanted.has(i.name));
-          return ings.length ? { ...r, ingredients: ings } : null;
+          if (st) {
+            anyTagged = true;
+            const wanted = new Set(st.ings);
+            const ings = r.ingredients.filter(i => wanted.has(i.name));
+            return ings.length ? { ...r, ingredients: ings } : null;
+          }
+          if (heuristicFilter) {
+            const ings = heuristicFilter(r);
+            if (ings.length) { fallbackRecipes.push(r.name); return { ...r, ingredients: ings }; }
+          }
+          return null;
         }).filter(Boolean);
-        if (tagged.length) return { type: 'byRecipe', recipes: tagged };
+        if (anyTagged && list.length) {
+          return { type: 'byRecipe', recipes: list, mixedTagging: fallbackRecipes.length > 0, fallbackRecipes };
+        }
       }
 
       // Mill flour — milling-flagged flours with their computed weights
@@ -12525,11 +12551,14 @@ ${notesHtml}
     const renderIngCol = ev => {
       const ings = getEventIngredients(ev);
       if (!ings) return '';
+      const warn = ings.mixedTagging
+        ? `<div class="bs-ing-warn">⚠ ${escapeHtml(ings.fallbackRecipes.join(', '))} ${ings.fallbackRecipes.length > 1 ? 'use' : 'uses'} default ingredients here — not all recipes tag this step.</div>`
+        : '';
       const batched = (ev.mixBatchContents || ev.mixBatchCount) ? batchedBlocks(ev, ings) : null;
-      if (batched) return batched;
-      if (ings.type === 'simple') return ingTableHtml(ings.rows);
+      if (batched) return warn + batched;
+      if (ings.type === 'simple') return warn + ingTableHtml(ings.rows);
       // byRecipe
-      return ings.recipes.map(r => recipeBlockHtml(r.name, r.count, r.ingredients)).join('');
+      return warn + ings.recipes.map(r => recipeBlockHtml(r.name, r.count, r.ingredients)).join('');
     };
 
     const loafContainers = (_scheduleResult.loafContainerInfo || []);
