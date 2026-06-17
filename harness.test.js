@@ -1022,6 +1022,34 @@ if (boilStage) {
   hvOk &= hv('deduped map shows the boil note on exactly ONE step', shownHits === 1);
   delete boilStage.note;
 }
+
+// Per-stage ingredient tags: tagging ingredients on a stage drives the bake sheet's
+// ingredient column for that step (overriding the heuristic).
+const muffRec = api.__recipes().find(r => r.id === SEED.muffin);
+const muffMix = muffRec && (muffRec.stages || []).find(s => s.type === 'mix');
+const muffIngNames = muffRec ? (muffRec.ingredients || []).map(i => i.name) : [];
+hvOk &= hv('seed muffin has a mix stage + ingredients to tag', !!muffMix && muffIngNames.length >= 2);
+if (muffMix && muffIngNames.length >= 2) {
+  const tagOne = muffIngNames[0];
+  muffMix.ings = [tagOne];
+  seedPlan({ [SEED.muffin]: 12 }); api.__setPlan({ [SEED.muffin]: 12 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const H5 = api.buildBakeSheetHelpers();
+  const mixEv = api.__sr().events.find(e => api.eventStageType(e) === 'mix' && (e.process === 'muffin' || /muffin/i.test(e.title)));
+  const ings = mixEv ? H5.getEventIngredients(mixEv) : null;
+  const rowNames = ings && ings.type === 'byRecipe'
+    ? ings.recipes.flatMap(r => r.ingredients.map(i => i.name))
+    : (ings && ings.rows ? ings.rows.map(r => r.name) : []);
+  hvOk &= hv('tagged mix step shows ONLY the tagged ingredient', rowNames.length === 1 && rowNames[0] === tagOne);
+  // An untagged stage type keeps heuristic behavior (weigh shows all ingredients).
+  const weighEv = api.__sr().events.find(e => api.eventStageType(e) === 'weigh');
+  const wIngs = weighEv ? H5.getEventIngredients(weighEv) : null;
+  const wNames = wIngs && wIngs.type === 'byRecipe' ? wIngs.recipes.flatMap(r => r.ingredients.map(i => i.name)) : [];
+  hvOk &= hv('untagged weigh step still lists all ingredients (heuristic intact)', wNames.length > 1);
+  delete muffMix.ings;
+}
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
