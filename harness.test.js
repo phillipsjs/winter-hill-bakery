@@ -734,7 +734,7 @@ if (bagelR) {
   bagelR.boilBatchSize = 6;
   bagelR.preferredPotId = 'pot1';
   const ev = bagelEvents({ 'seed-sourdough-bagels': 18 });
-  const boils = ev.filter(e => /^Boil & top/.test(e.title));
+  const boils = ev.filter(e => /^Boil batch/.test(e.title));
   boilOk &= bo('boil batches = ceil(total / per-recipe batch size) — 18/6 = 3', boils.length === 3);
   const bring = ev.find(e => /^Bring .* to a boil/.test(e.title));
   boilOk &= bo('boil-up step names the pot', !!bring && /Big Stockpot/.test(bring.title) && Array.isArray(bring.equip) && bring.equip.indexOf('Big Stockpot') >= 0);
@@ -742,10 +742,10 @@ if (bagelR) {
   boilOk &= bo('boil steps are their own "boil" stage (not bake)', boils.every(e => api.getEventStage(e) === 'boil') && api.getEventStage(bring) === 'boil');
   // Change the batch size → batch count changes (no global input involved).
   bagelR.boilBatchSize = 9;
-  boilOk &= bo('changing the recipe batch size re-batches (18/9 = 2)', bagelEvents({ 'seed-sourdough-bagels': 18 }).filter(e => /^Boil & top/.test(e.title)).length === 2);
+  boilOk &= bo('changing the recipe batch size re-batches (18/9 = 2)', bagelEvents({ 'seed-sourdough-bagels': 18 }).filter(e => /^Boil batch/.test(e.title)).length === 2);
   // No batch size set → falls back to the default of 10.
   delete bagelR.boilBatchSize;
-  boilOk &= bo('no batch size falls back to default 10 (12 → 2 batches)', bagelEvents({ 'seed-sourdough-bagels': 12 }).filter(e => /^Boil & top/.test(e.title)).length === 2);
+  boilOk &= bo('no batch size falls back to default 10 (12 → 2 batches)', bagelEvents({ 'seed-sourdough-bagels': 12 }).filter(e => /^Boil batch/.test(e.title)).length === 2);
   // The pot can be driven by the boil STEP's vessel (the new per-step picker), not just
   // preferredPotId. Clear preferredPotId and set the boil stage's vessel instead.
   delete bagelR.preferredPotId;
@@ -1209,6 +1209,28 @@ const levPick = pickerFor(e => /Levain Build/.test(e.title));
 hvOk &= hv('bake sheet levain build offers a container picker', /Container/.test(levPick) && /onLevainContainerChange/.test(levPick) && /no-print/.test(levPick));
 const chillPick = pickerFor(e => api.eventStageType(e) === 'chill');
 hvOk &= hv('bake sheet step with no editable equipment shows no picker', chillPick === '');
+
+// Topping is its own step: bagels now boil and top as separate steps, and a recipe's
+// topping stage drives that step's ingredients (e.g. everything seasoning).
+const bagelRT = api.__recipes().find(r => r.id === SEED.bagel);
+let topStage = (bagelRT.stages || []).find(s => s.type === 'topping');
+if (!topStage) { topStage = { type: 'topping', duration: { kind: 'fixed', min: 3 } }; const bi = bagelRT.stages.findIndex(s => s.type === 'bake'); bagelRT.stages.splice(bi < 0 ? bagelRT.stages.length : bi, 0, topStage); }
+const topIng = bagelRT.ingredients[0].name;
+topStage.ings = [topIng];
+seedPlan({ [SEED.bagel]: 12 }); api.__setPlan({ [SEED.bagel]: 12 });
+els['deadline-default-input'].value = fmtLocal(tomorrow8);
+['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+api.renderSchedule();
+const Ht = api.buildBakeSheetHelpers();
+const evsT = api.__sr().events;
+const topEv = evsT.find(e => /^Top batch/.test(e.title));
+hvOk &= hv('bagels boil and top as SEPARATE steps', evsT.some(e => /^Boil batch/.test(e.title)) && !!topEv);
+hvOk &= hv('Top step maps to the topping stage (color + type)', topEv && api.getEventStage(topEv) === 'topping' && api.eventStageType(topEv) === 'topping');
+const ti = topEv ? Ht.getEventIngredients(topEv) : null;
+const tnames = ti && ti.type === 'byRecipe' ? ti.recipes.flatMap(r => r.ingredients.map(i => i.name)) : [];
+hvOk &= hv('tagged topping ingredient shows on the Top step', tnames.length === 1 && tnames[0] === topIng);
+delete topStage.ings;
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');

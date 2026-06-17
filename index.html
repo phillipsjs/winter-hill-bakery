@@ -658,6 +658,7 @@
   .schedule-row[data-stage="proof"]::before,  .schedule-event[data-stage="proof"]::before,  .stage-group[data-stage="proof"]::before  { background: #8F5A22; color: #fbf6ec; }
   .schedule-row[data-stage="chill"]::before,  .schedule-event[data-stage="chill"]::before,  .stage-group[data-stage="chill"]::before  { background: #4F6A73; color: #eef4f6; }
   .schedule-row[data-stage="boil"]::before,   .schedule-event[data-stage="boil"]::before,   .stage-group[data-stage="boil"]::before   { background: #C0492E; color: #fbf6ec; }
+  .schedule-row[data-stage="topping"]::before,.schedule-event[data-stage="topping"]::before,.stage-group[data-stage="topping"]::before{ background: #6F7A2E; color: #fbf6ec; }
   .schedule-row[data-stage="bake"]::before,   .schedule-event[data-stage="bake"]::before,   .stage-group[data-stage="bake"]::before   { background: #5E3413; color: #fbf6ec; }
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #1F4D2E; color: #fbf6ec; }
   /* Recipe stage editor */
@@ -2285,6 +2286,7 @@
     if (/^Final proof/.test(t)) return 'proof';
     if (/ to a boil$/.test(t)) return '';   // "Bring to a boil" is a boil sub-step (heat), not the main boil
     if (/^Boil/.test(t)) return 'boil';
+    if (/^Top /.test(t)) return 'topping';
     if (/^Bake/.test(t)) return 'bake';
     if (/^(Turn on oven|Turn off|Set .* to )/.test(t)) return '';   // oven control — bake sub-steps
     if (/out — (start )?cool/i.test(t)) return 'cool';
@@ -2884,6 +2886,7 @@
     chill:    { stage: 'chill',  active: false, kind: 'range',         label: 'Cold proof' },
     warmup:   { stage: 'proof',  active: false, kind: 'fixed',         label: 'Warm-up before bake' },
     boil:     { stage: 'boil',   active: true,  kind: 'fixed',         label: 'Boil' },
+    topping:  { stage: 'topping', active: true, kind: 'fixed',         label: 'Topping' },
     bake:     { stage: 'bake',   active: false, kind: 'anchored',      label: 'Bake' },
     cool:     { stage: 'done',   active: false, kind: 'fixed',         label: 'Cool' },
     glaze:    { stage: 'done',   active: true,  kind: 'fixed',         label: 'Glaze / ice' },
@@ -2896,6 +2899,7 @@
     mix:    { bg: '#D6AE63', fg: '#4a3618' }, fold:   { bg: '#C28C40', fg: '#3a2a12' },
     shape:  { bg: '#A86E2B', fg: '#fbf6ec' }, proof:  { bg: '#8F5A22', fg: '#fbf6ec' },
     chill:  { bg: '#4F6A73', fg: '#eef4f6' }, boil:   { bg: '#C0492E', fg: '#fbf6ec' },
+    topping:{ bg: '#6F7A2E', fg: '#fbf6ec' },
     bake:   { bg: '#5E3413', fg: '#fbf6ec' }, done:   { bg: '#1F4D2E', fg: '#fbf6ec' },
   };
   // Some stages fan out into several scheduled steps. These are the EXTRA sub-steps a
@@ -2952,6 +2956,7 @@
       { type: 'shape', duration: { kind: 'perUnit', minPerUnit: 2 }, vessel: 'sheet' },
       { type: 'chill', duration: { kind: 'range', auto: true }, vessel: 'sheet' },
       { type: 'boil',  duration: { kind: 'fixed', min: 5 } },
+      { type: 'topping', duration: { kind: 'fixed', min: 3 } },
       { type: 'bake',  duration: { kind: 'anchored', min: 22 }, tempF: 450 },
     ],
     'focaccia': [
@@ -10973,9 +10978,15 @@ ${notesHtml}
         const countThis = Math.min(bagelBatchSizeEff, totalBagels - b * bagelBatchSizeEff);
         events.push({
           time: boilStart,
-          title: `Boil & top batch ${b + 1} of ${bagelBatches}`,
-          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_BOIL_MIN} min boil · ${SCHED.BAGEL_TOP_MIN} min top${bagelPotTag}`,
+          title: `Boil batch ${b + 1} of ${bagelBatches}`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_BOIL_MIN} min boil${bagelPotTag}`,
           process: 'bagel', equip: bagelPotEquip,
+        });
+        events.push({
+          time: addMinutes(boilStart, SCHED.BAGEL_BOIL_MIN),
+          title: `Top batch ${b + 1} of ${bagelBatches}`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_TOP_MIN} min — add toppings`,
+          process: 'bagel',
         });
         events.push({
           time: bakeStart,
@@ -11785,6 +11796,7 @@ ${notesHtml}
     // Warm/room-temp proofing — bulk ferment, warm-up out of the fridge, pan/final rise.
     if (/^(Bulk ferment|Muffins out of fridge|Pan rise|Final proof|Bulk rise)/.test(t)) return 'proof';
     if (/^(Bring .* to a boil|Boil)/.test(t)) return 'boil';
+    if (/^Top /.test(t)) return 'topping';
     if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch)/.test(t)) return 'bake';
     if (/^(Last .* out|Package)/.test(t)) return 'done';
     return '';
@@ -11800,7 +11812,7 @@ ${notesHtml}
       case 'oven-overlap-late':
       case 'oven-shifted': {
         const bakePattern = w.kind === 'bagel'
-          ? /^(Bake batch|Boil & top batch)/
+          ? /^(Bake batch|Boil batch|Top batch)/
           : /^Bake \d+ of \d+/;
         return events.filter(e => e.process === w.kind && bakePattern.test(e.title)).map(e => e.title);
       }
