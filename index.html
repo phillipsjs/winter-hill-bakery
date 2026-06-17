@@ -756,6 +756,9 @@
     color: var(--muted); margin: 0 0 2px; }
   .bs-ings .bs-batch-gap { height: 6px; }
   .bs-container { width: 150px; font-size: 0.78rem; color: var(--muted); white-space: pre-line; vertical-align: top; }
+  .bs-equip-edit { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; white-space: normal; }
+  .bs-equip-row { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; }
+  .bs-equip-lbl { color: var(--muted); min-width: 58px; }
   .bs-stage { width: 24px; padding: 2px; display: flex; align-items: center; justify-content: center; border-left: 1px solid #ccc; }
   .bs-stage-label {
     display: block;
@@ -2146,6 +2149,7 @@
     setLevainContainerPref(sel.dataset.levainKey, sel.dataset.build, sel.value);
     renderSchedule();
     renderTotals();
+    rerenderBakeSheetIfVisible();
   }
   const CATEGORIES_KEY = 'cottage-bakery-categories-v1';
   const TEMP_UNIT_KEY = 'whb-temp-unit-v1';
@@ -7544,6 +7548,12 @@ ${notesHtml}
     saveRecipes();
     renderSchedule();
     renderTotals();
+    rerenderBakeSheetIfVisible();
+  }
+  // The Bake Sheet has its own copy of the equipment pickers; refresh it after a change
+  // made from either the Bake Plan cards or the Bake Sheet itself.
+  function rerenderBakeSheetIfVisible() {
+    try { const t = document.getElementById('tab-bakesheet'); if (t && t.style.display !== 'none') renderBakeSheet(); } catch (e) {}
   }
   function onBakePlanEquipChange(sel) {
     const ids = (sel.dataset.recipes || '').split(',').filter(Boolean);
@@ -12841,6 +12851,42 @@ ${notesHtml}
         .forEach(frag => { if (frag) s = s.split(frag).join(''); });
       return s.replace(/[\s·|]+$/, '').replace(/\n+$/, '');
     };
+    const getEventRecipeIds = ev => {
+      const names = new Set(getEventRecipes(ev));
+      return ingData.byRecipe.filter(r => names.has(r.name)).map(r => r.id);
+    };
+    // No-print equipment pickers for a step — the Bake Sheet counterpart of the Bake Plan
+    // card dropdowns. Reuses bakePlanEquipSelect/setBakePlanEquip (mixer/oven/pot/container)
+    // and the levain-container picker, scoped to the recipes the step touches.
+    const getEventEquipPicker = ev => {
+      const evType = eventStageType(ev);
+      const sub = eventSubstep(ev);
+      const ids = getEventRecipeIds(ev);
+      const rows = [];
+      const labeled = (label, html) => `<div class="bs-equip-row"><span class="bs-equip-lbl">${label}</span>${html}</div>`;
+      const eq = (kind, field, options) => { if (ids.length) rows.push(labeled(kind[0].toUpperCase() + kind.slice(1), bakePlanEquipSelect(kind, ids, sharedPrefId(ids, field), options))); };
+      // Levain build vessel (per stream + build).
+      if (/Levain Build/.test(ev.title)) {
+        const lev = userContainers.filter(c => c.processTag === 'any' || c.processTag === 'levain');
+        if (lev.length) {
+          const stream = /\(muffins\)/.test(ev.title) ? 'muffin' : /\(bagels\)/.test(ev.title) ? 'bagel' : 'shared';
+          const build = /Build 1/.test(ev.title) ? 'b1' : 'b2';
+          const cur = getLevainContainerPref(stream, build);
+          const opts = [['', '— auto —'], ...lev.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])];
+          rows.push(labeled('Container', `<select class="settings-select bp-equip-select" onchange="onLevainContainerChange(this)" data-levain-key="${stream}" data-build="${build}">`
+            + opts.map(([v, l]) => `<option value="${escapeAttr(v)}"${cur === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('') + `</select>`));
+        }
+      }
+      if (evType === 'mix' && userMixers.length) eq('mixer', 'preferredMixerIds', [['', '— none —'], ...userMixers.map(m => [m.id, m.name])]);
+      if ((evType === 'bake' || (sub && sub.type === 'bake')) && userOvens.length >= 2) eq('oven', 'preferredOvenId', [['', '— auto —'], ...userOvens.map(o => [o.id, o.name])]);
+      if ((evType === 'boil' || (sub && sub.type === 'boil')) && userPots.length) eq('pot', 'preferredPotId', [['', '— no pot —'], ...userPots.map(p => [p.id, p.name + (p.size ? ` (${p.size})` : '')])]);
+      // Loaf bulk-ferment / dough container.
+      if (ev.process === 'loaf' && /autolyse|Mix in salt|Stretch & fold|Bulk ferment/.test(ev.title)) {
+        const loafCont = userContainers.filter(c => c.processTag === 'any' || c.processTag === 'loaf');
+        if (loafCont.length && ids.length) rows.push(labeled('Container', bakePlanEquipSelect('container', ids, sharedPrefId(ids, 'preferredContainerIds'), [['', '— auto (smallest that fits) —'], ...loafCont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])));
+      }
+      return rows.length ? `<div class="bs-equip-edit no-print">${rows.join('')}</div>` : '';
+    };
 
     // For a dough mixed once per proofing container, split the step into one row per
     // container so the container (Equipment) lines up exactly with its ingredient set.
@@ -12869,7 +12915,7 @@ ${notesHtml}
       });
     };
 
-    return { ingData, ingTableHtml, getEventIngredients, recipeBlockHtml, batchedBlocks, renderIngCol, getEventContainer, getEventEquipment, bsTitle, allRecipeNames, getEventRecipes, bsDetail, getEventBatchRows };
+    return { ingData, ingTableHtml, getEventIngredients, recipeBlockHtml, batchedBlocks, renderIngCol, getEventContainer, getEventEquipment, bsTitle, allRecipeNames, getEventRecipes, bsDetail, getEventBatchRows, getEventEquipPicker };
   }
 
   function renderBakeSheet() {
@@ -12892,7 +12938,7 @@ ${notesHtml}
       : fmtTime(ev.time);
 
     const H = buildBakeSheetHelpers();
-    const { ingData, renderIngCol, getEventEquipment, getEventRecipes, getEventBatchRows, bsTitle, bsDetail, allRecipeNames } = H;
+    const { ingData, renderIngCol, getEventEquipment, getEventRecipes, getEventBatchRows, bsTitle, bsDetail, allRecipeNames, getEventEquipPicker } = H;
 
     // Group events by day (same display order as the schedule tab — same-recipe steps
     // at the same clock time stay contiguous).
@@ -12962,7 +13008,7 @@ ${notesHtml}
         if (!batches) {
           return `
         <tr>${stepCell}
-          <td class="bs-container">${escapeHtml(getEventEquipment(ev))}</td>
+          <td class="bs-container">${escapeHtml(getEventEquipment(ev))}${getEventEquipPicker(ev)}</td>
           <td class="bs-ings">${renderIngCol(ev)}</td>
           ${stageCell}
         </tr>`;
@@ -12970,7 +13016,7 @@ ${notesHtml}
         // Multi-row: first <tr> carries the spanning time/step + stage cell.
         return batches.map((b, bi) => `
         <tr>${bi === 0 ? stepCell : ''}
-          <td class="bs-container">${b.equipHtml}</td>
+          <td class="bs-container">${b.equipHtml}${bi === 0 ? getEventEquipPicker(ev) : ''}</td>
           <td class="bs-ings">${b.ingHtml}</td>
           ${bi === 0 ? stageCell : ''}
         </tr>`).join('');

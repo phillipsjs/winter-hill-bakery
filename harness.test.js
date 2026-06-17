@@ -1181,6 +1181,34 @@ hvOk &= hv('applyRemoteSettings adopts per-build levainContainers', api.getLevai
 api.setLevainContainerPref('shared', 'b2', 'gone-id');
 hvOk &= hv('a removed preferred container falls back to auto', api.pickLevainContainer(300, 'shared', 'b2').id === 'lc-small');
 api.setLevainContainerPref('shared', 'b1', ''); api.setLevainContainerPref('shared', 'b2', ''); api.setLevainContainerPref('bagel', 'b2', '');
+
+// Bake Sheet equipment pickers: each step offers a no-print dropdown for the equipment
+// it uses (mixer/oven/pot/levain container), like the Bake Plan cards.
+api.__setMixers([{ id: 'mx1', name: 'Spiral' }, { id: 'mx2', name: 'Hobart' }]);
+api.__setOvens([{ id: 'ov1', name: 'Deck A', decks: 3 }, { id: 'ov2', name: 'Deck B', decks: 3 }]);
+api.__setPots([{ id: 'pot1', name: 'Stockpot', size: '20 qt', quantity: 1 }]);
+api.__setContainers([
+  { id: 'lc', name: 'Levain jar', maxDoughGrams: 2000, processTag: 'levain' },
+  { id: 'dc', name: 'Dough tub', maxDoughGrams: 12000, processTag: 'loaf' },
+]);
+seedPlan({ [SEED.batard]: 8, [SEED.bagel]: 12 }); api.__setPlan({ [SEED.batard]: 8, [SEED.bagel]: 12 });
+els['deadline-default-input'].value = fmtLocal(tomorrow8);
+['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+api.renderSchedule();
+const Hb = api.buildBakeSheetHelpers();
+const evsBs = api.__sr().events;
+const pickerFor = (pred) => { const e = evsBs.find(pred); return e ? Hb.getEventEquipPicker(e) : '__noevent__'; };
+const mixPick = pickerFor(e => api.eventStageType(e) === 'mix');
+hvOk &= hv('bake sheet mix step offers a mixer picker, marked no-print', /bs-equip-edit no-print/.test(mixPick) && /Mixer/.test(mixPick) && /bp-equip-select/.test(mixPick));
+const bakePick = pickerFor(e => /^Bake /.test(e.title));
+hvOk &= hv('bake sheet bake step offers an oven picker (2+ ovens)', /Oven/.test(bakePick) && /data-kind="oven"/.test(bakePick));
+const boilPick = pickerFor(e => api.eventStageType(e) === 'boil' || (api.eventSubstep(e) && api.eventSubstep(e).type === 'boil'));
+hvOk &= hv('bake sheet boil step offers a pot picker', /Pot/.test(boilPick) && /data-kind="pot"/.test(boilPick));
+const levPick = pickerFor(e => /Levain Build/.test(e.title));
+hvOk &= hv('bake sheet levain build offers a container picker', /Container/.test(levPick) && /onLevainContainerChange/.test(levPick) && /no-print/.test(levPick));
+const chillPick = pickerFor(e => api.eventStageType(e) === 'chill');
+hvOk &= hv('bake sheet step with no editable equipment shows no picker', chillPick === '');
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
