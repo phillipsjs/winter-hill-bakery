@@ -1166,17 +1166,21 @@ api.__setContainers([
   { id: 'lc-small', name: 'Quart jar', maxDoughGrams: 500, processTag: 'levain' },
   { id: 'lc-big', name: 'Big tub', maxDoughGrams: 5000, processTag: 'levain' },
 ]);
-api.setLevainContainerPref('shared', '');
-hvOk &= hv('levain container auto-picks smallest that fits when unset', api.pickLevainContainer(300, 'shared').id === 'lc-small');
-api.setLevainContainerPref('shared', 'lc-big');
-hvOk &= hv('levain container honors the chosen container even if larger than needed', api.pickLevainContainer(300, 'shared').id === 'lc-big');
-hvOk &= hv('levain container choice is per-stream (muffin still auto)', api.pickLevainContainer(300, 'muffin').id === 'lc-small');
-hvOk &= hv('getLocalSettings carries levainContainers', api.getLocalSettings().levainContainers.shared === 'lc-big');
-api.applyRemoteSettings({ levainContainers: { bagel: 'lc-small' } });
-hvOk &= hv('applyRemoteSettings adopts levainContainers', api.getLevainContainerPref('bagel') === 'lc-small');
-api.setLevainContainerPref('shared', 'gone-id');
-hvOk &= hv('a removed preferred container falls back to auto', api.pickLevainContainer(300, 'shared').id === 'lc-small');
-api.setLevainContainerPref('shared', ''); api.setLevainContainerPref('bagel', '');
+api.setLevainContainerPref('shared', 'b2', '');
+hvOk &= hv('levain container auto-picks smallest that fits when unset', api.pickLevainContainer(300, 'shared', 'b2').id === 'lc-small');
+api.setLevainContainerPref('shared', 'b2', 'lc-big');
+hvOk &= hv('levain container honors the chosen container even if larger than needed', api.pickLevainContainer(300, 'shared', 'b2').id === 'lc-big');
+hvOk &= hv('Build 1 and Build 2 are independent (b1 still auto)', api.pickLevainContainer(300, 'shared', 'b1').id === 'lc-small');
+api.setLevainContainerPref('shared', 'b1', 'lc-big');
+api.setLevainContainerPref('shared', 'b2', 'lc-small');
+hvOk &= hv('Build 1 and Build 2 can hold different containers', api.pickLevainContainer(300, 'shared', 'b1').id === 'lc-big' && api.pickLevainContainer(300, 'shared', 'b2').id === 'lc-small');
+hvOk &= hv('levain container choice is per-stream (muffin still auto)', api.pickLevainContainer(300, 'muffin', 'b2').id === 'lc-small');
+hvOk &= hv('getLocalSettings carries per-build levainContainers', api.getLocalSettings().levainContainers['shared:b1'] === 'lc-big' && api.getLocalSettings().levainContainers['shared:b2'] === 'lc-small');
+api.applyRemoteSettings({ levainContainers: { 'bagel:b2': 'lc-small' } });
+hvOk &= hv('applyRemoteSettings adopts per-build levainContainers', api.getLevainContainerPref('bagel', 'b2') === 'lc-small');
+api.setLevainContainerPref('shared', 'b2', 'gone-id');
+hvOk &= hv('a removed preferred container falls back to auto', api.pickLevainContainer(300, 'shared', 'b2').id === 'lc-small');
+api.setLevainContainerPref('shared', 'b1', ''); api.setLevainContainerPref('shared', 'b2', ''); api.setLevainContainerPref('bagel', 'b2', '');
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');

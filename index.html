@@ -2112,27 +2112,38 @@
   const SETTINGS_FILENAME = 'settings.json';
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
   const CONTAINERS_KEY = 'cottage-bakery-containers-v1';
-  const LEVAIN_CONTAINER_KEY = 'whb-levain-containers-v1';  // { shared|muffin|bagel: containerId }
-  // Preferred levain-build container per levain stream (the levain is shared/per-process,
-  // not a recipe, so the choice lives here rather than on a recipe). Honored by
+  const LEVAIN_CONTAINER_KEY = 'whb-levain-containers-v1';  // { "<stream>:<build>": containerId }
+  // Preferred levain-build container per stream (shared|muffin|bagel) AND build (b1|b2) —
+  // the levain is shared/per-process, not a recipe, so the choice lives here. Honored by
   // pickLevainContainer; synced via the settings gist.
   let _levainContainerPrefs = null;
+  function levainPrefKey(stream, build) { return stream + ':' + build; }
   function loadLevainContainerPrefs() {
     if (_levainContainerPrefs) return _levainContainerPrefs;
     try { const r = localStorage.getItem(LEVAIN_CONTAINER_KEY); _levainContainerPrefs = r ? JSON.parse(r) : {}; } catch (e) { _levainContainerPrefs = {}; }
     if (!_levainContainerPrefs || typeof _levainContainerPrefs !== 'object') _levainContainerPrefs = {};
+    // Migrate the old flat { stream: id } (one choice for both builds) → per-build keys.
+    let changed = false;
+    for (const k of Object.keys(_levainContainerPrefs)) {
+      if (!k.includes(':')) {
+        const id = _levainContainerPrefs[k];
+        if (id) { _levainContainerPrefs[k + ':b1'] = _levainContainerPrefs[k + ':b1'] || id; _levainContainerPrefs[k + ':b2'] = _levainContainerPrefs[k + ':b2'] || id; }
+        delete _levainContainerPrefs[k]; changed = true;
+      }
+    }
+    if (changed) { try { localStorage.setItem(LEVAIN_CONTAINER_KEY, JSON.stringify(_levainContainerPrefs)); } catch (e) {} }
     return _levainContainerPrefs;
   }
   function saveLevainContainerPrefs() { localStorage.setItem(LEVAIN_CONTAINER_KEY, JSON.stringify(loadLevainContainerPrefs())); }
-  function getLevainContainerPref(key) { const v = loadLevainContainerPrefs()[key]; return typeof v === 'string' ? v : ''; }
-  function setLevainContainerPref(key, id) {
+  function getLevainContainerPref(stream, build) { const v = loadLevainContainerPrefs()[levainPrefKey(stream, build)]; return typeof v === 'string' ? v : ''; }
+  function setLevainContainerPref(stream, build, id) {
     const p = loadLevainContainerPrefs();
-    if (id) p[key] = id; else delete p[key];
+    if (id) p[levainPrefKey(stream, build)] = id; else delete p[levainPrefKey(stream, build)];
     saveLevainContainerPrefs();
     if (getGistConfig()) pushSettingsToGist().catch(() => {});
   }
   function onLevainContainerChange(sel) {
-    setLevainContainerPref(sel.dataset.levainKey, sel.value);
+    setLevainContainerPref(sel.dataset.levainKey, sel.dataset.build, sel.value);
     renderSchedule();
     renderTotals();
   }
@@ -7479,14 +7490,14 @@ ${notesHtml}
     });
   }
 
-  function pickLevainContainer(totalGrams, levainKey) {
+  function pickLevainContainer(totalGrams, levainKey, build) {
     const eligible = userContainers
       .filter(c => c.processTag === 'any' || c.processTag === 'levain')
       .sort((a, b) => a.maxDoughGrams - b.maxDoughGrams);
     if (eligible.length === 0) return null;
-    // Honor an explicit choice for this levain stream (from the Bake Plan card).
-    if (levainKey) {
-      const prefId = getLevainContainerPref(levainKey);
+    // Honor an explicit choice for this levain stream + build (from the Bake Plan card).
+    if (levainKey && build) {
+      const prefId = getLevainContainerPref(levainKey, build);
       if (prefId) { const pref = eligible.find(c => c.id === prefId); if (pref) return pref; }
     }
     return eligible.find(c => c.maxDoughGrams >= totalGrams) || eligible[eligible.length - 1];
@@ -7643,25 +7654,25 @@ ${notesHtml}
     let levainContainerCount = 0;
     if (levainEntries.length > 0) {
       const eligibleLevainCont = userContainers.filter(c => c.processTag === 'any' || c.processTag === 'levain');
-      const levainPicker = (key) => {
+      const levainPicker = (key, build) => {
         if (!eligibleLevainCont.length) return '';
-        const cur = getLevainContainerPref(key);
+        const cur = getLevainContainerPref(key, build);
         const opts = [['', '— auto (smallest that fits) —'], ...eligibleLevainCont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])];
-        return `<div style="margin-top:6px;font-size:0.85rem"><span class="muted">Use:</span> <select class="settings-select bp-equip-select" onchange="onLevainContainerChange(this)" data-levain-key="${key}">`
+        return `<span style="font-size:0.85rem"><span class="muted">Use:</span> <select class="settings-select bp-equip-select" onchange="onLevainContainerChange(this)" data-levain-key="${key}" data-build="${build}">`
           + opts.map(([v, l]) => `<option value="${escapeAttr(v)}"${cur === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')
-          + `</select></div>`;
+          + `</select></span>`;
       };
+      const buildRow = (text, key, build) =>
+        `<div class="levain-build-row" style="margin-top:4px">${text}${eligibleLevainCont.length ? ` &nbsp; ${levainPicker(key, build)}` : ''}</div>`;
       const blocks = levainEntries.map(e => {
-        const lines = [];
+        const rows = [];
         if (e.info.b1Name) {
-          lines.push(`${escapeHtml(e.info.b1Name)}: <strong>${formatGrams(e.info.b1Grams)}</strong> — Build 1 (first refresh)`);
+          rows.push(buildRow(`${escapeHtml(e.info.b1Name)}: <strong>${formatGrams(e.info.b1Grams)}</strong> — Build 1 (first refresh)`, e.key, 'b1'));
           levainContainerCount++;
         }
-        lines.push(`${escapeHtml(e.info.name)}: <strong>${formatGrams(e.info.grams)}</strong> — Build 2 (final build)`);
+        rows.push(buildRow(`${escapeHtml(e.info.name)}: <strong>${formatGrams(e.info.grams)}</strong> — Build 2 (final build)`, e.key, 'b2'));
         levainContainerCount++;
-        return `<div style="margin-top:6px"><strong>${escapeHtml(e.label)}</strong></div>
-          <div style="margin-top:4px">${lines.join('<br>')}</div>
-          ${levainPicker(e.key)}`;
+        return `<div style="margin-top:6px"><strong>${escapeHtml(e.label)}</strong></div>${rows.join('')}`;
       }).join('');
       html += `<div style="margin-top:0">
         <div><strong>Levain</strong> <span class="muted" style="font-size:0.8rem">— for levain builds</span></div>
@@ -10462,16 +10473,16 @@ ${notesHtml}
     const sharedLevainTotal  = sharedLevainRaw  * LEVAIN_BUFFER_FACTOR;
     const muffinLevainTotal  = useSeparateLevains       ? levainGramsFor(muffinRecipes) * LEVAIN_BUFFER_FACTOR : 0;
     const bagelLevainTotal   = useBagelSeparateLevain   ? levainGramsFor(bagelRecipes)  * LEVAIN_BUFFER_FACTOR : 0;
-    const sharedLevainCont   = sharedLevainTotal  > 0 ? pickLevainContainer(sharedLevainTotal, 'shared')  : null;
-    const muffinLevainCont   = muffinLevainTotal  > 0 ? pickLevainContainer(muffinLevainTotal, 'muffin')  : null;
-    const bagelLevainCont    = bagelLevainTotal   > 0 ? pickLevainContainer(bagelLevainTotal, 'bagel')   : null;
+    const sharedLevainCont   = sharedLevainTotal  > 0 ? pickLevainContainer(sharedLevainTotal, 'shared', 'b2')  : null;
+    const muffinLevainCont   = muffinLevainTotal  > 0 ? pickLevainContainer(muffinLevainTotal, 'muffin', 'b2')  : null;
+    const bagelLevainCont    = bagelLevainTotal   > 0 ? pickLevainContainer(bagelLevainTotal, 'bagel', 'b2')   : null;
     // Build 1 only makes the seed that goes into Build 2 (the starter share of the
     // Build 2 ratio), so it's much smaller — size its container separately so a small
     // refresh isn't sitting in a huge tub.
     const build1Grams = (total, b2Opt) => { const p = ratioParts(b2Opt); return total * (p.s / p.total); };
-    const sharedLevainB1Cont = sharedLevainTotal > 0 ? pickLevainContainer(build1Grams(sharedLevainTotal, build2Opt), 'shared') : null;
-    const muffinLevainB1Cont = (muffinLevainTotal > 0 && muffinBuild2Opt) ? pickLevainContainer(build1Grams(muffinLevainTotal, muffinBuild2Opt), 'muffin') : null;
-    const bagelLevainB1Cont  = (bagelLevainTotal  > 0 && bagelBuild2Opt)  ? pickLevainContainer(build1Grams(bagelLevainTotal,  bagelBuild2Opt), 'bagel')  : null;
+    const sharedLevainB1Cont = sharedLevainTotal > 0 ? pickLevainContainer(build1Grams(sharedLevainTotal, build2Opt), 'shared', 'b1') : null;
+    const muffinLevainB1Cont = (muffinLevainTotal > 0 && muffinBuild2Opt) ? pickLevainContainer(build1Grams(muffinLevainTotal, muffinBuild2Opt), 'muffin', 'b1') : null;
+    const bagelLevainB1Cont  = (bagelLevainTotal  > 0 && bagelBuild2Opt)  ? pickLevainContainer(build1Grams(bagelLevainTotal,  bagelBuild2Opt), 'bagel', 'b1')  : null;
     const levainContainerInfo = {
       shared: sharedLevainCont ? { name: sharedLevainCont.name, grams: sharedLevainTotal,
         b1Name: sharedLevainB1Cont ? sharedLevainB1Cont.name : null, b1Grams: build1Grams(sharedLevainTotal, build2Opt) } : null,
