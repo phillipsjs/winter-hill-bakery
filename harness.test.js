@@ -1138,6 +1138,25 @@ if (loafFold) {
   hvOk &= hv('general fold note appears on exactly one fold', generalCount === 1);
   delete loafFold.note; delete loafFold.subNotes;
 }
+// Gist round-trip: recipes are pushed verbatim (JSON.stringify(recipes)) and loaded via
+// withMigratedStages, so every stage field — including notes/sub-notes/ingredient tags —
+// survives. Simulate that round-trip and confirm nothing is dropped.
+const rt = JSON.parse(JSON.stringify({
+  id: 'rt', name: 'RT', processType: 'sourdough-loaf', loafWeight: 900, unit: 'loaf',
+  ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }],
+  stages: [
+    { type: 'weigh', duration: { kind: 'fixed', min: 5 }, ings: ['Bread flour'] },
+    { type: 'fold', duration: { kind: 'countInterval', count: 3, intervalMin: 30 }, note: 'gentle', subNotes: { f1: 'coil', f3: 'tension' } },
+    { type: 'bake', duration: { kind: 'anchored', min: 40 }, tempF: 500, note: 'steam', subNotes: { preheat: 'sharp', ovenoff: 'crack door' } },
+  ],
+}));
+const rtLoaded = api.withMigratedStages(rt);
+const lFold = rtLoaded.stages.find(s => s.type === 'fold');
+const lBake = rtLoaded.stages.find(s => s.type === 'bake');
+const lWeigh = rtLoaded.stages.find(s => s.type === 'weigh');
+hvOk &= hv('gist round-trip preserves stage notes', lFold.note === 'gentle' && lBake.note === 'steam');
+hvOk &= hv('gist round-trip preserves stage sub-notes', lFold.subNotes.f1 === 'coil' && lFold.subNotes.f3 === 'tension' && lBake.subNotes.preheat === 'sharp' && lBake.subNotes.ovenoff === 'crack door');
+hvOk &= hv('gist round-trip preserves ingredient tags + tempF', lWeigh.ings[0] === 'Bread flour' && lBake.tempF === 500);
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
