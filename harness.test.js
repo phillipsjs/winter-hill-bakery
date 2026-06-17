@@ -105,6 +105,7 @@ const exportsTail = `
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
   pantryLinkOptionsHtml, SEED_PANTRY, suggestPantryLinkFor, withMigratedStages,
   INGREDIENT_CATALOG, BUILTIN_CATEGORIES,
+  fmtTemp, tempInputValue, tempFromInput, getTempUnit, setTempUnit, getLocalSettings, applyRemoteSettings,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
@@ -828,6 +829,33 @@ catOk &= ct('includes common staples', staples.every(s => names.includes(s.toLow
 catOk &= ct('prices look sane (flour cheaper than vanilla extract)',
   CAT.find(c => c.name === 'All-purpose flour').costPerGram < CAT.find(c => c.name === 'Vanilla extract').costPerGram);
 allOk &= catOk;
+
+console.log('\nTemperature-unit assertions:');
+let tuOk = true;
+function tt(label, cond) { console.log(`  [tempunit] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+api.setTempUnit('F');
+tuOk &= tt('default/F: fmtTemp keeps Fahrenheit', api.fmtTemp(350) === '350°F');
+tuOk &= tt('F: tempInputValue is the raw F number', api.tempInputValue(350) === '350');
+tuOk &= tt('F: tempFromInput passes through', api.tempFromInput('425') === 425);
+tuOk &= tt('fmtTemp blank for null/empty', api.fmtTemp(null) === '' && api.fmtTemp('') === '');
+api.setTempUnit('C');
+tuOk &= tt('C: fmtTemp converts 350F -> 177°C', api.fmtTemp(350) === '177°C');
+tuOk &= tt('C: fmtTemp converts 500F -> 260°C', api.fmtTemp(500) === '260°C');
+tuOk &= tt('C: tempInputValue shows Celsius', api.tempInputValue(350) === '177');
+tuOk &= tt('C: tempFromInput converts 220C -> 428F', api.tempFromInput('220') === 428);
+tuOk &= tt('C: unchanged display keeps exact prev F (no drift)', api.tempFromInput(api.tempInputValue(350), 350) === 350);
+tuOk &= tt('C: a real edit changes the stored F (200C -> 392F)', api.tempFromInput('200', 350) === 392);
+api.setTempUnit('F');
+// settings sync round-trips the preference
+api.setTempUnit('C');
+tuOk &= tt('getLocalSettings carries tempUnit', api.getLocalSettings().tempUnit === 'C');
+api.setTempUnit('F');
+api.applyRemoteSettings({ tempUnit: 'C' });
+tuOk &= tt('applyRemoteSettings adopts tempUnit', api.getTempUnit() === 'C');
+api.applyRemoteSettings({ tempUnit: 'bogus' });
+tuOk &= tt('applyRemoteSettings ignores invalid tempUnit', api.getTempUnit() === 'C');
+api.setTempUnit('F');
+allOk &= tuOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

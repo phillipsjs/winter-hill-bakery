@@ -183,6 +183,7 @@
   }
   button.danger:hover { background: #fbeaea; }
   button.tiny { padding: 3px 8px; font-size: 0.8rem; }
+  #temp-unit-f-btn.active, #temp-unit-c-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .muted { color: var(--muted); font-size: 0.9rem; }
   .recipe-summary {
     font-size: 0.85rem;
@@ -1032,6 +1033,17 @@
 
   <section id="tab-ingredients" style="display:none">
     <div class="card">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h2 style="margin:0;font-size:1rem">Temperature unit</h2>
+        <div style="display:flex;gap:6px">
+          <button type="button" id="temp-unit-f-btn" class="secondary tiny" onclick="setTempUnitPref('F')">°F</button>
+          <button type="button" id="temp-unit-c-btn" class="secondary tiny" onclick="setTempUnitPref('C')">°C</button>
+        </div>
+        <span class="muted" style="font-size:0.85rem">Switches how oven temperatures are shown and entered everywhere.</span>
+      </div>
+    </div>
+
+    <div class="card">
       <details class="plan-details" id="ingredient-costs-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
@@ -1246,17 +1258,17 @@
       </div>
       <p class="settings-hint" style="margin:12px 0 4px">Preheat times (optional) — how many minutes to reach each temperature from cold. We fit a line to estimate preheat for any bake temp, so the schedule turns the oven on at the right moment.</p>
       <div class="row" style="margin-top:4px">
-        <label style="width:140px">Preheat to 350°F</label>
+        <label style="width:140px" id="oven-preheat-350-label">Preheat to 350°F</label>
         <input type="number" id="oven-preheat-350" min="0" step="1" style="width:80px;flex:none" placeholder="—" />
         <span class="muted" style="margin-left:6px">min</span>
       </div>
       <div class="row" style="margin-top:8px">
-        <label style="width:140px">Preheat to 425°F</label>
+        <label style="width:140px" id="oven-preheat-425-label">Preheat to 425°F</label>
         <input type="number" id="oven-preheat-425" min="0" step="1" style="width:80px;flex:none" placeholder="—" />
         <span class="muted" style="margin-left:6px">min</span>
       </div>
       <div class="row" style="margin-top:8px">
-        <label style="width:140px">Preheat to 500°F</label>
+        <label style="width:140px" id="oven-preheat-500-label">Preheat to 500°F</label>
         <input type="number" id="oven-preheat-500" min="0" step="1" style="width:80px;flex:none" placeholder="—" />
         <span class="muted" style="margin-left:6px">min</span>
       </div>
@@ -1998,6 +2010,66 @@
   const DOUGH_CONTAINER_CAPACITY_G = 12500;
   const CONTAINERS_KEY = 'cottage-bakery-containers-v1';
   const CATEGORIES_KEY = 'cottage-bakery-categories-v1';
+  const TEMP_UNIT_KEY = 'whb-temp-unit-v1';
+  // Temperatures are ALWAYS stored internally in Fahrenheit (schedulers, templates,
+  // preheat fits all assume F). The unit below only affects display + input fields.
+  const DEG = '°';
+  function getTempUnit() { return localStorage.getItem(TEMP_UNIT_KEY) === 'C' ? 'C' : 'F'; }
+  function setTempUnit(u) { localStorage.setItem(TEMP_UNIT_KEY, u === 'C' ? 'C' : 'F'); }
+  function fToC(f) { return (Number(f) - 32) * 5 / 9; }
+  function cToF(c) { return Number(c) * 9 / 5 + 32; }
+  function tempUnitLabel() { return DEG + getTempUnit(); }
+  // Format a Fahrenheit-stored temperature for display in the user's chosen unit.
+  function fmtTemp(f) {
+    if (f == null || f === '') return '';
+    const n = Number(f); if (!isFinite(n)) return '';
+    return getTempUnit() === 'C' ? Math.round(fToC(n)) + DEG + 'C' : Math.round(n) + DEG + 'F';
+  }
+  // Numeric value (no unit) to put in an input box, in the current unit.
+  function tempInputValue(f) {
+    if (f == null || f === '') return '';
+    const n = Number(f); if (!isFinite(n)) return '';
+    return getTempUnit() === 'C' ? String(Math.round(fToC(n))) : String(Math.round(n));
+  }
+  // Convert an input-box value (in the current unit) back to stored Fahrenheit.
+  // prevF lets a C-mode value that is unchanged from what was displayed keep its exact
+  // F (avoids C->F->C rounding drift on open-then-save).
+  function tempFromInput(v, prevF) {
+    if (v === '' || v == null) return null;
+    const n = Number(v); if (!isFinite(n)) return null;
+    if (getTempUnit() !== 'C') return Math.round(n);
+    if (prevF != null && Math.round(fToC(prevF)) === Math.round(n)) return prevF;
+    return Math.round(cToF(n));
+  }
+  // Reflect the current unit in the toggle buttons + any static temperature labels.
+  function refreshTempUnitUI() {
+    const u = getTempUnit();
+    const fBtn = document.getElementById('temp-unit-f-btn');
+    const cBtn = document.getElementById('temp-unit-c-btn');
+    if (fBtn) fBtn.classList.toggle('active', u === 'F');
+    if (cBtn) cBtn.classList.toggle('active', u === 'C');
+    refreshOvenPresetLabels();
+    const manualLabels = document.querySelectorAll('.manual-temp-unit');
+    manualLabels.forEach(el => { el.textContent = tempUnitLabel(); });
+  }
+  function refreshOvenPresetLabels() {
+    [['oven-preheat-350-label', 350], ['oven-preheat-425-label', 425], ['oven-preheat-500-label', 500]].forEach(([id, f]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = 'Preheat to ' + fmtTemp(f);
+    });
+  }
+  function setTempUnitPref(u) {
+    setTempUnit(u);
+    refreshTempUnitUI();
+    // Re-render anything that shows temperatures.
+    try { if (_editorStages) renderStageEditor(); } catch (e) {}
+    try { renderSchedule(); } catch (e) {}
+    try { renderTotals(); } catch (e) {}
+    try { renderRecipes(); } catch (e) {}
+    try { if (document.getElementById('tab-bakesheet').style.display !== 'none') renderBakeSheet(); } catch (e) {}
+    try { if (document.getElementById('tab-history').style.display !== 'none') renderHistory(); } catch (e) {}
+    if (getGistConfig()) pushSettingsToGist().catch(() => {});
+  }
   const BUILTIN_CATEGORIES = ['Flours', 'Water', 'Levain & starter', 'Yeast', 'Leaveners', 'Salt', 'Sweeteners', 'Oils & fats', 'Dairy', 'Eggs', 'Chocolate & cocoa', 'Nuts & seeds', 'Dried fruit', 'Spices & flavorings', 'Starches & thickeners', 'Other'];
   // Default kitchen ingredients so every recipe ingredient can be linked out of the box
   // (recipes now require a link for cost + milling). Costs are editable starting points;
@@ -3707,7 +3779,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '' };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit() };
   }
 
   function applyRemoteSettings(settings) {
@@ -3760,6 +3832,10 @@ ${notesHtml}
     }
     if (typeof settings.bakeryName === 'string' || typeof settings.bakeryLogo === 'string') {
       loadBakeryInfo();
+    }
+    if (settings.tempUnit === 'F' || settings.tempUnit === 'C') {
+      setTempUnit(settings.tempUnit);
+      refreshTempUnitUI();
     }
   }
 
@@ -4165,7 +4241,7 @@ ${notesHtml}
         <span id="manual-profit-display-${n}" class="muted" style="font-size:0.85rem">—</span>
         <label style="font-size:0.82rem;color:var(--muted);white-space:nowrap;margin-left:6px">Oven temp</label>
         <input type="number" id="manual-temp-${n}" min="0" step="5" placeholder="—" style="width:70px;flex:none;font-size:0.85rem" />
-        <span class="muted" style="font-size:0.82rem">°F</span>
+        <span class="muted manual-temp-unit" style="font-size:0.82rem">${tempUnitLabel()}</span>
       </div>
       <div id="manual-preview-${n}" style="font-size:0.78rem;color:var(--muted);margin:2px 0 0 4px"></div>`;
     document.getElementById('manual-items').appendChild(wrap);
@@ -4204,7 +4280,7 @@ ${notesHtml}
     const msrpEl = document.getElementById(`manual-msrp-${n}`);
     const tempEl = document.getElementById(`manual-temp-${n}`);
     if (msrpEl) msrpEl.value = recipe.msrp != null ? recipe.msrp : '';
-    if (tempEl) tempEl.value = recipe.bakeTempF != null ? recipe.bakeTempF : '';
+    if (tempEl) tempEl.value = recipe.bakeTempF != null ? tempInputValue(recipe.bakeTempF) : '';
     const wholesaleEl = document.getElementById(`manual-wholesale-${n}`);
     if (wholesaleEl) wholesaleEl.value = recipe.wholesalePrice != null ? recipe.wholesalePrice : '';
     // Compute and store cost
@@ -4270,7 +4346,7 @@ ${notesHtml}
       const msrpEl = document.getElementById(`manual-msrp-${rowN}`);
       const tempEl = document.getElementById(`manual-temp-${rowN}`);
       const msrpVal = msrpEl && msrpEl.value !== '' ? Number(msrpEl.value) : null;
-      const tempVal = tempEl && tempEl.value !== '' ? Number(tempEl.value) : null;
+      const tempVal = tempEl && tempEl.value !== '' ? tempFromInput(tempEl.value) : null;
       if (msrpVal != null) item.msrp = msrpVal;
       if (tempVal != null) item.ovenTempF = tempVal;
       const wholesaleEl = document.getElementById(`manual-wholesale-${rowN}`);
@@ -4392,7 +4468,7 @@ ${notesHtml}
       const tempEl = document.getElementById(`manual-temp-${n}`);
       if (countEl) countEl.value = item.count;
       if (msrpEl) msrpEl.value = item.msrp != null ? item.msrp : '';
-      if (tempEl) tempEl.value = item.ovenTempF != null ? item.ovenTempF : '';
+      if (tempEl) tempEl.value = item.ovenTempF != null ? tempInputValue(item.ovenTempF) : '';
       const wholesaleEl = document.getElementById(`manual-wholesale-${n}`);
       if (wholesaleEl) wholesaleEl.value = item.wholesalePrice != null ? item.wholesalePrice : '';
       const editWrap = document.getElementById(`manual-row-${n}`);
@@ -5149,6 +5225,7 @@ ${notesHtml}
       titleEl.textContent = 'Add oven';
       form.dataset.editId = '';
     }
+    refreshOvenPresetLabels();
     form.style.display = '';
     form.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -5859,7 +5936,7 @@ ${notesHtml}
         const wholesaleStr = it.wholesalePrice != null ? `Wholesale $${(it.wholesalePrice * it.count).toFixed(2)}` : '';
         const costStr = it.costPerItem != null ? `Cost $${(it.costPerItem * it.count).toFixed(2)}` : '';
         const profitStr = it.netProfit != null ? `$${(it.netProfit * it.count).toFixed(2)} profit` : '';
-        const tempStr = it.ovenTempF != null ? `${it.ovenTempF}°F` : '';
+        const tempStr = it.ovenTempF != null ? `${fmtTemp(it.ovenTempF)}` : '';
         const lineDetail = [priceStr, wholesaleStr, costStr, profitStr, tempStr].filter(Boolean).join(' · ');
         return `<div class="row" style="justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
           <span>${it.recipeName}</span>
@@ -5875,7 +5952,7 @@ ${notesHtml}
       const hasRevenue = b.items.some(it => it.msrp != null);
       const hasProfit = b.items.some(it => it.netProfit != null);
       const meta = [];
-      if (b.ovenTempF) meta.push(`${b.ovenTempF}°F`);
+      if (b.ovenTempF) meta.push(`${fmtTemp(b.ovenTempF)}`);
       const metaHtml = meta.length ? `<span style="color:var(--muted);font-size:0.8rem">${meta.join(' · ')}</span>` : '<span></span>';
       const notesHtml = b.notes ? `<p style="margin:8px 0 0;font-size:0.88rem;color:var(--muted);font-style:italic">${b.notes}</p>` : '';
       // Aggregate flour weights across all items
@@ -6169,7 +6246,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderPots(); renderKitchenWindows(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderPots(); renderKitchenWindows(); refreshTempUnitUI(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') { renderRecipeDeadlines(); renderSchedule(); }
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -6642,7 +6719,7 @@ ${notesHtml}
       else if (ovenList.length === 1) otherByOven[ovenList[0].id].push(r);
       else otherUnassigned.push(r);
     });
-    const fmtRecipeTemp = (r) => { const t = tempOf(r); return escapeHtml(r.name) + (t ? ' (' + t + '°F)' : ''); };
+    const fmtRecipeTemp = (r) => { const t = tempOf(r); return escapeHtml(r.name) + (t ? ' (' + fmtTemp(t) + ')' : ''); };
 
     let html = '';
     if (userOvens.length === 0) {
@@ -6695,7 +6772,7 @@ ${notesHtml}
     if (!multi) {
       const allTemps = [...new Set(active.map(tempOf).filter(Boolean))];
       if (allTemps.length > 1) {
-        html += '<p style="font-size:0.85rem;color:var(--danger);margin:8px 0 0">This bake mixes temps (' + allTemps.sort((a, b) => a - b).join('°, ') + '°F) in one oven — the schedule adds temp-change time between them. A second oven would let them bake in parallel.</p>';
+        html += '<p style="font-size:0.85rem;color:var(--danger);margin:8px 0 0">This bake mixes temps (' + allTemps.sort((a, b) => a - b).map(fmtTemp).join(', ') + ') in one oven — the schedule adds temp-change time between them. A second oven would let them bake in parallel.</p>';
       }
     }
 
@@ -7872,7 +7949,7 @@ ${notesHtml}
         if (d.auto) return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" checked onchange="stageEditorSetAuto(${i},false)" /> auto (scheduler picks)</label></span>`;
         return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" onchange="stageEditorSetAuto(${i},true)" /> auto</label> ${numIn('minHr', d.minHr, 48)}–${numIn('maxHr', d.maxHr, 48)} hr</span>`;
       case 'anchored':
-        return `<span class="stage-dur">${numIn('min', d.min)} min · <input type="number" min="0" step="5" value="${s.tempF == null ? '' : s.tempF}" style="width:60px" oninput="stageEditorSetTemp(${i},this.value)" />°F</span>`;
+        return `<span class="stage-dur">${numIn('min', d.min)} min · <input type="number" min="0" step="5" value="${tempInputValue(s.tempF)}" style="width:60px" oninput="stageEditorSetTemp(${i},this.value)" />${tempUnitLabel()}</span>`;
       default:
         return `<span class="stage-dur">${numIn('min', d.min)} min</span>`;
     }
@@ -7976,7 +8053,7 @@ ${notesHtml}
   }
   function stageEditorSetLabel(i, v) { if (_editorStages[i]) _editorStages[i].label = v; }
   function stageEditorSetVessel(i, v) { if (_editorStages[i]) { if (v) _editorStages[i].vessel = v; else delete _editorStages[i].vessel; } }
-  function stageEditorSetTemp(i, v) { if (_editorStages[i]) _editorStages[i].tempF = v === '' ? null : Number(v); }
+  function stageEditorSetTemp(i, v) { if (_editorStages[i]) _editorStages[i].tempF = tempFromInput(v, _editorStages[i].tempF); }
   function stageEditorSetAuto(i, auto) {
     const s = _editorStages[i]; if (!s) return;
     s.duration = auto ? { kind: 'range', auto: true } : { kind: 'range', minHr: 8, maxHr: 12 };
@@ -9432,7 +9509,7 @@ ${notesHtml}
             const overMin = Math.round((curr.s.packageReady.getTime() - curr.deadlineMs) / 60000);
             warnings.push({ msg: `Oven conflict${ovenTag}: ${recipeLabel(curr.kind)} bakes after ${recipeLabel(prev.kind)}, but now ends ${overMin} min past its deadline.`, issue: 'oven-overlap-late', kind: curr.kind, type: 'info' });
           } else {
-            warnings.push({ msg: `Oven conflict${ovenTag}: ${recipeLabel(curr.kind)} bakes after ${recipeLabel(prev.kind)}${bufMin > 0 ? ` (incl. ${bufMin} min temp change to ${curr.temp}°F)` : ''}.`, issue: 'oven-shifted', kind: curr.kind, type: 'info' });
+            warnings.push({ msg: `Oven conflict${ovenTag}: ${recipeLabel(curr.kind)} bakes after ${recipeLabel(prev.kind)}${bufMin > 0 ? ` (incl. ${bufMin} min temp change to ${fmtTemp(curr.temp)})` : ''}.`, issue: 'oven-shifted', kind: curr.kind, type: 'info' });
           }
         }
       });
@@ -9715,16 +9792,16 @@ ${notesHtml}
         const focOvenTag = focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '';
         if (focOvenOnTime < focacciaPanRiseStart) {
           // Preheat outlasts the pan rise — start the oven before the dough goes to rise.
-          events.push({ time: focOvenOnTime, title: `Turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
+          events.push({ time: focOvenOnTime, title: `Turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
           events.push({ time: focacciaPanRiseStart, title: 'Pan rise', detail: `${focacciaAgg.warmupMin} min room-temp pan rise`, process: 'focaccia' });
         } else {
-          events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
+          events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
         }
         let cumFocMin = 0;
         for (let b = 0; b < focacciaBatches; b++) {
           const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
           const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${focacciaAgg.bakeTempF}°F${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
+          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
           cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
         }
         events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
@@ -10219,7 +10296,7 @@ ${notesHtml}
     const loafTemp = procTemp(loafRecipes, 'sourdough-loaf');
     const muffinTemp = procTemp(muffinRecipes, 'sourdough-muffin');
     const bagelTemp = procTemp(bagelRecipes, 'bagel');
-    const fmtPreheat = (min, temp) => `~${min} min preheat to ${temp}°F`;
+    const fmtPreheat = (min, temp) => `~${min} min preheat to ${fmtTemp(temp)}`;
     const showsSeparatePreheats = (() => {
       if (!muffinSlot || breadBatches === 0) return false;
       const gapMs = muffinSlot.firstBakeStart - lastBakeEnd;
@@ -10230,7 +10307,7 @@ ${notesHtml}
     if (breadBatches > 0) {
       events.push({
         time: addMinutes(firstBakeStart, -loafPreheat),
-        title: muffinSlot && !showsSeparatePreheats ? `Turn on oven to ${loafTemp}°F` : `Turn on oven (bread) to ${loafTemp}°F`,
+        title: muffinSlot && !showsSeparatePreheats ? `Turn on oven to ${fmtTemp(loafTemp)}` : `Turn on oven (bread) to ${fmtTemp(loafTemp)}`,
         detail: fmtPreheat(loafPreheat, loafTemp),
         process: muffinSlot && !showsSeparatePreheats ? 'shared' : 'loaf',
         equip: ovenNamesFromPlan(muffinSlot && !showsSeparatePreheats ? [...ovenPlan, ...muffinOvenPlan] : ovenPlan),
@@ -10239,7 +10316,7 @@ ${notesHtml}
     if (muffinSlot && showsSeparatePreheats) {
       events.push({
         time: addMinutes(muffinSlot.firstBakeStart, -muffinPreheat),
-        title: `Turn on oven (muffins) to ${muffinTemp}°F`,
+        title: `Turn on oven (muffins) to ${fmtTemp(muffinTemp)}`,
         detail: fmtPreheat(muffinPreheat, muffinTemp),
         process: 'muffin',
         equip: ovenNamesFromPlan(muffinOvenPlan),
@@ -10252,7 +10329,7 @@ ${notesHtml}
       const firstBagelBake = addMinutes(bagelSlot.firstBakeStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
       events.push({
         time: addMinutes(firstBagelBake, -bagelPreheat),
-        title: `Turn on oven (bagels) to ${bagelTemp}°F`,
+        title: `Turn on oven (bagels) to ${fmtTemp(bagelTemp)}`,
         detail: fmtPreheat(bagelPreheat, bagelTemp),
         process: 'bagel',
         equip: (bagelSlot && bagelSlot.ovenName ? [bagelSlot.ovenName] : (singleOvenName ? [singleOvenName] : [])),
@@ -10287,7 +10364,7 @@ ${notesHtml}
       events.push({
         time: bakeStart,
         title: `Bake ${b + 1} of ${breadBatches}${kindSuffix}`,
-        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${loafAgg.bakeTempF}°F${planLines}`,
+        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${fmtTemp(loafAgg.bakeTempF)}${planLines}`,
         process: 'loaf', colDetails: bakeColDetails, equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
       });
       // Dedicated "loaves out" step at the moment this batch leaves the oven. The
@@ -10298,7 +10375,7 @@ ${notesHtml}
         events.push({
           time: addMinutes(bakeStart, loafAgg.bakeMin),
           title: `Loaves out (batch ${b + 1} of ${breadBatches})`,
-          detail: `Pull batch ${b + 1}, load batch ${b + 2} · reheat ~${SCHED.REHEAT_MIN} min to ${loafAgg.bakeTempF}°F before next bake`,
+          detail: `Pull batch ${b + 1}, load batch ${b + 2} · reheat ~${SCHED.REHEAT_MIN} min to ${fmtTemp(loafAgg.bakeTempF)} before next bake`,
           process: 'loaf', stage: 'bake', equip: loafOvenEquip,
         });
       }
@@ -10318,7 +10395,7 @@ ${notesHtml}
         events.push({
           time: bakeStart,
           title: `Bake ${b + 1} of ${muffinBatches} — muffins into oven`,
-          detail: `${SCHED.OVEN_LOAD_MIN} min load · ${muffinAgg.bakeMin} min bake · ${muffinAgg.bakeTempF}°F${reheatSuffix}${planLines}`,
+          detail: `${SCHED.OVEN_LOAD_MIN} min load · ${muffinAgg.bakeMin} min bake · ${fmtTemp(muffinAgg.bakeTempF)}${reheatSuffix}${planLines}`,
           process: 'muffin', equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
         });
         muffinCumOffset += muffinAgg.bakeMin + (b < muffinBatches - 1 ? SCHED.REHEAT_MIN : 0);
@@ -10350,7 +10427,7 @@ ${notesHtml}
         events.push({
           time: bakeStart,
           title: `Bake batch ${b + 1} of ${bagelBatches} — bagels into oven`,
-          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake · ${bagelAgg.bakeTempF}°F${bagelOvenTag}`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake · ${fmtTemp(bagelAgg.bakeTempF)}${bagelOvenTag}`,
           process: 'bagel', equip: bagelOvenName ? [bagelOvenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: bagelOvenTag,
         });
       }
@@ -10595,16 +10672,16 @@ ${notesHtml}
       const focOvenOnTime = addMinutes(focacciaSlot.firstBakeStart, -focPreheat);
       const focOvenTag = focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '';
       if (focOvenOnTime < focacciaPanRiseStart) {
-        events.push({ time: focOvenOnTime, title: `Turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
+        events.push({ time: focOvenOnTime, title: `Turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
         events.push({ time: focacciaPanRiseStart, title: 'Pan rise', detail: `${focacciaAgg.warmupMin} min room-temp pan rise`, process: 'focaccia' });
       } else {
-        events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${focacciaAgg.bakeTempF}°F`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
+        events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
       }
       let cumFocMin = 0;
       for (let b = 0; b < focacciaBatches; b++) {
         const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
         const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${focacciaAgg.bakeTempF}°F${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
+        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
         cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
       events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
@@ -10697,7 +10774,7 @@ ${notesHtml}
       const ovenTag = slot.ovenName ? ` · ${slot.ovenName}` : '';
       const ovenEquip = slot.ovenName ? [slot.ovenName] : (singleOvenName ? [singleOvenName] : []);
       const preheat = sidePreheatFor(slot, g.temp);
-      events.push({ time: addMinutes(slot.firstBakeStart, -preheat), title: `Turn on oven to ${g.temp}°F`, detail: `~${preheat} min preheat${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+      events.push({ time: addMinutes(slot.firstBakeStart, -preheat), title: `Turn on oven to ${fmtTemp(g.temp)}`, detail: `~${preheat} min preheat${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
       let cum = 0;
       g.bakeSeq.jobs.forEach((j) => {
         const r = j.recipe, p = j.p, b = j.batchIndex, batchUnits = j.units;
@@ -10705,7 +10782,7 @@ ${notesHtml}
         const suffix = p.numBatches > 1 ? ` — batch ${b + 1} of ${p.numBatches}` : '';
         const unitsLabel = `${batchUnits} ${unit}${batchUnits === 1 ? '' : 's'}`;
         if (j.tempChange) {
-          events.push({ time: addMinutes(slot.firstBakeStart, cum), title: `Set oven to ${j.temp}°F`, detail: `~${j.gapBefore} min temp change${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+          events.push({ time: addMinutes(slot.firstBakeStart, cum), title: `Set oven to ${fmtTemp(j.temp)}`, detail: `~${j.gapBefore} min temp change${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
         }
         cum += j.gapBefore;
         const bakeStart = addMinutes(slot.firstBakeStart, cum);
@@ -10756,7 +10833,7 @@ ${notesHtml}
           }
           cursor = start;
         }
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${j.bakeMin} min · ${j.temp}°F${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${j.bakeMin} min · ${fmtTemp(j.temp)}${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
         cum += j.bakeMin;
       });
       // Group-level finish: cool, optional glaze, package-ready.
@@ -10792,8 +10869,8 @@ ${notesHtml}
         events.push({
           time: addMinutes(s.firstBakeStart, -tc.min),
           timeEnd: s.firstBakeStart,
-          title: `Set ${ovenLabel} to ${tc.toTemp}°F`,
-          detail: `${tc.min} min — adjust from ${tc.fromTemp}°F before this bake`,
+          title: `Set ${ovenLabel} to ${fmtTemp(tc.toTemp)}`,
+          detail: `${tc.min} min — adjust from ${fmtTemp(tc.fromTemp)} before this bake`,
           process, columnKey, equip: s.ovenName ? [s.ovenName] : [],
         });
       }
@@ -12778,6 +12855,7 @@ ${notesHtml}
   updateFooterNote();
   renderSyncBadge();
   loadBakeryInfo();
+  refreshTempUnitUI();
   renderPlan();
   renderPantry();
   renderContainers();
