@@ -2248,13 +2248,9 @@
     if (/^Set .* to /.test(t)) return { type: 'bake', key: 'tempchange' };
     if (/^Turn off/.test(t)) return { type: 'bake', key: 'ovenoff' };
     if (/ to a boil$/.test(t)) return { type: 'boil', key: 'heat' };
+    const fold = t.match(/^Stretch & fold (\d+) of \d+/);
+    if (fold) return { type: 'fold', key: 'f' + fold[1] };
     return null;
-  }
-  // The dedupe/identity scope for a recipe note on an event: its sub-step if any, else its
-  // stage type. Keeps a preheat note distinct from a temp-change note on the same stage.
-  function eventNoteScope(ev) {
-    const sub = eventSubstep(ev);
-    return sub ? sub.type + ':' + sub.key : eventStageType(ev);
   }
   // Recipe-stage notes (authored in the recipe editor) that apply to this event: each
   // in-plan recipe touching the step whose stage matches the event's SPECIFIC stage type
@@ -2277,18 +2273,20 @@
       for (const st of stages) {
         const pal = STAGE_PALETTE[st.type];
         if (!pal) continue;
-        // Stage-level note → the stage's primary step.
+        // Stage-level note → the stage's primary step. Scope = the stage type so it
+        // dedupes to ONE step across a fan-out (e.g. shows once on the first fold).
         const note = typeof st.note === 'string' ? st.note.trim() : '';
         if (note && evType !== '') {
           const match = evType != null ? st.type === evType : pal.stage === cat;
-          if (match) out.push({ recipe: r.name, label: st.label || pal.label || st.type, note });
+          if (match) out.push({ recipe: r.name, label: st.label || pal.label || st.type, note, scope: st.type });
         }
-        // Sub-step note → the matching extra step (preheat, oven-off, …).
+        // Sub-step note → the matching extra step (preheat, oven-off, fold N, …). Scope
+        // includes the sub-step key so each sub-step's note stays on its own step.
         if (sub && st.type === sub.type && st.subNotes && typeof st.subNotes[sub.key] === 'string') {
           const sn = st.subNotes[sub.key].trim();
           if (sn) {
-            const def = (STAGE_SUBSTEPS[st.type] || []).find(x => x.key === sub.key);
-            out.push({ recipe: r.name, label: def ? def.label : sub.key, note: sn });
+            const def = (substepsForStage(st) || []).find(x => x.key === sub.key);
+            out.push({ recipe: r.name, label: def ? def.label : sub.key, note: sn, scope: st.type + ':' + sub.key });
           }
         }
       }
@@ -2307,10 +2305,9 @@
     for (const ev of orderedEvents) {
       const all = recipeStageNotesForEvent(ev, H);
       if (!all.length) continue;
-      const scope = eventNoteScope(ev) || '';
       const fresh = [];
       for (const n of all) {
-        const k = n.recipe + '|' + scope + '|' + n.note;
+        const k = n.recipe + '|' + (n.scope || '') + '|' + n.note;
         if (seen.has(k)) continue;
         seen.add(k);
         fresh.push(n);
@@ -2861,6 +2858,17 @@
       { key: 'heat', label: 'Bring to a boil' },
     ],
   };
+  // The annotatable sub-steps for a given stage instance. Most come from STAGE_SUBSTEPS;
+  // stretch & fold is dynamic — one slot per fold, derived from its countInterval count.
+  function substepsForStage(s) {
+    if (!s) return null;
+    if (s.type === 'fold') {
+      const n = (s.duration && Number(s.duration.count)) || 0;
+      if (n <= 1) return null;  // a single fold → just the stage note, nothing to expand
+      return Array.from({ length: n }, (_, k) => ({ key: 'f' + (k + 1), label: `Fold ${k + 1} of ${n}` }));
+    }
+    return STAGE_SUBSTEPS[s.type] || null;
+  }
   // Default stage list per process — the numbers mirror PROCESS_TEMPLATES so a recipe
   // with no overrides derives back to identical scheduler params.
   const STAGE_TEMPLATES = {
@@ -8349,14 +8357,14 @@ ${notesHtml}
           ${vessel}
           <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
           <button type="button" id="stage-ing-btn-${i}" class="stage-ing-btn tiny${(s.ings || []).length ? '' : ' secondary'}" onclick="toggleStageIngPanel(${i})" title="Tag which ingredients are used at this step (shown in the bake sheet)">🧂 ${(s.ings || []).length ? (s.ings.length + ' ing') : 'ingredients'}</button>
-          ${STAGE_SUBSTEPS[s.type] ? `<button type="button" id="stage-sub-btn-${i}" class="stage-sub-btn tiny secondary" onclick="toggleStageSubPanel(${i})" title="Expand to add notes on this step's sub-steps">${subToggleLabel(i)}</button>` : ''}
+          ${substepsForStage(s) ? `<button type="button" id="stage-sub-btn-${i}" class="stage-sub-btn tiny secondary" onclick="toggleStageSubPanel(${i})" title="Expand to add notes on this step's sub-steps">${subToggleLabel(i)}</button>` : ''}
           ${locked
             ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
             : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`}
           ${(s.note || '').trim() ? `<span class="stage-note-text">📝 ${escapeHtml(s.note)}</span>` : ''}
           ${(s.ings || []).length ? `<span class="stage-ing-text">🧂 ${escapeHtml(s.ings.join(', '))}</span>` : ''}
           <div class="stage-ing-panel" id="stage-ing-panel-${i}" style="display:none"></div>
-          ${STAGE_SUBSTEPS[s.type] ? `<div class="stage-sub-panel" id="stage-sub-panel-${i}" style="display:none"></div>` : ''}
+          ${substepsForStage(s) ? `<div class="stage-sub-panel" id="stage-sub-panel-${i}" style="display:none"></div>` : ''}
         </div>`;
       }).join('');
     }
@@ -8441,7 +8449,7 @@ ${notesHtml}
   }
   function stageSubPanelInner(i) {
     const s = _editorStages[i]; if (!s) return '';
-    const subs = STAGE_SUBSTEPS[s.type] || [];
+    const subs = substepsForStage(s) || [];
     const main = `<div class="stage-sub-row"><span class="stage-sub-label">${escapeHtml(STAGE_PALETTE[s.type] ? STAGE_PALETTE[s.type].label : s.type)} <span class="muted" style="font-size:0.72rem">(main step — use the 📝 note button)</span></span></div>`;
     const rows = subs.map(sub => {
       const note = ((s.subNotes && s.subNotes[sub.key]) || '').trim();
@@ -8461,7 +8469,7 @@ ${notesHtml}
   }
   function editStageSubNote(i, key) {
     const s = _editorStages[i]; if (!s) return;
-    const def = (STAGE_SUBSTEPS[s.type] || []).find(x => x.key === key);
+    const def = (substepsForStage(s) || []).find(x => x.key === key);
     const cur = (s.subNotes && s.subNotes[key]) || '';
     const next = window.prompt(`Note for "${def ? def.label : key}" (shown on that step whenever this recipe is used):`, cur);
     if (next === null) return;

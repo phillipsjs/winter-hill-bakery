@@ -1110,6 +1110,34 @@ if (loafBake) {
   hvOk &= hv('bake step shows the main note, not the preheat note', bakeEv2 && notesOf(bakeEv2).includes('steam first 15 min') && !notesOf(bakeEv2).includes('preheat to 500 sharp'));
   delete loafBake.subNotes; delete loafBake.note;
 }
+
+// Stretch & fold fans out into per-fold sub-steps (count from the recipe), each
+// individually annotatable; the stage's general fold note shows once (first fold).
+hvOk &= hv('eventSubstep maps "Stretch & fold 3 of 5" to fold f3', api.eventSubstep({ title: 'Stretch & fold 3 of 5' }) && api.eventSubstep({ title: 'Stretch & fold 3 of 5' }).key === 'f3' && api.eventSubstep({ title: 'Stretch & fold 2 of 4 — focaccia' }).key === 'f2');
+const loafFold = (loafRec.stages || []).find(s => s.type === 'fold');
+hvOk &= hv('loaf has a fold stage with count > 1', !!loafFold && loafFold.duration && Number(loafFold.duration.count) > 1);
+if (loafFold) {
+  loafFold.note = 'fold gently throughout';
+  loafFold.subNotes = { f1: 'first fold: coil', f3: 'last set: build tension' };
+  seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const H9 = api.buildBakeSheetHelpers();
+  const sortedF = [...api.__sr().events].sort((a, b) => a.time - b.time);
+  const foldEvs = sortedF.filter(e => /^Stretch & fold/.test(e.title));
+  const map = api.buildRecipeNotesByEvent(sortedF, H9);
+  const shown = (e) => (map.get(e) || []).map(n => n.note);
+  const fold1 = foldEvs.find(e => /fold 1 of/.test(e.title));
+  const fold3 = foldEvs.find(e => /fold 3 of/.test(e.title));
+  const fold2 = foldEvs.find(e => /fold 2 of/.test(e.title));
+  hvOk &= hv('fold 1 shows its sub-note AND the general fold note (once)', fold1 && shown(fold1).includes('first fold: coil') && shown(fold1).includes('fold gently throughout'));
+  hvOk &= hv('fold 3 shows its own sub-note', fold3 && shown(fold3).includes('last set: build tension'));
+  hvOk &= hv('fold 2 (untagged) shows neither sub-note nor a repeated general note', fold2 && !shown(fold2).includes('first fold: coil') && !shown(fold2).includes('last set: build tension') && !shown(fold2).includes('fold gently throughout'));
+  const generalCount = foldEvs.filter(e => shown(e).includes('fold gently throughout')).length;
+  hvOk &= hv('general fold note appears on exactly one fold', generalCount === 1);
+  delete loafFold.note; delete loafFold.subNotes;
+}
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
