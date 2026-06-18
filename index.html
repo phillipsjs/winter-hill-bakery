@@ -229,8 +229,7 @@
     background: white;
     color: var(--ink);
   }
-  .ing-role-cell { min-width: 0; }
-  .ing-role-cell .tiny { white-space: nowrap; width: 100%; }
+  .ingredient-edit-row select.ing-tag { min-width: 0; }
   .bake-row {
     display: grid;
     grid-template-columns: 1fr 90px auto auto;
@@ -9073,10 +9072,9 @@ ${notesHtml}
     row.innerHTML = `
       <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
       <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
-      <span class="ing-role-cell">
-        <button type="button" class="ing-anchor-btn tiny${flourType === 'anchor' ? '' : ' secondary'}" onclick="onAnchorToggle(this)" title="${ANCHOR_FLOUR_HELP}">⚓ Anchor flour</button>
-        <button type="button" class="ing-aid-btn tiny${processAid ? '' : ' secondary'}" onclick="onProcessAidToggle(this)" title="${PROCESS_AID_HELP}">Process aid</button>
-      </span>
+      <select class="ing-tag" onchange="onTagChange(this)" title="${INGREDIENT_TAG_HELP}">
+        ${ingredientTagOptions(processAid ? 'aid' : (flourType || ''))}
+      </select>
       <input type="hidden" class="ing-flour-type" value="${flourType}" />
       <input type="hidden" class="ing-process-aid" value="${processAid ? '1' : ''}" />
       <select class="ing-pantry" onchange="onIngredientPantryChange(this)" title="Link to a kitchen ingredient — drives cost and flags whether this flour needs milling">
@@ -9085,7 +9083,7 @@ ${notesHtml}
       <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
     `;
     wrap.appendChild(row);
-    updateRowFlourUI(row); // show the right contextual control (Anchor for flours, In-unit for the rest)
+    updateRowFlourUI(row); // auto-detect a flour role for the tag dropdown when untagged
     updateFlourSummary();
   }
 
@@ -13407,10 +13405,9 @@ ${notesHtml}
     if (/flour|\brye\b|redeemer|whole wheat|whole grain|spelt|einkorn|buckwheat|kamut|durum|semolina|red wheat/.test(n)) return 'specialty';
     return '';
   }
-  // Tooltips for the role toggle buttons. The button is highlighted (accent) when its role
-  // is selected, and a gray outline when not.
-  const ANCHOR_FLOUR_HELP = escapeAttr('Highlight for an anchor flour (bread flour, all-purpose) — the app auto-adjusts anchors so all flours sum to 100%. Leave un-highlighted for a specialty flour (rye, whole wheat, spelt…) whose percentage you set yourself.');
-  const PROCESS_AID_HELP = escapeAttr('Highlight to mark a process aid that\'s discarded — e.g. salt or lye added to the boiling water. It\'s still bought and costed, but doesn\'t add to the unit weight or the dough math.');
+  // Tooltip for the per-ingredient Tag dropdown. Flours auto-tag themselves; the rest is left
+  // untagged unless you mark a special role.
+  const INGREDIENT_TAG_HELP = escapeAttr('Tag a special ingredient: Anchor flour (bread, all-purpose — auto-adjusts so all flours sum to 100%), Specialty flour (rye, whole wheat… — you set its %), or Process aid (discarded, e.g. salt/lye in the boiling water — still bought, but excluded from the unit weight and dough math). Leave untagged for normal dough ingredients.');
   // Is this ingredient a flour? Trust an explicit link to a kitchen ingredient's category
   // first, otherwise detect from the name (so anything the baker types as a flour reveals
   // the Anchor option without a per-ingredient dropdown).
@@ -13421,50 +13418,54 @@ ${notesHtml}
     }
     return !!detectFlourType(name) || categIngredient(name) === 'Flours';
   }
-  // Each row's role cell hosts one of two toggle buttons: flour rows get the Anchor-flour
-  // toggle, everything else gets the Process-aid toggle. The hidden .ing-flour-type /
-  // .ing-process-aid fields (which save/load/rebalance read) stay the source of truth; this
-  // keeps the visible button (which one shows + its highlighted/selected state) in sync.
+  // Per-ingredient "Tag" dropdown options. Anchor/specialty map to .ing-flour-type, aid maps
+  // to .ing-process-aid — those hidden fields stay the source of truth for save/load/rebalance
+  // and the weight model. New tags can be added here (and handled in applyIngredientTag).
+  const INGREDIENT_TAGS = [
+    { value: '', label: '— tag —' },
+    { value: 'anchor', label: 'Anchor flour' },
+    { value: 'specialty', label: 'Specialty flour' },
+    { value: 'aid', label: 'Process aid' },
+  ];
+  function ingredientTagOptions(selected) {
+    return INGREDIENT_TAGS.map(t => `<option value="${t.value}"${t.value === (selected || '') ? ' selected' : ''}>${escapeHtml(t.label)}</option>`).join('');
+  }
+  // The tag currently encoded by a row's hidden fields.
+  function rowIngredientTag(row) {
+    const aid = row.querySelector('.ing-process-aid');
+    if (aid && aid.value) return 'aid';
+    const ft = row.querySelector('.ing-flour-type');
+    return ft ? (ft.value || '') : '';
+  }
+  // Write a tag back into the hidden fields (the data model). Mutually exclusive: a flour
+  // role clears the process-aid flag and vice-versa.
+  function applyIngredientTag(row, tag) {
+    const ft = row.querySelector('.ing-flour-type');
+    const aid = row.querySelector('.ing-process-aid');
+    if (ft) ft.value = (tag === 'anchor' || tag === 'specialty') ? tag : '';
+    if (aid) aid.value = (tag === 'aid') ? '1' : '';
+  }
+  // Keep the Tag dropdown in sync with the hidden fields, and — only when nothing is tagged
+  // yet — auto-detect a flour role from the name/pantry link so flours pre-tag themselves.
   function updateRowFlourUI(row) {
     if (!row) return;
-    const hidden = row.querySelector('.ing-flour-type');
-    const anchorBtn = row.querySelector('.ing-anchor-btn');
-    const aidBtn = row.querySelector('.ing-aid-btn');
-    if (!hidden || !anchorBtn) return;
-    const name = (row.querySelector('.ing-name').value || '').trim();
-    const pantryEl = row.querySelector('.ing-pantry');
-    const pantryId = pantryEl ? pantryEl.value : '';
-    const isFlour = !!hidden.value || ingredientIsFlour(name, pantryId);
-    anchorBtn.style.display = isFlour ? '' : 'none';
-    if (aidBtn) aidBtn.style.display = isFlour ? 'none' : '';
-    if (isFlour) {
-      if (!hidden.value) hidden.value = detectFlourType(name) || 'specialty'; // first time we detect it
-      anchorBtn.classList.toggle('secondary', hidden.value !== 'anchor'); // highlighted when anchor
-      const aid = row.querySelector('.ing-process-aid'); // flours are always part of the dough
-      if (aid && aid.value) { aid.value = ''; if (aidBtn) aidBtn.classList.add('secondary'); }
-    } else if (hidden.value) {
-      hidden.value = ''; // no longer a flour (e.g. relinked to a non-flour ingredient)
+    const sel = row.querySelector('.ing-tag');
+    const ft = row.querySelector('.ing-flour-type');
+    if (!sel || !ft) return;
+    const aid = row.querySelector('.ing-process-aid');
+    if (!ft.value && !(aid && aid.value)) {
+      const name = (row.querySelector('.ing-name').value || '').trim();
+      const pantryEl = row.querySelector('.ing-pantry');
+      const pantryId = pantryEl ? pantryEl.value : '';
+      if (ingredientIsFlour(name, pantryId)) ft.value = detectFlourType(name) || 'specialty';
     }
+    sel.value = rowIngredientTag(row);
   }
-  // Process-aid toggle: highlighted → process aid (discarded; excluded from unit weight +
-  // dough math). Un-highlighted → counts toward the unit.
-  function onProcessAidToggle(btn) {
-    const row = btn.closest('.ingredient-edit-row');
-    const aid = row && row.querySelector('.ing-process-aid');
-    if (!aid) return;
-    const isAid = !aid.value; // toggling on
-    aid.value = isAid ? '1' : '';
-    btn.classList.toggle('secondary', !isAid);
-    updateFlourSummary();
-  }
-  // Anchor toggle: highlighted → anchor flour, un-highlighted → specialty. Rebalances
-  // anchors so flours still sum to 100% in percent mode.
-  function onAnchorToggle(btn) {
-    const row = btn.closest('.ingredient-edit-row');
-    const hidden = row && row.querySelector('.ing-flour-type');
-    if (!hidden) return;
-    hidden.value = hidden.value === 'anchor' ? 'specialty' : 'anchor';
-    btn.classList.toggle('secondary', hidden.value !== 'anchor');
+  // Tag dropdown changed: write the hidden fields, rebalance anchors (flours sum to 100%).
+  function onTagChange(select) {
+    const row = select.closest('.ingredient-edit-row');
+    if (!row) return;
+    applyIngredientTag(row, select.value);
     rebalanceAnchors();
     updateFlourSummary();
   }
@@ -13479,7 +13480,7 @@ ${notesHtml}
   function onIngredientNameBlur(input) {
     const row = input.closest('.ingredient-edit-row');
     const before = row.querySelector('.ing-flour-type').value;
-    updateRowFlourUI(row); // reveal/hide the Anchor control + seed the detected role
+    updateRowFlourUI(row); // auto-detect a flour role into the Tag dropdown when untagged
     if (row.querySelector('.ing-flour-type').value !== before) rebalanceAnchors();
     // Auto-link to a matching kitchen ingredient (or the levain) when the row isn't linked
     // yet, so recipe ingredients stay aligned to the pantry (and milling flags) by default.

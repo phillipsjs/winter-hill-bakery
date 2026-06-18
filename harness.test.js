@@ -1359,9 +1359,11 @@ hvOk &= hv('non-flours do not auto-detect a flour role', api.detectFlourType('Wa
 hvOk &= hv('ingredientIsFlour: true for flour names, false for others', api.ingredientIsFlour('Bread flour', '') === true && api.ingredientIsFlour('Semolina', '') === true && api.ingredientIsFlour('Butter', '') === false);
 hvOk &= hv('a pantry link to a Flours item marks the row a flour even with an odd name', api.ingredientIsFlour('House blend', 'pan-bread') === true);
 hvOk &= hv('a pantry link to a non-flour item overrides a flour-ish name', api.ingredientIsFlour('flour sack', 'pan-water') === false);
-// The per-ingredient role controls are highlight-when-selected toggle buttons (Anchor flour
-// / Process aid), not checkboxes.
-hvOk &= hv('ingredient role controls are toggle buttons (Anchor flour / Process aid), not checkboxes', /ing-anchor-btn tiny[^"]*"[^>]*onclick="onAnchorToggle\(this\)"/.test(html) && /ing-aid-btn tiny[^"]*"[^>]*onclick="onProcessAidToggle\(this\)"/.test(html) && !/ing-anchor-cb|ing-unit-cb|onUnitWeightToggle/.test(html));
+// The per-ingredient role control is a single "Tag" dropdown (Anchor / Specialty / Process
+// aid), not the old toggle buttons or checkboxes.
+hvOk &= hv('ingredient role control is a Tag dropdown wired to onTagChange', /<select class="ing-tag" onchange="onTagChange\(this\)"/.test(html) && /ingredientTagOptions\(/.test(scriptBody));
+hvOk &= hv('Tag options include Anchor flour / Specialty flour / Process aid', /value: 'anchor', label: 'Anchor flour'/.test(scriptBody) && /value: 'specialty', label: 'Specialty flour'/.test(scriptBody) && /value: 'aid', label: 'Process aid'/.test(scriptBody));
+hvOk &= hv('old toggle-button / checkbox role controls are gone', !/ing-anchor-btn|ing-aid-btn|onAnchorToggle|onProcessAidToggle|ing-anchor-cb|ing-unit-cb|onUnitWeightToggle/.test(html));
 // The per-unit weight box rescales the recipe proportionally: live feedback on input, the
 // grams-mode rescale on commit (so a partial value can't zero out tiny ingredients).
 hvOk &= hv('per-unit weight box is wired to rescale the recipe (oninput + onchange)', /id="r-weight"[^>]*oninput="onUnitWeightInput\(\)"[^>]*onchange="onUnitWeightCommit\(\)"/.test(html));
