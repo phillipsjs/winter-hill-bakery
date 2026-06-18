@@ -597,6 +597,45 @@ function renderEvents(plan) {
   millOk &= mk(`${pt} template has a weigh stage`, api.STAGE_TEMPLATES[pt].some(s => s.type === 'weigh'));
 });
 
+// Cooling is now a per-recipe stage on EVERY baked recipe (not a hardcoded 1 hr default).
+['sourdough-loaf', 'sourdough-muffin', 'bagel', 'focaccia', 'simple', 'enriched'].forEach(pt => {
+  const cool = api.STAGE_TEMPLATES[pt].find(s => s.type === 'cool');
+  millOk &= mk(`${pt} template has a cool stage after bake`, !!cool &&
+    api.STAGE_TEMPLATES[pt].findIndex(s => s.type === 'cool') > api.STAGE_TEMPLATES[pt].findIndex(s => s.type === 'bake'));
+});
+// The cool stage has its own cooler color, distinct from the green "done" finish.
+millOk &= mk('cool stage maps to its own "cool" color (palette + CSS), not "done"',
+  /cool:\s*{ stage: 'cool'/.test(scriptBody) && /cool:\s*{ bg: '#A9C7D6'/.test(scriptBody) &&
+  /\[data-stage="cool"\]::before[\s\S]*?background: #A9C7D6/.test(html));
+// A legacy baked recipe (no cool stage saved) gets one inserted right after its bake.
+const legacyNoCool = { id: 'mig-nocool', name: 'Old Loaf', processType: 'sourdough-loaf',
+  ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }, { name: 'Water', pct: 75 }],
+  stages: [{ id: 's1', type: 'weigh', duration: { kind: 'fixed', min: 5 } }, { id: 's2', type: 'bake', duration: { kind: 'anchored', min: 40 }, tempF: 500 }] };
+const migCool = api.withMigratedStages(legacyNoCool);
+millOk &= mk('withMigratedStages adds a cool stage to a baked recipe lacking one',
+  migCool.stages.some(s => s.type === 'cool') &&
+  migCool.stages.findIndex(s => s.type === 'cool') === migCool.stages.findIndex(s => s.type === 'bake') + 1);
+
+// Bread schedule honors the recipe's cool stage: the cooling step is colored 'cool', and a
+// longer cool pushes the bake earlier (package-ready is deadline-anchored).
+const coolBatard = api.__recipes().find(r => r.id === 'seed-sourdough-batard');
+if (coolBatard) {
+  const batardCool = coolBatard.stages.find(s => s.type === 'cool');
+  const origCool = batardCool ? batardCool.duration.min : null;
+  const evPre = renderEvents({ 'seed-sourdough-batard': 8 });
+  const coolEv = evPre.find(e => /^Last loaves out/.test(e.title));
+  millOk &= mk('loaf cooling step is colored as the "cool" stage', !!coolEv && api.getEventStage(coolEv) === 'cool');
+  const loafBake = (es) => es.filter(e => /^Bake /.test(e.title) && e.process === 'loaf').sort((a, b) => a.time - b.time)[0].time.getTime();
+  const bakeBefore = loafBake(evPre);
+  batardCool.duration.min = (origCool || 60) + 30;
+  const evPost = renderEvents({ 'seed-sourdough-batard': 8 });
+  const shift = Math.round((bakeBefore - loafBake(evPost)) / 60000);
+  millOk &= mk(`a +30 min loaf cool shifts the bake ~30 min earlier (got ${shift})`, shift === 30);
+  batardCool.duration.min = origCool; // restore
+} else {
+  console.log('  [mill] SKIP — batard seed not present for cool-time test');
+}
+
 // recipeUsesMilledFlour keys off the pantry flag.
 api.__setPantry([{ id: 'pan-rye', name: 'Whole rye', requiresMilling: true }]);
 const milledIngs = [

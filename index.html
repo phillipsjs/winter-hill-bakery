@@ -670,6 +670,7 @@
   .schedule-row[data-stage="boil"]::before,   .schedule-event[data-stage="boil"]::before,   .stage-group[data-stage="boil"]::before   { background: #C0492E; color: #fbf6ec; }
   .schedule-row[data-stage="topping"]::before,.schedule-event[data-stage="topping"]::before,.stage-group[data-stage="topping"]::before{ background: #6F7A2E; color: #fbf6ec; }
   .schedule-row[data-stage="bake"]::before,   .schedule-event[data-stage="bake"]::before,   .stage-group[data-stage="bake"]::before   { background: #5E3413; color: #fbf6ec; }
+  .schedule-row[data-stage="cool"]::before,   .schedule-event[data-stage="cool"]::before,   .stage-group[data-stage="cool"]::before   { background: #A9C7D6; color: #22414f; }
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #1F4D2E; color: #fbf6ec; }
   /* Recipe stage editor */
   .stage-editor { display: flex; flex-direction: column; gap: 6px; }
@@ -2951,7 +2952,7 @@
     boil:     { stage: 'boil',   active: true,  kind: 'fixed',         label: 'Boil' },
     topping:  { stage: 'topping', active: true, kind: 'fixed',         label: 'Topping' },
     bake:     { stage: 'bake',   active: false, kind: 'anchored',      label: 'Bake' },
-    cool:     { stage: 'done',   active: false, kind: 'fixed',         label: 'Cool' },
+    cool:     { stage: 'cool',   active: false, kind: 'fixed',         label: 'Cool' },
     glaze:    { stage: 'done',   active: true,  kind: 'fixed',         label: 'Glaze / ice' },
     rest:     { stage: 'proof',  active: false, kind: 'fixed',         label: 'Rest' },
     step:     { stage: 'prep',   active: true,  kind: 'fixed',         label: 'Step' },
@@ -2963,7 +2964,8 @@
     shape:  { bg: '#A86E2B', fg: '#fbf6ec' }, proof:  { bg: '#8F5A22', fg: '#fbf6ec' },
     chill:  { bg: '#4F6A73', fg: '#eef4f6' }, boil:   { bg: '#C0492E', fg: '#fbf6ec' },
     topping:{ bg: '#6F7A2E', fg: '#fbf6ec' },
-    bake:   { bg: '#5E3413', fg: '#fbf6ec' }, done:   { bg: '#1F4D2E', fg: '#fbf6ec' },
+    bake:   { bg: '#5E3413', fg: '#fbf6ec' }, cool:   { bg: '#A9C7D6', fg: '#22414f' },
+    done:   { bg: '#1F4D2E', fg: '#fbf6ec' },
   };
   // Some stages fan out into several scheduled steps. These are the EXTRA sub-steps a
   // baker can annotate (the stage's main note still covers the primary step — the bake
@@ -3002,6 +3004,7 @@
       { type: 'shape',    duration: { kind: 'perUnit', minPerUnit: 7 }, vessel: 'banneton' },
       { type: 'chill',    duration: { kind: 'range', auto: true }, vessel: 'banneton' },
       { type: 'bake',     duration: { kind: 'anchored', min: 40 }, tempF: 500 },
+      { type: 'cool',     duration: { kind: 'fixed', min: 60 } },
     ],
     'sourdough-muffin': [
       { type: 'weigh',  duration: { kind: 'fixed', min: 5 } },
@@ -3011,6 +3014,7 @@
       { type: 'chill',  duration: { kind: 'range', auto: true }, vessel: 'pan' },
       { type: 'warmup', duration: { kind: 'fixed', min: 180 }, vessel: 'pan' },
       { type: 'bake',   duration: { kind: 'anchored', min: 12 }, tempF: 375 },
+      { type: 'cool',   duration: { kind: 'fixed', min: 60 } },
     ],
     'bagel': [
       { type: 'weigh', duration: { kind: 'fixed', min: 5 } },
@@ -3021,6 +3025,7 @@
       { type: 'boil',  duration: { kind: 'fixed', min: 5 } },
       { type: 'topping', duration: { kind: 'fixed', min: 3 } },
       { type: 'bake',  duration: { kind: 'anchored', min: 22 }, tempF: 450 },
+      { type: 'cool',  duration: { kind: 'fixed', min: 60 } },
     ],
     'focaccia': [
       { type: 'weigh',    duration: { kind: 'fixed', min: 5 } },
@@ -3031,6 +3036,7 @@
       { type: 'shape',    duration: { kind: 'perUnit', minPerUnit: 10 }, vessel: 'pan' },
       { type: 'warmup',   duration: { kind: 'fixed', min: 45 }, label: 'Pan rise', vessel: 'pan' },
       { type: 'bake',     duration: { kind: 'anchored', min: 23 }, tempF: 475 },
+      { type: 'cool',     duration: { kind: 'fixed', min: 20 } },
     ],
     'simple': [
       { type: 'weigh', duration: { kind: 'fixed', min: 5 } },
@@ -6666,6 +6672,17 @@ ${notesHtml}
       const tmplWeigh = (STAGE_TEMPLATES[withType.processType] || []).find(s => s.type === 'weigh');
       withType.stages = [cloneStage(tmplWeigh || { type: 'weigh', duration: { kind: 'fixed', min: 5 } }), ...withType.stages];
     }
+    // Every baked recipe gets a cooling step (added to all baked templates). Recipes saved
+    // before cooling was a stage get one inserted right after their bake, defaulting to the
+    // template's cool time (60 min bread / 20 min focaccia) — schedule-neutral for bread,
+    // which already cooled for SCHED.COOL_HOURS.
+    if (withType.stages.some(s => s.type === 'bake') && !withType.stages.some(s => s.type === 'cool')) {
+      const tmplCool = (STAGE_TEMPLATES[withType.processType] || []).find(s => s.type === 'cool');
+      const coolStage = cloneStage(tmplCool || { type: 'cool', duration: { kind: 'fixed', min: 60 } });
+      const stages = withType.stages.slice();
+      stages.splice(stages.map(s => s.type).lastIndexOf('bake') + 1, 0, coolStage);
+      withType.stages = stages;
+    }
     return withType;
   }
   function saveRecipes() {
@@ -10008,6 +10025,16 @@ ${notesHtml}
     const FOCACCIA_FOLD_INTERVAL_MIN = 15;
     const FOCACCIA_MIX_ACTIVE_MIN = 10;
     const FOCACCIA_COOL_MIN = 20;
+    // Per-process cooling comes from each recipe's editable cool stage (the longest cool
+    // among recipes baking together gates package-ready). Falls back to the old defaults
+    // (1 hr bread / 20 min focaccia) so recipes without a cool stage are unchanged.
+    const processCoolMin = (recipeList, fallbackMin) => recipeList.length
+      ? Math.max(...recipeList.map(r => stageDurationOf(r, 'cool', fallbackMin)))
+      : fallbackMin;
+    const loafCoolMin = processCoolMin(loafRecipes, SCHED.COOL_HOURS * 60);
+    const muffinCoolMin = processCoolMin(muffinRecipes, SCHED.COOL_HOURS * 60);
+    const bagelCoolMin = processCoolMin(bagelRecipes, SCHED.COOL_HOURS * 60);
+    const focacciaCoolMin = processCoolMin(focacciaRecipes, FOCACCIA_COOL_MIN);
     const focacciaBatches = totalFocaccia > 0 ? Math.ceil(totalFocaccia / focacciaAgg.ovenCapacity) : 0;
     const focacciaBakeTotalMin = focacciaBatches > 0
       ? focacciaBatches * focacciaAgg.bakeMin + Math.max(0, focacciaBatches - 1) * SCHED.REHEAT_MIN
@@ -10184,7 +10211,7 @@ ${notesHtml}
     const effBagelDeadline = bagelDeadline || loafDeadline;
     const effBagelBakeTime = bagelBakeTime || loafBakeTime;
 
-    const computeBakeSlot = (deadline, bakeTimePref, bakeTotalMin, kindLabel, kind) => {
+    const computeBakeSlot = (deadline, bakeTimePref, bakeTotalMin, kindLabel, kind, coolMin) => {
       const D = new Date(deadline);
       let firstBakeStart, lastBakeEnd, packageReady;
       const preset = bakeTimePref ? BAKE_TIME_PRESETS[bakeTimePref] : null;
@@ -10197,21 +10224,21 @@ ${notesHtml}
           return t;
         };
         let attempt = tryDay(day);
-        let coolEnd = addMinutes(attempt, bakeTotalMin + SCHED.COOL_HOURS * 60);
+        let coolEnd = addMinutes(attempt, bakeTotalMin + coolMin);
         if (coolEnd > D) {
           day.setDate(day.getDate() - 1);
           attempt = tryDay(day);
-          coolEnd = addMinutes(attempt, bakeTotalMin + SCHED.COOL_HOURS * 60);
+          coolEnd = addMinutes(attempt, bakeTotalMin + coolMin);
         }
         firstBakeStart = attempt;
         lastBakeEnd = addMinutes(firstBakeStart, bakeTotalMin);
-        packageReady = addHours(lastBakeEnd, SCHED.COOL_HOURS);
+        packageReady = addMinutes(lastBakeEnd, coolMin);
         const slackHr = (D - packageReady) / (1000 * 60 * 60);
         if (slackHr > 0.1) {
           warnings.push({ msg: `${kindLabel} will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind });
         }
       } else {
-        lastBakeEnd = addHours(D, -SCHED.COOL_HOURS);
+        lastBakeEnd = addMinutes(D, -coolMin);
         firstBakeStart = addMinutes(lastBakeEnd, -bakeTotalMin);
         packageReady = D;
       }
@@ -10223,15 +10250,15 @@ ${notesHtml}
     };
 
     const loafSlot = totalLoaves > 0
-      ? computeBakeSlot(loafDeadline, loafBakeTime, loafBakeTotalMin, 'Bread', 'loaf')
+      ? computeBakeSlot(loafDeadline, loafBakeTime, loafBakeTotalMin, 'Bread', 'loaf', loafCoolMin)
       : null;
     const muffinSlot = totalMuffins > 0
-      ? computeBakeSlot(effMuffinDeadline, effMuffinBakeTime, muffinBakeTotalMin, 'Muffins', 'muffin')
+      ? computeBakeSlot(effMuffinDeadline, effMuffinBakeTime, muffinBakeTotalMin, 'Muffins', 'muffin', muffinCoolMin)
       : null;
     // Bagel slot: firstBakeStart here is the first BOIL start (active oven work
     // begins there); lastBakeEnd is when the final batch leaves the oven.
     const bagelSlot = totalBagels > 0
-      ? computeBakeSlot(effBagelDeadline, effBagelBakeTime, bagelOvenSpanMin, 'Bagels', 'bagel')
+      ? computeBakeSlot(effBagelDeadline, effBagelBakeTime, bagelOvenSpanMin, 'Bagels', 'bagel', bagelCoolMin)
       : null;
 
     // Focaccia bake slot: commercial yeast, shorter cool time than sourdough.
@@ -10249,19 +10276,19 @@ ${notesHtml}
           return t;
         };
         let attempt = tryDay(day);
-        let coolEnd = addMinutes(attempt, focacciaBakeTotalMin + FOCACCIA_COOL_MIN);
+        let coolEnd = addMinutes(attempt, focacciaBakeTotalMin + focacciaCoolMin);
         if (coolEnd > D) {
           day.setDate(day.getDate() - 1);
           attempt = tryDay(day);
-          coolEnd = addMinutes(attempt, focacciaBakeTotalMin + FOCACCIA_COOL_MIN);
+          coolEnd = addMinutes(attempt, focacciaBakeTotalMin + focacciaCoolMin);
         }
         focFirstBakeStart = attempt;
         focLastBakeEnd = addMinutes(focFirstBakeStart, focacciaBakeTotalMin);
-        focPackageReady = addMinutes(focLastBakeEnd, FOCACCIA_COOL_MIN);
+        focPackageReady = addMinutes(focLastBakeEnd, focacciaCoolMin);
         const slackHr = (D - focPackageReady) / (1000 * 60 * 60);
         if (slackHr > 0.1) warnings.push({ msg: `Focaccia will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind: 'focaccia' });
       } else {
-        focLastBakeEnd = addMinutes(D, -FOCACCIA_COOL_MIN);
+        focLastBakeEnd = addMinutes(D, -focacciaCoolMin);
         focFirstBakeStart = addMinutes(focLastBakeEnd, -focacciaBakeTotalMin);
         focPackageReady = D;
       }
@@ -10379,7 +10406,7 @@ ${notesHtml}
     {
       const PROC_DEADLINE = { loaf: loafDeadline, muffin: effMuffinDeadline, bagel: effBagelDeadline, focaccia: focacciaDeadline };
       const PROC_LABEL    = { loaf: 'Bread', muffin: 'Muffins', bagel: 'Bagels', focaccia: 'Focaccia' };
-      const PROC_COOL_MIN = { loaf: SCHED.COOL_HOURS * 60, muffin: SCHED.COOL_HOURS * 60, bagel: SCHED.COOL_HOURS * 60, focaccia: FOCACCIA_COOL_MIN };
+      const PROC_COOL_MIN = { loaf: loafCoolMin, muffin: muffinCoolMin, bagel: bagelCoolMin, focaccia: focacciaCoolMin };
       const PROC_RECIPES  = { loaf: loafRecipes, muffin: muffinRecipes, bagel: bagelRecipes, focaccia: focacciaRecipes };
       const PROC_PROCESS  = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia' };
       // Each side group (simple/enriched per dough+deadline) is its own bake "kind".
@@ -10816,7 +10843,7 @@ ${notesHtml}
           events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
           cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
         }
-        events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
+        events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${focacciaCoolMin} min cool`, process: 'focaccia' });
         events.push({ time: focacciaSlot.packageReady, title: 'Package & ready for sale', detail: '', process: 'focaccia' });
       }
       const lateFocaccia = lateNightActiveSteps(events, 'focaccia');
@@ -11706,7 +11733,7 @@ ${notesHtml}
         events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
         cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
-      events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${FOCACCIA_COOL_MIN} min cool`, process: 'focaccia' });
+      events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${focacciaCoolMin} min cool`, process: 'focaccia' });
     }
     // Package-ready: collapse to one combined event when every present process
     // finishes within a minute of the others; otherwise per-process events.
@@ -11864,7 +11891,7 @@ ${notesHtml}
         cum += j.bakeMin;
       });
       // Group-level finish: cool, optional glaze, package-ready.
-      events.push({ time: slot.lastBakeEnd, title: `${g.label} out — cool`, detail: `${g.coolMin} min cool`, process: g.process, columnKey: g.key, stage: 'done', activeStep: false });
+      events.push({ time: slot.lastBakeEnd, title: `${g.label} out — cool`, detail: `${g.coolMin} min cool`, process: g.process, columnKey: g.key, stage: 'cool', activeStep: false });
       if (g.glaze) events.push({ time: addMinutes(slot.lastBakeEnd, g.coolMin), title: `Glaze / ice ${g.label}`, detail: `${g.glazeMin} min`, process: g.process, columnKey: g.key, stage: 'done', activeStep: true });
       events.push({ time: slot.packageReady, title: 'Package & ready for sale', detail: '', process: g.process, columnKey: g.key, stage: 'done', activeStep: false });
     }
@@ -11995,7 +12022,7 @@ ${notesHtml}
   function scheduleCombinedUnit(unit, baseOpts, rd, carryNonLoaf, fullPlan, dlMs) {
     const sorted = [...unit.recipes].sort((a, b) => (dlMs(a) || 0) - (dlMs(b) || 0));
     const ids = new Set(sorted.map(r => r.id));
-    const isLoafBake = (ev) => { if (ev.process !== 'loaf') return false; const s = getEventStage(ev); return s === 'bake' || s === 'done'; };
+    const isLoafBake = (ev) => { if (ev.process !== 'loaf') return false; const s = getEventStage(ev); return s === 'bake' || s === 'cool' || s === 'done'; };
     const prepPlan = {};
     recipes.forEach(r => {
       const c = fullPlan[r.id] || 0; if (c <= 0) return;
@@ -12283,7 +12310,8 @@ ${notesHtml}
     if (/^(Bring .* to a boil|Boil)/.test(t)) return 'boil';
     if (/^Top /.test(t)) return 'topping';
     if (/^(Turn on oven|Turn off |Set .* to \d|Bake |Bake batch)/.test(t)) return 'bake';
-    if (/^(Last .* out|Package)/.test(t)) return 'done';
+    if (/^Last .* out/.test(t)) return 'cool';   // "Last loaves out — start cooling"
+    if (/^Package/.test(t)) return 'done';
     return '';
   }
 
