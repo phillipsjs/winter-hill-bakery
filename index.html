@@ -1177,9 +1177,12 @@
       </details>
 
       <hr class="sep" />
-      <div class="row" style="justify-content: flex-end; gap: 8px">
-        <button class="secondary" onclick="cancelEdit()">Cancel</button>
-        <button onclick="saveRecipe()">Save recipe</button>
+      <div class="row" style="justify-content: space-between; gap: 8px; align-items: center">
+        <span id="r-autosave-status" class="muted" style="font-size:0.8rem">Changes save automatically</span>
+        <span style="display:flex; gap:8px">
+          <button class="secondary" onclick="revertEdit()" title="Undo every change made since you opened this recipe">Revert changes</button>
+          <button onclick="saveRecipe()">Done</button>
+        </span>
       </div>
     </div>
 
@@ -6632,6 +6635,14 @@ ${notesHtml}
   let recipes = loadRecipes();
   let plan = loadPlan();      // { recipeId: count }
   let editingId = null;       // null = not editing
+  // Auto-save (the editor persists on each edit). _editSnapshot is the recipe as it was when
+  // the editor opened, so "Revert changes" can restore it; _editIsNew marks a brand-new recipe
+  // (revert deletes it). _editorReady gates autosave so populating the form on open doesn't fire
+  // one. _autosaveTimer debounces the writes.
+  let _editSnapshot = null;
+  let _editIsNew = false;
+  let _editorReady = false;
+  let _autosaveTimer = null;
   let recipeEntryMode = 'percent'; // 'percent' | 'grams' — how ingredient amounts are entered
   let _editorBatchYield = 1;       // the recipe's authored batch size (units), remembered + persisted
   let _editorViewYield = 1;        // how many units the grams currently shown represent
@@ -8775,6 +8786,9 @@ ${notesHtml}
         .map(t => `<option value="${t}">${escapeHtml(STAGE_PALETTE[t].label)}</option>`).join('');
       addSel.dataset.filled = '1';
     }
+    // Stage edits often come from buttons (add/remove/move/toggle) that don't fire an input
+    // event the editor's delegated listener would catch, so autosave from here too.
+    scheduleAutosave();
   }
   // Read the editor's current ingredient rows to see if any flour needs milling. New recipes
   // have no pantryId on the rows yet, so match by pantry name as well as id.
@@ -9144,6 +9158,9 @@ ${notesHtml}
 
   function startNewRecipe() {
     editingId = null;
+    _editorReady = false;       // don't autosave while we populate the blank form
+    _editSnapshot = null;
+    _editIsNew = true;          // "Revert changes" discards a brand-new recipe
     _editorBatchYield = 1;
     resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'New recipe';
@@ -9175,12 +9192,16 @@ ${notesHtml}
     addIngredientRow({ name: 'Levain', pct: 20 });
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    _editorReady = true;        // form is populated — edits from here autosave
   }
 
   function editRecipe(id) {
     const r = recipes.find(x => x.id === id);
     if (!r) return;
     editingId = id;
+    _editorReady = false;       // don't autosave while we populate the form
+    _editSnapshot = JSON.parse(JSON.stringify(r));  // snapshot for "Revert changes"
+    _editIsNew = false;
     _editorBatchYield = Math.max(1, Math.round(Number(r.batchYield) || 1));
     resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'Edit recipe';
@@ -9229,6 +9250,7 @@ ${notesHtml}
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';
     document.getElementById('recipe-editor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    _editorReady = true;        // form is populated — edits from here autosave
   }
 
   function addIngredientRow(prefill) {
@@ -9345,62 +9367,120 @@ ${notesHtml}
   }
 
   function cancelEdit() {
+    if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
+    _editorReady = false;
+    _editSnapshot = null;
+    _editIsNew = false;
     document.getElementById('recipe-editor').style.display = 'none';
     editingId = null;
   }
 
-  function saveRecipe() {
-    // If the user entered amounts in grams, convert to baker's % (and derive weight per unit) first.
-    if (recipeEntryMode === 'grams') {
-      const gramsRows = readEditorRows();
-      const flourG = gramsRows.filter(r => r.flourType).reduce((s, r) => s + r.amount, 0);
-      if (flourG <= 0) {
-        alert('In grams mode, mark at least one ingredient as flour so the amounts can be converted to baker’s percentages.');
-        return;
-      }
-      setRecipeEntryMode('percent'); // mutates the rows to % and sets weight-per-unit
+  // "Revert changes": undo everything autosaved during this editing session. For a brand-new
+  // recipe that means discarding it; for an existing one, restoring the snapshot taken on open.
+  function revertEdit() {
+    if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
+    if (_editIsNew) {
+      if (editingId) { recipes = recipes.filter(r => r.id !== editingId); saveRecipes(); }
+    } else if (_editSnapshot) {
+      const idx = recipes.findIndex(r => r.id === _editSnapshot.id);
+      if (idx >= 0) { recipes[idx] = JSON.parse(JSON.stringify(_editSnapshot)); saveRecipes(); }
     }
+    cancelEdit();
+    renderRecipes();
+  }
+
+  // Debounced autosave: persist the editor on each edit without closing it or prompting.
+  function scheduleAutosave() {
+    if (!_editorReady) return;
+    if (_autosaveTimer) clearTimeout(_autosaveTimer);
+    _autosaveTimer = setTimeout(() => { _autosaveTimer = null; autosaveRecipe(); }, 600);
+  }
+  function autosaveRecipe() {
+    if (!_editorReady) return;
+    const ed = document.getElementById('recipe-editor');
+    if (!ed || ed.style.display === 'none') return;
+    const ok = saveRecipe({ silent: true, keepOpen: true });
+    const st = document.getElementById('r-autosave-status');
+    if (st) st.textContent = ok ? 'All changes saved' : 'Not saved yet — needs a name, a weight, and at least one ingredient';
+  }
+
+  // Read the editor's ingredient rows into saved objects (baker's %), converting from grams
+  // when in grams mode WITHOUT mutating the inputs — so autosave can run mid-edit without
+  // flipping the entry mode. Returns { ok, ingredients, loafWeight } or { ok:false, message }.
+  function normalizeEditorIngredients() {
+    const toppings = editorToppingNames();
+    const parsed = [];
+    const rows = document.querySelectorAll('#r-ingredients .ingredient-edit-row');
+    for (const row of rows) {
+      const name = row.querySelector('.ing-name').value.trim();
+      if (!name) continue;
+      const amount = Number(row.querySelector('.ing-pct').value);
+      if (!Number.isFinite(amount) || amount < 0) {
+        return { ok: false, message: `Ingredient "${name}" needs a non-negative ${recipeEntryMode === 'grams' ? 'amount' : 'percentage'}.` };
+      }
+      const flourType = row.querySelector('.ing-flour-type').value;
+      const aidEl = row.querySelector('.ing-process-aid');
+      const processAid = !!(aidEl && aidEl.value);
+      const pantrySel = row.querySelector('.ing-pantry');
+      const pantryId = pantrySel ? (pantrySel.value || undefined) : undefined;
+      const role = processAid ? 'aid' : (toppings.has(name) ? 'topping' : 'dough');
+      let waterTempF = null;
+      const waterTempEl = row.querySelector('.ing-water-temp-input');
+      if (waterTempEl && ingredientIsWater(name, pantryId)) {
+        const wt = tempFromInput(waterTempEl.value);
+        if (wt != null) waterTempF = wt;
+      }
+      parsed.push({ name, amount, flourType, processAid, pantryId, role, waterTempF });
+    }
+    if (parsed.length === 0) return { ok: false, message: 'Add at least one ingredient.' };
+
+    let loafWeight, pctOf;
+    if (recipeEntryMode === 'grams') {
+      const yld = Math.max(1, Math.round(Number(document.getElementById('r-batch-yield').value) || 1));
+      const flourG = parsed.filter(r => r.flourType).reduce((s, r) => s + r.amount, 0);
+      if (flourG <= 0) return { ok: false, message: 'In grams mode, mark at least one ingredient as flour so the amounts can be converted to baker’s percentages.' };
+      const doughG = parsed.reduce((s, r) => s + (r.role === 'dough' ? r.amount : 0), 0);
+      loafWeight = Math.round(doughG / yld);
+      pctOf = (r) => round2(r.amount / flourG * 100);
+    } else {
+      loafWeight = Number(document.getElementById('r-weight').value);
+      pctOf = (r) => r.amount;
+    }
+    const ingredients = parsed.map(r => {
+      const ing = { name: r.name, pct: pctOf(r) };
+      if (r.flourType) ing.flourType = r.flourType;
+      if (r.processAid) ing.processAid = true;
+      if (r.pantryId) ing.pantryId = r.pantryId;
+      if (r.waterTempF != null) ing.waterTempF = r.waterTempF;
+      return ing;
+    });
+    return { ok: true, ingredients, loafWeight };
+  }
+
+  // opts.silent → autosave: never alert/confirm, return false instead. opts.keepOpen →
+  // leave the editor open (autosave). Returns true on a successful persist.
+  function saveRecipe(opts) {
+    opts = opts || {};
+    const silent = !!opts.silent;
+    const keepOpen = !!opts.keepOpen;
 
     const name = document.getElementById('r-name').value.trim();
     const processType = document.getElementById('r-process-type').value || 'sourdough-loaf';
     const template = PROCESS_TEMPLATES[processType] || PROCESS_TEMPLATES['sourdough-loaf'];
     const unit = document.getElementById('r-unit').value.trim() || template.unit;
-    const loafWeight = Number(document.getElementById('r-weight').value);
-    if (!name) { alert('Please give the recipe a name.'); return; }
-    if (!loafWeight || loafWeight <= 0) { alert(`Please enter a weight per ${unit} in grams.`); return; }
+    if (!name) { if (!silent) alert('Please give the recipe a name.'); return false; }
 
-    const rows = document.querySelectorAll('#r-ingredients .ingredient-edit-row');
-    const ingredients = [];
-    for (const row of rows) {
-      const iname = row.querySelector('.ing-name').value.trim();
-      const ipct = Number(row.querySelector('.ing-pct').value);
-      const flourType = row.querySelector('.ing-flour-type').value;
-      const aidEl = row.querySelector('.ing-process-aid');
-      const processAid = !!(aidEl && aidEl.value);
-      const pantryId = row.querySelector('.ing-pantry') ? row.querySelector('.ing-pantry').value || undefined : undefined;
-      if (!iname) continue;
-      if (!Number.isFinite(ipct) || ipct < 0) {
-        alert(`Ingredient "${iname}" needs a non-negative percentage.`);
-        return;
-      }
-      const ing = { name: iname, pct: ipct };
-      if (flourType) ing.flourType = flourType;
-      if (processAid) ing.processAid = true;
-      if (pantryId) ing.pantryId = pantryId;
-      // Water temperature: kept only for water ingredients (the field is hidden otherwise).
-      const waterTempEl = row.querySelector('.ing-water-temp-input');
-      if (waterTempEl && ingredientIsWater(iname, pantryId)) {
-        const wt = tempFromInput(waterTempEl.value);
-        if (wt != null) ing.waterTempF = wt;
-      }
-      ingredients.push(ing);
-    }
-    if (ingredients.length === 0) { alert('Add at least one ingredient.'); return; }
+    const norm = normalizeEditorIngredients();
+    if (!norm.ok) { if (!silent) alert(norm.message); return false; }
+    const ingredients = norm.ingredients;
+    const loafWeight = norm.loafWeight;
+    if (!loafWeight || loafWeight <= 0) { if (!silent) alert(`Please enter a weight per ${unit} in grams.`); return false; }
 
-    // Baker's percentages assume flour = 100%. Warn (don't block) if the marked flours don't.
+    // Baker's percentages assume flour = 100%. Warn (don't block) on an explicit save; the live
+    // flour summary already shows this, so autosave skips the prompt.
     const flourPctTotal = ingredients.filter(i => i.flourType).reduce((s, i) => s + i.pct, 0);
-    if (flourPctTotal > 0 && Math.abs(flourPctTotal - 100) > 0.5) {
-      if (!confirm('Your flours add up to ' + (Math.round(flourPctTotal * 10) / 10) + '%, not 100%.\n\nBaker’s percentages assume flour = 100%, so costs and ingredient weights may be off. Save anyway?')) return;
+    if (!silent && flourPctTotal > 0 && Math.abs(flourPctTotal - 100) > 0.5) {
+      if (!confirm('Your flours add up to ' + (Math.round(flourPctTotal * 10) / 10) + '%, not 100%.\n\nBaker’s percentages assume flour = 100%, so costs and ingredient weights may be off. Save anyway?')) return false;
     }
 
     // Steps & timing come from the stage editor → derived scheduler params.
@@ -9415,7 +9495,10 @@ ${notesHtml}
       const raw = el ? el.value.trim() : '';
       if (raw === '') { overrides[field] = null; continue; }
       const num = Number(raw);
-      if (!Number.isFinite(num) || num < 0) { alert(`"${field}" must be a non-negative number.`); return; }
+      if (!Number.isFinite(num) || num < 0) {
+        if (!silent) { alert(`"${field}" must be a non-negative number.`); return false; }
+        overrides[field] = null; continue;   // autosave: ignore a bad value, keep the rest
+      }
       overrides[field] = num;
     }
     const bakeTempF = (stageParams.bakeTempF === '' || stageParams.bakeTempF == null) ? null : Number(stageParams.bakeTempF);
@@ -9446,9 +9529,9 @@ ${notesHtml}
 
     // Sourdough recipes need an ingredient named "levain" (or "starter") for the build
     // plan, costing, and flour totals to work. Warn rather than block.
-    if (processType !== 'levain' && leavening === 'sourdough'
+    if (!silent && processType !== 'levain' && leavening === 'sourdough'
         && !ingredients.some(ing => isLevainIngredient(ing.name))) {
-      if (!confirm('This sourdough recipe has no "levain" (or "starter") ingredient, so the levain build plan, costing, and flour totals won’t include it.\n\nSave anyway?')) return;
+      if (!confirm('This sourdough recipe has no "levain" (or "starter") ingredient, so the levain build plan, costing, and flour totals won’t include it.\n\nSave anyway?')) return false;
     }
 
     const preferredContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
@@ -9504,6 +9587,9 @@ ${notesHtml}
     } else {
       recipeId = uid();
       recipes.push({ id: recipeId, ...base });
+      // Autosave keeps the editor open, so adopt this id and keep editing it in place —
+      // otherwise the next keystroke would create a second recipe.
+      if (keepOpen) editingId = recipeId;
     }
 
     // Sync pan capacities. Collect the checked rows (if the pan section is shown),
@@ -9549,8 +9635,9 @@ ${notesHtml}
     if ((pansChanged || mixersChanged) && getGistConfig()) pushSettingsToGist().catch(() => {});
 
     saveRecipes();
-    cancelEdit();
+    if (!keepOpen) cancelEdit();
     renderRecipes();
+    return true;
   }
 
   function resetToDefaults() {
@@ -14053,6 +14140,13 @@ ${notesHtml}
   }
 
   // ---- init ----
+  // Auto-save the recipe editor: any edit to a field inside it persists (debounced) without
+  // the user pressing a button. Button-driven stage edits autosave from renderStageEditor().
+  const recipeEditorEl = document.getElementById('recipe-editor');
+  if (recipeEditorEl) {
+    recipeEditorEl.addEventListener('input', scheduleAutosave);
+    recipeEditorEl.addEventListener('change', scheduleAutosave);
+  }
   document.getElementById('r-unit').addEventListener('input', e => {
     document.getElementById('r-unit-label').textContent = e.target.value.trim() || 'unit';
   });

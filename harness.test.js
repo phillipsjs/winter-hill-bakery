@@ -110,7 +110,7 @@ const exportsTail = `
   buildBakeSheetHelpers, hoverHtmlFor, noteControlHtml, stepNoteKey, getStepNoteFor, setStepNote, loadStepNotes,
   recipeStageNotesForEvent, recipeStageNotesHtml, eventStageType, eventSubstep, buildRecipeNotesByEvent,
   stageVesselSelectHtml,
-  startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
+  startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange, saveRecipe, revertEdit,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove, toggleStageExpand, stageDurationSummary,
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
@@ -1053,6 +1053,21 @@ if (wbat && wIng) {
 } else {
   console.log('  [notes] SKIP — batard water ingredient not found for water-temp test');
 }
+
+// --- Auto-save editor: silent saves never create phantom recipes; revert restores ---
+const beforeCount = api.__recipes().length;
+// A silent autosave with no editor content (the harness DOM has no rows) must not persist a
+// half-built recipe — it returns false and leaves the recipe list untouched.
+const silentResult = api.saveRecipe({ silent: true, keepOpen: true });
+hvOk &= hv('silent autosave with an empty editor returns false', silentResult === false);
+hvOk &= hv('silent autosave creates no phantom recipe', api.__recipes().length === beforeCount);
+// editRecipe snapshots the recipe so "Revert changes" can undo a session of edits.
+api.editRecipe(SEED.batard);
+const batardLive = api.__recipes().find(r => r.id === SEED.batard);
+const origName = batardLive.name;
+batardLive.name = 'TEMP EDIT';
+api.revertEdit();
+hvOk &= hv('revertEdit restores the snapshot taken when the editor opened', api.__recipes().find(r => r.id === SEED.batard).name === origName);
 
 // Schedule inline note control: add/edit button is present and no-print.
 const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
