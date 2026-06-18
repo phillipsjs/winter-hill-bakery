@@ -1068,6 +1068,17 @@ const origName = batardLive.name;
 batardLive.name = 'TEMP EDIT';
 api.revertEdit();
 hvOk &= hv('revertEdit restores the snapshot taken when the editor opened', api.__recipes().find(r => r.id === SEED.batard).name === origName);
+// Revert also rolls back per-recipe pan/mixer capacities to their pre-session values, while
+// leaving other recipes' capacities alone.
+const mxArr = [{ id: 'mxr', name: 'Spiral', recipeCapacities: { [SEED.batard]: 12 } }];
+api.__setMixers(mxArr);
+api.editRecipe(SEED.batard);                       // snapshots caps { batard: 12 }
+mxArr[0].recipeCapacities[SEED.batard] = 99;       // session change (what autosave would write)
+mxArr[0].recipeCapacities['other-recipe'] = 5;     // a different recipe's cap, set meanwhile
+api.revertEdit();
+hvOk &= hv('revert restores the edited recipe’s mixer capacity', mxArr[0].recipeCapacities[SEED.batard] === 12);
+hvOk &= hv('revert leaves other recipes’ mixer capacities untouched', mxArr[0].recipeCapacities['other-recipe'] === 5);
+api.__setMixers([]);
 
 // Schedule inline note control: add/edit button is present and no-print.
 const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });

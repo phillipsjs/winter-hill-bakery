@@ -6640,6 +6640,7 @@ ${notesHtml}
   // (revert deletes it). _editorReady gates autosave so populating the form on open doesn't fire
   // one. _autosaveTimer debounces the writes.
   let _editSnapshot = null;
+  let _editCapsSnapshot = null;   // per-pan / per-mixer recipeCapacities as they were on open
   let _editIsNew = false;
   let _editorReady = false;
   let _autosaveTimer = null;
@@ -9161,6 +9162,7 @@ ${notesHtml}
     _editorReady = false;       // don't autosave while we populate the blank form
     _editSnapshot = null;
     _editIsNew = true;          // "Revert changes" discards a brand-new recipe
+    snapshotEquipCaps();        // so revert can roll back any pan/mixer caps autosave adds
     _editorBatchYield = 1;
     resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'New recipe';
@@ -9202,6 +9204,7 @@ ${notesHtml}
     _editorReady = false;       // don't autosave while we populate the form
     _editSnapshot = JSON.parse(JSON.stringify(r));  // snapshot for "Revert changes"
     _editIsNew = false;
+    snapshotEquipCaps();        // so revert can roll back pan/mixer caps too
     _editorBatchYield = Math.max(1, Math.round(Number(r.batchYield) || 1));
     resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'Edit recipe';
@@ -9370,15 +9373,50 @@ ${notesHtml}
     if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
     _editorReady = false;
     _editSnapshot = null;
+    _editCapsSnapshot = null;
     _editIsNew = false;
     document.getElementById('recipe-editor').style.display = 'none';
     editingId = null;
   }
 
+  // Snapshot every pan's / mixer's per-recipe capacity map so a revert can put them back —
+  // autosave reconciles caps[recipeId] on each edit (e.g. ticking a pan or changing its count).
+  function snapshotEquipCaps() {
+    _editCapsSnapshot = {
+      pans: userPans.map(p => ({ id: p.id, caps: { ...(p.recipeCapacities || {}) } })),
+      mixers: userMixers.map(m => ({ id: m.id, caps: { ...(m.recipeCapacities || {}) } })),
+    };
+  }
+  // Restore only the edited recipe's entry on each pan/mixer (leaving other recipes' caps —
+  // including any concurrent Kitchen-tab edits — untouched). For a new recipe its id was never
+  // in the snapshot, so this deletes the entries autosave created.
+  function restoreEquipCaps(recipeId) {
+    if (!_editCapsSnapshot || !recipeId) return;
+    const restore = (items, snaps, saveFn) => {
+      let changed = false;
+      snaps.forEach(snap => {
+        const item = items.find(x => x.id === snap.id);
+        if (!item) return;
+        const caps = item.recipeCapacities || (item.recipeCapacities = {});
+        if (recipeId in snap.caps) {
+          if (caps[recipeId] !== snap.caps[recipeId]) { caps[recipeId] = snap.caps[recipeId]; changed = true; }
+        } else if (recipeId in caps) { delete caps[recipeId]; changed = true; }
+      });
+      if (changed) saveFn();
+      return changed;
+    };
+    const pansChanged = restore(userPans, _editCapsSnapshot.pans, savePansLocally);
+    const mixersChanged = restore(userMixers, _editCapsSnapshot.mixers, saveMixersLocally);
+    if ((pansChanged || mixersChanged) && getGistConfig()) pushSettingsToGist().catch(() => {});
+  }
+
   // "Revert changes": undo everything autosaved during this editing session. For a brand-new
   // recipe that means discarding it; for an existing one, restoring the snapshot taken on open.
+  // Pan/mixer per-recipe capacities are rolled back too.
   function revertEdit() {
     if (_autosaveTimer) { clearTimeout(_autosaveTimer); _autosaveTimer = null; }
+    const capRecipeId = _editIsNew ? editingId : (_editSnapshot && _editSnapshot.id);
+    restoreEquipCaps(capRecipeId);
     if (_editIsNew) {
       if (editingId) { recipes = recipes.filter(r => r.id !== editingId); saveRecipes(); }
     } else if (_editSnapshot) {
