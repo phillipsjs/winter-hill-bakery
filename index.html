@@ -676,12 +676,16 @@
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #1F4D2E; color: #fbf6ec; }
   /* Recipe stage editor */
   .stage-editor { display: flex; flex-direction: column; gap: 6px; }
-  .stage-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; }
+  .stage-row { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+  .stage-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .stage-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 6px; border-top: 1px dashed var(--border); }
   .stage-badge { font-size: 0.72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; text-transform: capitalize; }
   .stage-row input.stage-label { flex: 1; min-width: 110px; }
   .stage-row .stage-dur { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); }
   .stage-row .stage-locked { font-size: 0.72rem; white-space: nowrap; cursor: help; }
   .stage-row .stage-dur input { width: 60px; }
+  .stage-ctrl { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+  .stage-actmin input { width: 46px; }
   .stage-move { display: inline-flex; flex-direction: column; gap: 1px; }
   .stage-move button { padding: 0 7px; font-size: 0.7rem; line-height: 1.5; }
   .stage-del { padding: 2px 8px; font-size: 0.85rem; line-height: 1.2; }
@@ -8512,29 +8516,30 @@ ${notesHtml}
       + `</select>`;
   }
 
-  // The hands-on (active) minutes input — only meaningful on an active step. Blank means
-  // "the whole step is hands-on"; a smaller number splits a long step into a short active
-  // opening (e.g. loading a mixer, moving dough to the fridge) + a passive tail.
-  function _stageActiveMinHtml(s, i) {
+  // The hands-on (active) minutes control for the step's options line — only meaningful on
+  // an active step. Blank means "the whole step is hands-on"; a smaller number splits a long
+  // step into a short active opening (e.g. loading a mixer, moving dough to the fridge) + a
+  // passive tail.
+  function _stageActiveMinControl(s, i) {
     if (!stageIsActive(s)) return '';
     const v = s.duration && s.duration.activeMin != null ? s.duration.activeMin : '';
-    return ` · <input type="number" min="0" step="any" value="${v}" placeholder="all" title="Hands-on minutes at the start of this step (blank = the whole step is hands-on). The passive remainder runs unattended." style="width:46px" oninput="stageEditorSetActiveMin(${i},this.value)" /> min&nbsp;active`;
+    return `<span class="stage-ctrl stage-actmin" title="Hands-on minutes at the start of this step (blank = the whole step is hands-on). The passive remainder runs unattended.">active <input type="number" min="0" step="any" value="${v}" placeholder="all" style="width:46px" oninput="stageEditorSetActiveMin(${i},this.value)" /> min</span>`;
   }
   function _stageDurationHtml(s, i) {
     const d = s.duration || {};
     const numIn = (key, val, w) => `<input type="number" min="0" step="any" value="${val == null ? '' : val}" style="width:${w || 60}px" oninput="stageEditorSetDur(${i},'${key}',this.value)" />`;
     switch (d.kind) {
       case 'perUnit':
-        return `<span class="stage-dur">${numIn('minPerUnit', d.minPerUnit)} min/unit${_stageActiveMinHtml(s, i)}</span>`;
+        return `<span class="stage-dur">${numIn('minPerUnit', d.minPerUnit)} min/unit</span>`;
       case 'countInterval':
         return `<span class="stage-dur">${numIn('count', d.count, 52)} × ${numIn('intervalMin', d.intervalMin)} min apart</span>`;
       case 'range':
-        if (d.auto) return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" checked onchange="stageEditorSetAuto(${i},false)" /> auto (scheduler picks)</label>${_stageActiveMinHtml(s, i)}</span>`;
-        return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" onchange="stageEditorSetAuto(${i},true)" /> auto</label> ${numIn('minHr', d.minHr, 48)}–${numIn('maxHr', d.maxHr, 48)} hr${_stageActiveMinHtml(s, i)}</span>`;
+        if (d.auto) return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" checked onchange="stageEditorSetAuto(${i},false)" /> auto (scheduler picks)</label></span>`;
+        return `<span class="stage-dur"><label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" onchange="stageEditorSetAuto(${i},true)" /> auto</label> ${numIn('minHr', d.minHr, 48)}–${numIn('maxHr', d.maxHr, 48)} hr</span>`;
       case 'anchored':
         return `<span class="stage-dur">${numIn('min', d.min)} min · <input type="number" min="0" step="5" value="${tempInputValue(s.tempF)}" style="width:60px" oninput="stageEditorSetTemp(${i},this.value)" />${tempUnitLabel()}</span>`;
       default:
-        return `<span class="stage-dur">${numIn('min', d.min)} min${_stageActiveMinHtml(s, i)}</span>`;
+        return `<span class="stage-dur">${numIn('min', d.min)} min</span>`;
     }
   }
 
@@ -8556,22 +8561,30 @@ ${notesHtml}
         const col = STAGE_COLORS[pal.stage] || STAGE_COLORS.prep;
         const vessel = stageVesselSelectHtml(s, i);
         const locked = s.type === 'mill'; // ingredient-controlled — appears when a flour needs milling
+        const subBtn = substepsForStage(s)
+          ? `<button type="button" id="stage-sub-btn-${i}" class="stage-sub-btn tiny secondary" onclick="toggleStageSubPanel(${i})" title="Expand to add notes on this step's sub-steps">${subToggleLabel(i)}</button>`
+          : '';
         return `<div class="stage-row">
-          <span class="stage-move">
-            <button type="button" onclick="stageEditorMove(${i},-1)"${i === 0 ? ' disabled' : ''} title="Move up">▲</button>
-            <button type="button" onclick="stageEditorMove(${i},1)"${i === _editorStages.length - 1 ? ' disabled' : ''} title="Move down">▼</button>
-          </span>
-          <span class="stage-badge" style="background:${col.bg};color:${col.fg}">${escapeHtml(s.type)}</span>
-          <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
-          ${_stageDurationHtml(s, i)}
-          ${vessel}
-          <button type="button" class="stage-active-btn tiny${stageIsActive(s) ? '' : ' secondary'}" onclick="toggleStageActive(${i})" title="${stageIsActive(s) ? 'Hands-on step — the scheduler keeps it inside kitchen hours and warns if it overlaps other active work. Click to mark passive.' : 'Passive step — runs unattended (and may fall outside kitchen hours). Click to mark hands-on.'}">${stageIsActive(s) ? '⚡ active' : '💤 passive'}</button>
-          <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
-          <button type="button" id="stage-ing-btn-${i}" class="stage-ing-btn tiny${(s.ings || []).length ? '' : ' secondary'}" onclick="toggleStageIngPanel(${i})" title="Tag which ingredients are used at this step (shown in the bake sheet)">🧂 ${(s.ings || []).length ? (s.ings.length + ' ing') : 'ingredients'}</button>
-          ${substepsForStage(s) ? `<button type="button" id="stage-sub-btn-${i}" class="stage-sub-btn tiny secondary" onclick="toggleStageSubPanel(${i})" title="Expand to add notes on this step's sub-steps">${subToggleLabel(i)}</button>` : ''}
-          ${locked
-            ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
-            : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`}
+          <div class="stage-main">
+            <span class="stage-move">
+              <button type="button" onclick="stageEditorMove(${i},-1)"${i === 0 ? ' disabled' : ''} title="Move up">▲</button>
+              <button type="button" onclick="stageEditorMove(${i},1)"${i === _editorStages.length - 1 ? ' disabled' : ''} title="Move down">▼</button>
+            </span>
+            <span class="stage-badge" style="background:${col.bg};color:${col.fg}">${escapeHtml(s.type)}</span>
+            <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
+            ${_stageDurationHtml(s, i)}
+            ${locked
+              ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
+              : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`}
+          </div>
+          <div class="stage-controls">
+            ${subBtn}
+            <button type="button" id="stage-ing-btn-${i}" class="stage-ing-btn tiny${(s.ings || []).length ? '' : ' secondary'}" onclick="toggleStageIngPanel(${i})" title="Tag which ingredients are used at this step (shown in the bake sheet)">🧂 ${(s.ings || []).length ? (s.ings.length + ' ing') : 'ingredients'}</button>
+            ${vessel}
+            <button type="button" class="stage-active-btn tiny${stageIsActive(s) ? '' : ' secondary'}" onclick="toggleStageActive(${i})" title="${stageIsActive(s) ? 'Hands-on step — the scheduler keeps it inside kitchen hours and warns if it overlaps other active work. Click to mark passive.' : 'Passive step — runs unattended (and may fall outside kitchen hours). Click to mark hands-on.'}">${stageIsActive(s) ? '⚡ active' : '💤 passive'}</button>
+            ${_stageActiveMinControl(s, i)}
+            <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
+          </div>
           ${(s.note || '').trim() ? `<span class="stage-note-text">📝 ${escapeHtml(s.note)}</span>` : ''}
           ${(s.ings || []).length ? `<span class="stage-ing-text">🧂 ${escapeHtml(s.ings.join(', '))}</span>` : ''}
           <div class="stage-ing-panel" id="stage-ing-panel-${i}" style="display:none"></div>

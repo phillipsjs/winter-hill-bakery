@@ -1376,6 +1376,19 @@ const plainW = { loafWeight: 100, ingredients: [{ name: 'Bread flour', pct: 100,
 hvOk &= hv('plain recipe: doughSumPct equals the raw % sum (back-compat)', api.doughSumPct(plainW) === 170);
 hvOk &= hv('plain recipe: final unit weight equals loafWeight (back-compat)', api.finalUnitWeight(plainW) === 100);
 loafR.stages = loafR.stages.filter(s => s.type !== 'topping');
+
+// --- Stage editor: per-step options live on their own line, in order
+// (1) substeps (2) ingredients (3) equipment (4) active/passive (5) active min (6) notes. ---
+api.__setOvens([{ id: 'ov1', name: 'Deck', decks: 3 }]);
+api.editRecipe(SEED.bagel);
+const stageHtml = getEl('r-stages-list').innerHTML;
+hvOk &= hv('each step splits into a main line + its own controls line', /stage-main[\s\S]*stage-controls/.test(stageHtml));
+const ctrlSegs = stageHtml.match(/<div class="stage-controls">[\s\S]*?<\/div>/g) || [];
+const fullSeg = ctrlSegs.find(s => /stage-sub-btn/.test(s) && /<select/.test(s)) || '';
+const order = [/stage-sub-btn/, /stage-ing-btn/, /<select/, /stage-active-btn/, /stage-actmin/, /stage-note-btn/].map(re => fullSeg.search(re));
+hvOk &= hv('controls line orders subs→ing→equip→active→active-min→notes', !!fullSeg && order.every((v, i) => v >= 0 && (i === 0 || v > order[i - 1])));
+hvOk &= hv('active-minutes is its own control, not appended to the duration', !/stage-dur[^>]*>[^<]*stage-actmin/.test(stageHtml) && /stage-actmin/.test(stageHtml));
+
 allOk &= hvOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
