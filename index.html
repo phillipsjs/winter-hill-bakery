@@ -774,9 +774,28 @@
     color: var(--muted); margin: 0 0 2px; }
   .bs-ings .bs-batch-gap { height: 6px; }
   .bs-container { width: 150px; font-size: 0.78rem; color: var(--muted); white-space: pre-line; vertical-align: top; }
-  .bs-equip-edit { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; white-space: normal; }
-  .bs-equip-row { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; }
-  .bs-equip-lbl { color: var(--muted); min-width: 58px; }
+  .bs-equip-edit { margin-top: 5px; display: flex; flex-direction: column; gap: 2px; white-space: normal; }
+  .bs-equip-row { display: flex; align-items: baseline; gap: 4px; font-size: 0.74rem; }
+  .bs-equip-lbl { color: var(--muted); min-width: 58px; font-size: 0.7rem; text-transform: lowercase; }
+  /* Bake-sheet equipment pickers read as understated inline text — not the boxed card
+     select — so they sit quietly in the minimal bake sheet. A faint border/background
+     appears only on hover/focus to signal they're editable. */
+  .bs-equip-edit .bp-equip-select {
+    border-color: transparent;
+    background-color: transparent;
+    color: var(--accent-dark);
+    font-size: 0.76rem;
+    padding: 1px 16px 1px 4px;
+    border-radius: 5px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%2394a3b8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-position: right 4px center;
+  }
+  .bs-equip-edit .bp-equip-select:hover,
+  .bs-equip-edit .bp-equip-select:focus {
+    border-color: var(--border);
+    background-color: #fff;
+    box-shadow: none;
+  }
   .bs-stage { width: 24px; padding: 2px; display: flex; align-items: center; justify-content: center; border-left: 1px solid #ccc; }
   .bs-stage-label {
     display: block;
