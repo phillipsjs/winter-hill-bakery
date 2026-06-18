@@ -13217,7 +13217,7 @@ ${notesHtml}
       const sub = eventSubstep(ev);
       const ids = getEventRecipeIds(ev);
       const rows = [];
-      const labeled = (label, html) => `<div class="bs-equip-row"><span class="bs-equip-lbl">${label}</span>${html}</div>`;
+      const labeled = (label, html) => `<div class="bs-equip-row">${label ? `<span class="bs-equip-lbl">${label}</span>` : ''}${html}</div>`;
       const eq = (kind, field, options) => { if (ids.length) rows.push(labeled(kind[0].toUpperCase() + kind.slice(1), bakePlanEquipSelect(kind, ids, sharedPrefId(ids, field), options))); };
       // Levain build vessel (per stream + build).
       if (/Levain Build/.test(ev.title)) {
@@ -13227,7 +13227,7 @@ ${notesHtml}
           const build = /Build 1/.test(ev.title) ? 'b1' : 'b2';
           const cur = getLevainContainerPref(stream, build);
           const opts = [['', 'Change container…'], ...lev.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])];
-          rows.push(labeled('Container', `<select class="settings-select bp-equip-select" onchange="onLevainContainerChange(this)" data-levain-key="${stream}" data-build="${build}">`
+          rows.push(labeled('', `<select class="settings-select bp-equip-select" onchange="onLevainContainerChange(this)" data-levain-key="${stream}" data-build="${build}">`
             + opts.map(([v, l]) => `<option value="${escapeAttr(v)}"${cur === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('') + `</select>`));
         }
       }
@@ -13243,7 +13243,7 @@ ${notesHtml}
       if ((bulkStep || chillStep) && ids.length) {
         const tags = chillStep ? ['any'] : ['any', 'loaf'];
         const cont = userContainers.filter(c => tags.includes(c.processTag));
-        if (cont.length) rows.push(labeled('Container', bakePlanEquipSelect('container', ids, sharedPrefId(ids, 'preferredContainerIds'), [['', 'Change container…'], ...cont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])));
+        if (cont.length) rows.push(labeled('', bakePlanEquipSelect('container', ids, sharedPrefId(ids, 'preferredContainerIds'), [['', 'Change container…'], ...cont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])));
       }
       return rows.length ? `<div class="bs-equip-edit no-print">${rows.join('')}</div>` : '';
     };

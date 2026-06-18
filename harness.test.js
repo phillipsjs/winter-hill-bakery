@@ -1290,7 +1290,8 @@ const chillPick = pickerFor(e => api.eventStageType(e) === 'chill');
 hvOk &= hv('bake sheet step with no editable equipment shows no picker', chillPick === '');
 // Bulk-ferment container picker now appears for bagels (and muffins), not just loaves.
 const bagelBulkPick = pickerFor(e => e.process === 'bagel' && api.eventStageType(e) === 'bulk');
-hvOk &= hv('bake sheet bagel bulk ferment offers a container picker', /Container/.test(bagelBulkPick) && /data-kind="container"/.test(bagelBulkPick));
+hvOk &= hv('bake sheet bagel bulk ferment offers a container picker', /data-kind="container"/.test(bagelBulkPick) && /Change container/.test(bagelBulkPick));
+hvOk &= hv('container picker drops the redundant "Container" label', !/bs-equip-lbl">Container</.test(bagelBulkPick));
 const loafBulkPick = pickerFor(e => e.process === 'loaf' && api.eventStageType(e) === 'bulk');
 hvOk &= hv('bake sheet loaf bulk ferment still offers a container picker', /data-kind="container"/.test(loafBulkPick));
 hvOk &= hv('container picker auto option reads "Change container", not "auto"', /Change container/.test(bagelBulkPick) && !/— auto/.test(bagelBulkPick));
