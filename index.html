@@ -1032,10 +1032,10 @@
       <details class="plan-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
-          <h2>Bake order</h2>
+          <h2>Bake Order Preferences</h2>
           <span id="bake-order-summary" class="muted" style="font-size:0.85rem"></span>
         </summary>
-        <p class="muted" style="margin:8px 0 0">When several breads of a type share the oven, choose which bakes first. The earliest-listed bread leads the first bake; decks still fill, so leftovers may share a deck.</p>
+        <p class="muted" style="margin:8px 0 0">Every recipe in your plan, grouped by the deadline it shares. Order the recipes within a deadline to choose which bakes first — the earliest-listed leads its bake (decks still fill, so leftovers may share a deck).</p>
         <div id="bake-order-output" style="margin-top:8px"></div>
       </details>
     </div>
@@ -7761,51 +7761,72 @@ ${notesHtml}
     return vals.every(v => v === vals[0]) ? (vals[0] || '') : '';
   }
 
-  // Bake-order card: when ≥2 breads of a type share the oven, let the baker order which
-  // bakes first (writes recipe.bakeRank, which the deck planner honors).
-  const BAKE_ORDER_TYPES = [
-    { pt: 'sourdough-loaf', label: 'Loaves' },
-    { pt: 'sourdough-muffin', label: 'Muffins' },
-  ];
-  function bakeOrderRecipes(pt) {
-    const list = recipes.filter(r => getProcessType(r) === pt && (plan[r.id] || 0) > 0);
-    const rank = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
-    return list.sort((a, b) => rank(a) - rank(b)); // stable: array order on ties
+  // Bake Order Preferences card: every recipe in the plan, grouped by the deadline it shares
+  // (recipes due at the same time bake together). Reordering writes recipe.bakeRank, which
+  // the deck planner honors so the earliest-listed recipe of a type leads its bake.
+  function bakeOrderGroups() {
+    const rankOf = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
+    const saved = loadRecipeDeadlines();
+    const def = (document.getElementById('deadline-default-input') || {}).value || '';
+    const effDeadline = (r) => saved[r.id] || def || '';
+    const inPlan = recipes.filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) !== 'levain');
+    const byKey = new Map();
+    inPlan.forEach(r => {
+      const key = effDeadline(r) || '__none__';
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(r);
+    });
+    const groups = [...byKey.entries()].map(([key, list]) => ({
+      key,
+      ms: key === '__none__' ? Infinity : new Date(key).getTime(),
+      label: key === '__none__' ? 'No deadline set'
+        : new Date(key).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+      recipes: list.sort((a, b) => rankOf(a) - rankOf(b)), // stable: array order on ties
+    }));
+    groups.sort((a, b) => a.ms - b.ms);
+    return groups;
   }
   function renderBakeOrderPlan() {
     const card = document.getElementById('bake-order-card');
     const out = document.getElementById('bake-order-output');
     const summaryEl = document.getElementById('bake-order-summary');
     if (!card || !out) return;
-    const groups = BAKE_ORDER_TYPES
-      .map(g => ({ ...g, list: bakeOrderRecipes(g.pt) }))
-      .filter(g => g.list.length >= 2); // only meaningful with 2+ sharing the oven
-    if (!groups.length) { card.style.display = 'none'; return; }
+    const groups = bakeOrderGroups();
+    // Only worth showing when at least one deadline has 2+ recipes to order.
+    if (!groups.some(g => g.recipes.length >= 2)) { card.style.display = 'none'; return; }
+    const showHeaders = groups.length > 1;
     out.innerHTML = groups.map(g => {
-      const rows = g.list.map((r, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
+      const single = g.recipes.length < 2;
+      const rows = g.recipes.map((r, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
         <span class="muted" style="width:18px;text-align:right">${i + 1}.</span>
         <span style="flex:1;min-width:120px">${escapeHtml(r.name)}</span>
-        <span class="muted" style="font-size:0.85rem">${plan[r.id]} ${escapeHtml(r.unit || 'loaf')}${plan[r.id] === 1 ? '' : 's'}</span>
+        <span class="muted" style="font-size:0.85rem">${plan[r.id]} ${escapeHtml(r.unit || 'unit')}${plan[r.id] === 1 ? '' : 's'}</span>
         <span class="stage-move">
-          <button type="button" onclick="moveBakeOrder('${escapeAttr(r.id)}','${g.pt}',-1)"${i === 0 ? ' disabled' : ''} title="Bake earlier">▲</button>
-          <button type="button" onclick="moveBakeOrder('${escapeAttr(r.id)}','${g.pt}',1)"${i === g.list.length - 1 ? ' disabled' : ''} title="Bake later">▼</button>
+          <button type="button" onclick="moveBakeOrder('${escapeAttr(r.id)}',-1)"${i === 0 || single ? ' disabled' : ''} title="Bake earlier">▲</button>
+          <button type="button" onclick="moveBakeOrder('${escapeAttr(r.id)}',1)"${i === g.recipes.length - 1 || single ? ' disabled' : ''} title="Bake later">▼</button>
         </span>
       </div>`).join('');
-      const head = groups.length > 1 ? `<div style="font-weight:600;font-size:0.9rem;margin:8px 0 2px">${escapeHtml(g.label)}</div>` : '';
+      const head = showHeaders ? `<div style="font-weight:600;font-size:0.9rem;margin:10px 0 2px">${escapeHtml(g.label)}${single ? ' <span class="muted" style="font-weight:400;font-size:0.8rem">(bakes alone)</span>' : ''}</div>` : '';
       return head + rows;
     }).join('');
-    if (summaryEl) summaryEl.textContent = groups.map(g => `${g.list.length} ${g.label.toLowerCase()}`).join(' · ');
+    if (summaryEl) {
+      const n = groups.reduce((s, g) => s + g.recipes.length, 0);
+      summaryEl.textContent = showHeaders ? `${n} recipes across ${groups.length} deadlines` : `${n} recipes`;
+    }
     card.style.display = '';
   }
-  // Move a recipe earlier/later in its type's bake order, then renumber the whole group so
-  // every bread in it carries an explicit bakeRank (0..n-1).
-  function moveBakeOrder(id, pt, dir) {
-    const list = bakeOrderRecipes(pt);
-    const idx = list.findIndex(r => r.id === id);
+  // Move a recipe earlier/later within its deadline group, then renumber bakeRank across the
+  // whole plan (in display order) so ranks stay monotonic and each type's planner honors it.
+  function moveBakeOrder(id, dir) {
+    const groups = bakeOrderGroups();
+    const g = groups.find(gr => gr.recipes.some(r => r.id === id));
+    if (!g) return;
+    const idx = g.recipes.findIndex(r => r.id === id);
     const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= list.length) return;
-    const t = list[idx]; list[idx] = list[j]; list[j] = t;
-    list.forEach((r, i) => { r.bakeRank = i; });
+    if (j < 0 || j >= g.recipes.length) return;
+    const t = g.recipes[idx]; g.recipes[idx] = g.recipes[j]; g.recipes[j] = t;
+    let k = 0;
+    groups.forEach(gr => gr.recipes.forEach(r => { r.bakeRank = k++; }));
     saveRecipes();
     renderSchedule();
     renderTotals();

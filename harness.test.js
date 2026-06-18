@@ -129,7 +129,7 @@ const exportsTail = `
   __setOvens: (o) => { userOvens = o; },
   __setContainers: (c) => { userContainers = c; },
   pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
-  pickDoughContainer, planBakes, bakeRankMap, moveBakeOrder, renderBakeOrderPlan,
+  pickDoughContainer, planBakes, bakeRankMap, moveBakeOrder, renderBakeOrderPlan, bakeOrderGroups,
   __recipes: () => recipes,
 };`;
 
@@ -1427,11 +1427,28 @@ const loafIds = _br.filter(r => api.getProcessType(r) === 'sourdough-loaf').map(
 if (loafIds.length >= 2) {
   loafIds.forEach(id => { const r = _br.find(x => x.id === id); delete r.bakeRank; });
   api.__setPlan(Object.fromEntries(loafIds.map(id => [id, 6])));
-  api.moveBakeOrder(loafIds[1], 'sourdough-loaf', -1); // bump the 2nd loaf to the front
+  els['deadline-default-input'].value = fmtLocal(tomorrow8); // a shared deadline groups them
+  api.moveBakeOrder(loafIds[1], -1); // bump the 2nd loaf to the front of its deadline group
   const r0 = _br.find(r => r.id === loafIds[1]);
-  hvOk &= hv('moveBakeOrder gives the promoted loaf the earliest bakeRank (0)', r0.bakeRank === 0);
-  hvOk &= hv('moveBakeOrder ranks the whole loaf group (all get a finite bakeRank)', loafIds.every(id => Number.isFinite(Number(_br.find(r => r.id === id).bakeRank))));
+  hvOk &= hv('moveBakeOrder gives the promoted recipe the earliest bakeRank (0)', r0.bakeRank === 0);
+  hvOk &= hv('moveBakeOrder ranks the whole plan (all in-plan recipes get a finite bakeRank)', loafIds.every(id => Number.isFinite(Number(_br.find(r => r.id === id).bakeRank))));
 }
+// Bake Order Preferences groups by deadline: a shared deadline → one group, an override → split.
+const RDK = 'whb-recipe-deadlines-v1';
+const planRecs = api.__recipes().filter(r => api.getProcessType(r) !== 'levain').slice(0, 2);
+if (planRecs.length === 2) {
+  api.__setPlan({ [planRecs[0].id]: 4, [planRecs[1].id]: 4 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RDK);
+  let grp = api.bakeOrderGroups();
+  hvOk &= hv('recipes sharing the default deadline form one Bake Order group', grp.length === 1 && grp[0].recipes.length === 2);
+  const later = new Date(tomorrow8.getTime() + 6 * 3600 * 1000);
+  localStorageStub.setItem(RDK, JSON.stringify({ [planRecs[1].id]: fmtLocal(later) }));
+  grp = api.bakeOrderGroups();
+  hvOk &= hv('a per-recipe deadline override splits into separate Bake Order groups (earliest first)', grp.length === 2 && grp[0].recipes.length === 1 && grp[1].recipes.length === 1 && grp[0].ms < grp[1].ms);
+  localStorageStub.removeItem(RDK);
+}
+hvOk &= hv('the card is titled "Bake Order Preferences"', /<h2>Bake Order Preferences<\/h2>/.test(html));
 
 // Emptying the bake plan must hide ALL equipment cards (regression: the Boiling/pot card
 // lingered after the last boiling recipe was removed).
