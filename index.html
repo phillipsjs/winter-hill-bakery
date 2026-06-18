@@ -284,6 +284,15 @@
     font-size: 0.9rem;
     margin-top: 6px;
   }
+  /* Recipe-editor section headers (Ingredients / Steps & timing / Capacity / Kitchen) —
+     one consistent header level across all four sections. */
+  summary.editor-section {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 4px 0;
+    padding: 2px 0;
+  }
   .empty {
     text-align: center;
     color: var(--muted);
@@ -664,9 +673,17 @@
   .schedule-row[data-stage="done"]::before,   .schedule-event[data-stage="done"]::before,   .stage-group[data-stage="done"]::before   { background: #1F4D2E; color: #fbf6ec; }
   /* Recipe stage editor */
   .stage-editor { display: flex; flex-direction: column; gap: 6px; }
-  .stage-row { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+  .stage-row { display: flex; flex-direction: column; gap: 6px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; }
+  .stage-row.is-expanded { border-color: var(--accent); background: #fbfcfb; }
+  .stage-summary { display: flex; align-items: center; gap: 8px; }
+  .stage-sum-label { flex: 1; min-width: 80px; font-weight: 600; font-size: 0.9rem; }
+  .stage-sum-meta { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+  .stage-sum-flag { cursor: default; }
+  .stage-edit-btn { white-space: nowrap; }
+  .stage-edit-body { display: flex; flex-direction: column; gap: 8px; padding-top: 7px; border-top: 1px dashed var(--border); }
+  .stage-field-lbl { font-size: 0.78rem; color: var(--muted); }
   .stage-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .stage-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 6px; border-top: 1px dashed var(--border); }
+  .stage-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .stage-badge { font-size: 0.72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; text-transform: capitalize; }
   .stage-row input.stage-label { flex: 1; min-width: 110px; }
   .stage-row .stage-dur { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; color: var(--muted); }
@@ -1090,23 +1107,23 @@
       </div>
 
       <hr class="sep" />
-      <div class="row" style="justify-content:space-between;align-items:center;margin:6px 0">
-        <h2 style="font-size:1rem;margin:0">Ingredients</h2>
-        <div style="display:flex;gap:6px;align-items:center">
+      <details id="r-ingredients-settings" open>
+        <summary class="editor-section">Ingredients</summary>
+        <div class="row" style="justify-content:flex-end;align-items:center;gap:6px;margin:6px 0">
           <span class="muted" style="font-size:0.82rem">Enter as:</span>
           <button type="button" id="r-mode-percent-btn" class="tiny" onclick="setRecipeEntryMode('percent')">Baker's %</button>
           <button type="button" id="r-mode-grams-btn" class="secondary tiny" onclick="setRecipeEntryMode('grams')">Grams</button>
         </div>
-      </div>
-      <p class="muted" id="r-mode-hint-percent" style="margin-top:0">Flours sum to 100%. Use the <strong>Tag</strong> column to mark special ingredients: <strong>Anchor flour</strong> (bread, AP — auto-adjusts so flours total 100%), <strong>Specialty flour</strong> (rye, whole grain — set its % yourself), or <strong>Process aid</strong> (a discarded bath additive like boil-water salt/lye — bought, but kept out of the unit weight). Flours are auto-tagged for you. Editing <strong>Weight per unit</strong> scales the whole recipe, keeping every ingredient in proportion. <strong>Link</strong> each ingredient to a kitchen ingredient — that drives costing and adds a milling step when the linked flour needs milling.</p>
-      <p class="muted" id="r-mode-hint-grams" style="margin-top:0;display:none">Enter each ingredient's weight in grams for the whole batch, and set how many units the batch makes above. Use the <strong>Tag</strong> column for anchor/specialty flours and process aids (flours are auto-tagged). Editing <strong>Weight per unit</strong> rescales every ingredient in proportion. We'll convert to baker's percentages on save.</p>
-      <div id="r-ingredients"></div>
-      <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
-      <div id="r-flour-summary" class="muted" style="font-size:0.85rem;margin-top:8px"></div>
+        <p class="muted" id="r-mode-hint-percent" style="margin-top:0">Flours sum to 100%. Use the <strong>Tag</strong> column to mark special ingredients: <strong>Anchor flour</strong> (bread, AP — auto-adjusts so flours total 100%), <strong>Specialty flour</strong> (rye, whole grain — set its % yourself), or <strong>Process aid</strong> (a discarded bath additive like boil-water salt/lye — bought, but kept out of the unit weight). Flours are auto-tagged for you. Editing <strong>Weight per unit</strong> scales the whole recipe, keeping every ingredient in proportion. <strong>Link</strong> each ingredient to a kitchen ingredient — that drives costing and adds a milling step when the linked flour needs milling.</p>
+        <p class="muted" id="r-mode-hint-grams" style="margin-top:0;display:none">Enter each ingredient's weight in grams for the whole batch, and set how many units the batch makes above. Use the <strong>Tag</strong> column for anchor/specialty flours and process aids (flours are auto-tagged). Editing <strong>Weight per unit</strong> rescales every ingredient in proportion. We'll convert to baker's percentages on save.</p>
+        <div id="r-ingredients"></div>
+        <button class="secondary tiny" onclick="addIngredientRow()" style="margin-top:6px">+ Add ingredient</button>
+        <div id="r-flour-summary" class="muted" style="font-size:0.85rem;margin-top:8px"></div>
+      </details>
 
       <hr class="sep" />
       <details id="r-stages-settings" open>
-        <summary>Steps &amp; timing <span class="muted" style="font-size:0.85rem">(the recipe's stages — reorder, retime, add or remove)</span></summary>
+        <summary class="editor-section">Steps &amp; timing <span class="muted" style="font-size:0.85rem">(reorder, retime, add or remove)</span></summary>
         <div id="r-stages-list" class="stage-editor"></div>
         <div class="row" style="gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
           <select id="r-stage-add-type" class="settings-select" style="flex:none;width:auto"></select>
@@ -1116,7 +1133,7 @@
       </details>
 
       <details id="r-oven-settings">
-        <summary>Capacity &amp; batching <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
+        <summary class="editor-section">Capacity &amp; batching <span class="muted" style="font-size:0.85rem">(leave blank to use process defaults)</span></summary>
         <div class="scheduler-overrides">
           <div id="r-capacity-mixer"></div>
           <div class="row" id="r-batch-size-row" style="display:none"><label style="width:160px">Batch size</label><input type="number" id="r-batch-size" min="1" step="1" placeholder="auto" style="width:90px;flex:none" /> <span class="muted">units/batch — blank auto-fits</span></div>
@@ -1131,7 +1148,7 @@
       </details>
 
       <details id="r-equipment-settings">
-        <summary>Kitchen equipment <span class="muted" style="font-size:0.85rem">(optional preferences)</span></summary>
+        <summary class="editor-section">Kitchen equipment <span class="muted" style="font-size:0.85rem">(optional preferences)</span></summary>
         <div id="r-equipment-content" class="scheduler-overrides"></div>
       </details>
 
@@ -8454,6 +8471,7 @@ ${notesHtml}
     }
     // Changing the process seeds the default stage list for that process.
     _editorStages = isLevain ? [] : stageTemplateFor(processType);
+    _expandedStageIds.clear();
     renderStageEditor();
     const prefContainerIds = Array.from(document.querySelectorAll('.r-pref-container:checked')).map(function(e) { return e.value; });
     const prefBannetonIds = Array.from(document.querySelectorAll('.r-pref-banneton:checked')).map(function(e) { return e.value; });
@@ -8492,6 +8510,10 @@ ${notesHtml}
   // The editable stage list is the source of truth in the editor; saveRecipe derives
   // the flat scheduler params from it via paramsFromStages().
   let _editorStages = [];
+  // Which steps are expanded into their full editor (by stage id). Collapsed steps show a
+  // compact summary; the rest of the section stays uncluttered.
+  let _expandedStageIds = new Set();
+  function stageRowId(s) { if (!s.id) s.id = newStageId(); return s.id; }
   const STAGE_VESSEL_OPTIONS = [['', '—'], ['bulk-container', 'Dough tub'], ['banneton', 'Banneton'], ['pan', 'Pan'], ['sheet', 'Sheet / tray'], ['oven', 'Oven']];
   const STAGE_VESSEL_TYPES = ['mix', 'autolyse', 'bulk', 'preshape', 'bench', 'shape', 'proof', 'chill', 'warmup', 'boil', 'bake', 'cool'];
 
@@ -8588,34 +8610,49 @@ ${notesHtml}
         const col = STAGE_COLORS[pal.stage] || STAGE_COLORS.prep;
         const vessel = stageVesselSelectHtml(s, i);
         const locked = s.type === 'mill'; // ingredient-controlled — appears when a flour needs milling
+        const expanded = _expandedStageIds.has(stageRowId(s));
         const subBtn = substepsForStage(s)
           ? `<button type="button" id="stage-sub-btn-${i}" class="stage-sub-btn tiny secondary" onclick="toggleStageSubPanel(${i})" title="Expand to add notes on this step's sub-steps">${subToggleLabel(i)}</button>`
           : '';
-        return `<div class="stage-row">
-          <div class="stage-main">
+        // Compact summary chips so a collapsed step reads at a glance.
+        const chips = [`<span class="stage-sum-dur">${escapeHtml(stageDurationSummary(s))}</span>`];
+        chips.push(`<span class="stage-sum-flag" title="${stageIsActive(s) ? 'Hands-on (active)' : 'Unattended (passive)'}">${stageIsActive(s) ? '⚡' : '💤'}</span>`);
+        if ((s.ings || []).length) chips.push(`<span class="stage-sum-flag" title="${escapeAttr(s.ings.join(', '))}">🧂${s.ings.length}</span>`);
+        if ((s.note || '').trim()) chips.push(`<span class="stage-sum-flag" title="${escapeAttr(s.note)}">📝</span>`);
+        const delOrLock = locked
+          ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
+          : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`;
+        return `<div class="stage-row${expanded ? ' is-expanded' : ''}">
+          <div class="stage-summary">
             <span class="stage-move">
               <button type="button" onclick="stageEditorMove(${i},-1)"${i === 0 ? ' disabled' : ''} title="Move up">▲</button>
               <button type="button" onclick="stageEditorMove(${i},1)"${i === _editorStages.length - 1 ? ' disabled' : ''} title="Move down">▼</button>
             </span>
             <span class="stage-badge" style="background:${col.bg};color:${col.fg}">${escapeHtml(s.type)}</span>
-            <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
-            ${_stageDurationHtml(s, i)}
-            ${locked
-              ? '<span class="stage-locked muted" title="This step is added automatically because an ingredient needs milling. Remove the milled flour to drop it.">🔒 auto</span>'
-              : `<button type="button" class="stage-del danger tiny" onclick="stageEditorRemove(${i})" title="Remove step">✕</button>`}
+            <span class="stage-sum-label">${escapeHtml(s.label || pal.label)}</span>
+            <span class="stage-sum-meta">${chips.join('')}</span>
+            <button type="button" class="stage-edit-btn tiny${expanded ? '' : ' secondary'}" onclick="toggleStageExpand(${i})" title="Show or hide this step's settings">${expanded ? 'Done' : 'Edit'}</button>
+            ${delOrLock}
           </div>
-          <div class="stage-controls">
-            ${subBtn}
-            <button type="button" id="stage-ing-btn-${i}" class="stage-ing-btn tiny${(s.ings || []).length ? '' : ' secondary'}" onclick="toggleStageIngPanel(${i})" title="Tag which ingredients are used at this step (shown in the bake sheet)">🧂 ${(s.ings || []).length ? (s.ings.length + ' ing') : 'ingredients'}</button>
-            ${vessel}
-            <button type="button" class="stage-active-btn tiny${stageIsActive(s) ? '' : ' secondary'}" onclick="toggleStageActive(${i})" title="${stageIsActive(s) ? 'Hands-on step — the scheduler keeps it inside kitchen hours and warns if it overlaps other active work. Click to mark passive.' : 'Passive step — runs unattended (and may fall outside kitchen hours). Click to mark hands-on.'}">${stageIsActive(s) ? '⚡ active' : '💤 passive'}</button>
-            ${_stageActiveMinControl(s, i)}
-            <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
+          <div class="stage-edit-body"${expanded ? '' : ' style="display:none"'}>
+            <div class="stage-main">
+              <label class="stage-field-lbl">Name</label>
+              <input class="stage-label" type="text" value="${escapeAttr(s.label || pal.label)}" oninput="stageEditorSetLabel(${i},this.value)" />
+              ${_stageDurationHtml(s, i)}
+            </div>
+            <div class="stage-controls">
+              ${subBtn}
+              <button type="button" id="stage-ing-btn-${i}" class="stage-ing-btn tiny${(s.ings || []).length ? '' : ' secondary'}" onclick="toggleStageIngPanel(${i})" title="Tag which ingredients are used at this step (shown in the bake sheet)">🧂 ${(s.ings || []).length ? (s.ings.length + ' ing') : 'ingredients'}</button>
+              ${vessel}
+              <button type="button" class="stage-active-btn tiny${stageIsActive(s) ? '' : ' secondary'}" onclick="toggleStageActive(${i})" title="${stageIsActive(s) ? 'Hands-on step — the scheduler keeps it inside kitchen hours and warns if it overlaps other active work. Click to mark passive.' : 'Passive step — runs unattended (and may fall outside kitchen hours). Click to mark hands-on.'}">${stageIsActive(s) ? '⚡ active' : '💤 passive'}</button>
+              ${_stageActiveMinControl(s, i)}
+              <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
+            </div>
+            ${(s.note || '').trim() ? `<span class="stage-note-text">📝 ${escapeHtml(s.note)}</span>` : ''}
+            ${(s.ings || []).length ? `<span class="stage-ing-text">🧂 ${escapeHtml(s.ings.join(', '))}</span>` : ''}
+            <div class="stage-ing-panel" id="stage-ing-panel-${i}" style="display:none"></div>
+            ${substepsForStage(s) ? `<div class="stage-sub-panel" id="stage-sub-panel-${i}" style="display:none"></div>` : ''}
           </div>
-          ${(s.note || '').trim() ? `<span class="stage-note-text">📝 ${escapeHtml(s.note)}</span>` : ''}
-          ${(s.ings || []).length ? `<span class="stage-ing-text">🧂 ${escapeHtml(s.ings.join(', '))}</span>` : ''}
-          <div class="stage-ing-panel" id="stage-ing-panel-${i}" style="display:none"></div>
-          ${substepsForStage(s) ? `<div class="stage-sub-panel" id="stage-sub-panel-${i}" style="display:none"></div>` : ''}
         </div>`;
       }).join('');
     }
@@ -8694,12 +8731,35 @@ ${notesHtml}
   }
   function stageEditorAdd() {
     const sel = document.getElementById('r-stage-add-type');
-    _editorStages.push(_defaultStageOfType(sel ? sel.value : 'step'));
+    const stage = _defaultStageOfType(sel ? sel.value : 'step');
+    _editorStages.push(stage);
+    _expandedStageIds.add(stageRowId(stage)); // open a freshly-added step so it can be configured
     renderStageEditor();
+  }
+  // Expand/collapse a step's full editor (the summary stays; the edit body shows/hides).
+  function toggleStageExpand(i) {
+    const s = _editorStages[i];
+    if (!s) return;
+    const id = stageRowId(s);
+    if (_expandedStageIds.has(id)) _expandedStageIds.delete(id); else _expandedStageIds.add(id);
+    renderStageEditor();
+  }
+  // A short, uncluttered description of a step's timing for its summary line.
+  function stageDurationSummary(s) {
+    const d = (s && s.duration) || {};
+    const fmtMin = (m) => { m = Number(m) || 0; return m >= 60 ? `${(m / 60) % 1 === 0 ? (m / 60) : (m / 60).toFixed(1)} hr` : `${Math.round(m)} min`; };
+    switch (d.kind) {
+      case 'perUnit': return `${Number(d.minPerUnit) || 0} min/unit`;
+      case 'countInterval': return `${Number(d.count) || 0}× every ${Number(d.intervalMin) || 0} min`;
+      case 'range': return d.auto ? 'auto window' : `${Number(d.minHr) || 0}–${Number(d.maxHr) || 0} hr`;
+      case 'anchored': return `${fmtMin(d.min)} · ${fmtTemp(s.tempF)}`;
+      default: return fmtMin(d.min);
+    }
   }
   function stageEditorReset() {
     const pt = document.getElementById('r-process-type').value || 'sourdough-loaf';
     _editorStages = stageTemplateFor(pt);
+    _expandedStageIds.clear();
     renderStageEditor();
   }
   function editStageNote(i) {
@@ -8993,6 +9053,7 @@ ${notesHtml}
     if (newEqEl) newEqEl.style.display = '';
     renderRecipeEquipment('sourdough-loaf', {});
     _editorStages = stageTemplateFor('sourdough-loaf');
+    _expandedStageIds.clear();
     renderStageEditor();
     applyOverridePlaceholders('sourdough-loaf');
     // start with a couple of common rows (default process is sourdough loaf → include levain)
@@ -9051,6 +9112,7 @@ ${notesHtml}
     _editorStages = isLevain ? []
       : (Array.isArray(r.stages) && r.stages.length ? r.stages.map(_cloneStage) : stagesFromRecipe(r));
     migrateStageEquipmentVessels(_editorStages, r); // reflect saved oven/pot on the bake/boil rows
+    _expandedStageIds.clear(); // open a recipe with every step collapsed to its summary
     renderStageEditor();
     applyOverridePlaceholders(processType);
     document.getElementById('recipe-editor').style.display = '';

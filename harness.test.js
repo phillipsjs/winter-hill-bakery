@@ -111,7 +111,7 @@ const exportsTail = `
   recipeStageNotesForEvent, recipeStageNotesHtml, eventStageType, eventSubstep, buildRecipeNotesByEvent,
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange,
-  stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove,
+  stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove, toggleStageExpand, stageDurationSummary,
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
   annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
@@ -1428,6 +1428,16 @@ const fullSeg = ctrlSegs.find(s => /stage-sub-btn/.test(s) && /<select/.test(s))
 const order = [/stage-sub-btn/, /stage-ing-btn/, /<select/, /stage-active-btn/, /stage-actmin/, /stage-note-btn/].map(re => fullSeg.search(re));
 hvOk &= hv('controls line orders subs→ing→equip→active→active-min→notes', !!fullSeg && order.every((v, i) => v >= 0 && (i === 0 || v > order[i - 1])));
 hvOk &= hv('active-minutes is its own control, not appended to the duration', !/stage-dur[^>]*>[^<]*stage-actmin/.test(stageHtml) && /stage-actmin/.test(stageHtml));
+// Each step shows a compact summary (label + duration + Edit), collapsed by default; the
+// full editor body is hidden until you click Edit.
+hvOk &= hv('each step shows a summary with an Edit button', /class="stage-summary"/.test(stageHtml) && /class="stage-edit-btn[^"]*"[^>]*>Edit</.test(stageHtml));
+hvOk &= hv('the summary shows a duration chip', /class="stage-sum-dur"/.test(stageHtml));
+hvOk &= hv('steps are collapsed by default (edit body hidden)', /class="stage-edit-body" style="display:none"/.test(stageHtml) && !/is-expanded/.test(stageHtml));
+api.toggleStageExpand(0);
+const expandedHtml = getEl('r-stages-list').innerHTML;
+hvOk &= hv('clicking Edit expands that step (is-expanded + Done, body shown)', /class="stage-row is-expanded"/.test(expandedHtml) && /class="stage-edit-btn[^"]*"[^>]*>Done</.test(expandedHtml));
+hvOk &= hv('stageDurationSummary is concise', api.stageDurationSummary({ duration: { kind: 'fixed', min: 120 } }) === '2 hr' && api.stageDurationSummary({ duration: { kind: 'perUnit', minPerUnit: 2 } }) === '2 min/unit' && api.stageDurationSummary({ duration: { kind: 'range', auto: true } }) === 'auto window');
+api.toggleStageExpand(0); // collapse again, leave state clean
 
 // --- Shaping weight: bolded on the bake sheet, surfaced in the schedule hover ---
 hvOk &= hv('boldUnitWeightHtml bolds "N g each"', api.boldUnitWeightHtml('divide into 138 g each') === 'divide into <strong>138 g each</strong>');
