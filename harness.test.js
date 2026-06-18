@@ -1280,6 +1280,7 @@ const evsBs = api.__sr().events;
 const pickerFor = (pred) => { const e = evsBs.find(pred); return e ? Hb.getEventEquipPicker(e) : '__noevent__'; };
 const mixPick = pickerFor(e => api.eventStageType(e) === 'mix');
 hvOk &= hv('bake sheet mix step offers a mixer picker, marked no-print', /bs-equip-edit no-print/.test(mixPick) && /Mixer/.test(mixPick) && /bp-equip-select/.test(mixPick));
+hvOk &= hv('a mix step with a mixer does NOT also offer a container picker (the bowl is the container)', !/data-kind="container"/.test(mixPick));
 const bakePick = pickerFor(e => /^Bake /.test(e.title));
 hvOk &= hv('bake sheet bake step offers an oven picker (2+ ovens)', /Oven/.test(bakePick) && /data-kind="oven"/.test(bakePick));
 const boilPick = pickerFor(e => api.eventStageType(e) === 'boil' || (api.eventSubstep(e) && api.eventSubstep(e).type === 'boil'));

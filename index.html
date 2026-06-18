@@ -13237,8 +13237,10 @@ ${notesHtml}
       // Dough container — shown wherever the dough actually sits in one of the kitchen's
       // containers: the bulk-ferment tub for loaf/muffin/bagel pre-shape steps, and the
       // cold-proof container for simple/enriched. (Loaf cold proof uses bannetons, not a
-      // tub, so it's excluded here.)
-      const bulkStep = ['loaf', 'muffin', 'bagel'].includes(ev.process) && ['autolyse', 'mix', 'fold', 'bulk'].includes(evType);
+      // tub, so it's excluded here.) A mix step with a mixer needs no container picker — the
+      // mixing bowl IS the container; the tub is still selectable on the bulk-ferment step.
+      const mixerShown = evType === 'mix' && userMixers.length;
+      const bulkStep = ['loaf', 'muffin', 'bagel'].includes(ev.process) && ['autolyse', 'mix', 'fold', 'bulk'].includes(evType) && !mixerShown;
       const chillStep = ['simple', 'enriched'].includes(ev.process) && evType === 'chill';
       if ((bulkStep || chillStep) && ids.length) {
         const tags = chillStep ? ['any'] : ['any', 'loaf'];
