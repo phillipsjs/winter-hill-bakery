@@ -876,6 +876,7 @@
   .schedule-tooltip .tt-sec { margin-top: 6px; }
   .schedule-tooltip .tt-h { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--muted); margin-bottom: 2px; }
+  .schedule-tooltip .tt-weight div:last-child { font-size: 0.95rem; color: var(--accent-dark); }
   .schedule-tooltip .tt-ings table { width: 100%; border-collapse: collapse; }
   .schedule-tooltip .tt-ings td { padding: 1px 0; }
   .schedule-tooltip .tt-ings td.num { text-align: right; color: var(--muted); padding-left: 10px; white-space: nowrap; }
@@ -2282,9 +2283,16 @@
   // ingredients) plus any note. Returns '' when there's nothing extra to show.
   function hoverHtmlFor(ev, H) {
     const parts = [];
-    const recipes = H.getEventRecipes(ev);
-    if (recipes.length && H.allRecipeNames.length > 1)
-      parts.push(`<div class="tt-recipes">${recipes.map(n => `<span class="tt-tag">${escapeHtml(n)}</span>`).join('')}</div>`);
+    const recipeNames = H.getEventRecipes(ev);
+    if (recipeNames.length && H.allRecipeNames.length > 1)
+      parts.push(`<div class="tt-recipes">${recipeNames.map(n => `<span class="tt-tag">${escapeHtml(n)}</span>`).join('')}</div>`);
+    // Shaping is when the baker divides the dough, so surface the per-unit weight up front.
+    const stype = eventStageType(ev);
+    if (stype === 'shape' || stype === 'preshape') {
+      const objs = recipeNames.map(n => recipes.find(r => r.name === n)).filter(Boolean);
+      const wstr = perUnitDoughDetail(objs);
+      if (wstr) parts.push(`<div class="tt-sec tt-weight"><div class="tt-h">Unit weight</div><div><strong>${escapeHtml(wstr)}</strong></div></div>`);
+    }
     const equip = H.getEventEquipment(ev);
     if (equip) parts.push(`<div class="tt-sec"><div class="tt-h">Equipment</div><div>${escapeHtml(equip).replace(/\n/g, '<br>')}</div></div>`);
     const ing = H.renderIngCol(ev);
@@ -3138,6 +3146,12 @@
     if (!list.length) return '';
     if (list.length === 1) return `${formatGrams(list[0].loafWeight)} ${unitWord ? `per ${unitWord}` : 'each'}`;
     return list.map(r => `${formatGrams(r.loafWeight)} per ${r.name}`).join(' · ');
+  }
+  // Bold the per-unit weight phrases ("123 g each", "123 g per pan/<recipe>") inside an
+  // already-HTML-escaped detail string — used on the bake sheet's shaping steps, where the
+  // divide weight is the number that matters. Stops each match at a middot or end of string.
+  function boldUnitWeightHtml(escaped) {
+    return (escaped || '').replace(/(\d[\d.]*\s*g\s+(?:each|per\s+[^·<]+?))(?=\s*(?:·|$|<))/g, '<strong>$1</strong>');
   }
 
   // --- Ingredient weight roles. Not every ingredient adds mass to the finished unit, and
@@ -13323,6 +13337,11 @@ ${notesHtml}
         }
         const titleText = bsTitle(ev);
         const detailText = bsDetail(ev);
+        // At shaping, the per-unit weight is the critical number — bold it in the detail.
+        const stype = eventStageType(ev);
+        const detailHtml = detailText
+          ? ((stype === 'shape' || stype === 'preshape') ? boldUnitWeightHtml(escapeHtml(detailText)) : escapeHtml(detailText))
+          : '';
         const recipeNames = getEventRecipes(ev);
         const recipesLabel = (allRecipeNames.length > 1 && recipeNames.length)
           ? `<div class="bs-recipes">${recipeNames.map(n => `<span class="bs-recipe-tag">${escapeHtml(n)}</span>`).join('')}</div>`
@@ -13335,7 +13354,7 @@ ${notesHtml}
           <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}${recipesLabel}</td>
           <td class="bs-step"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
             <strong>${escapeHtml(titleText)}</strong>
-            ${detailText ? `<div class="bs-detail">${escapeHtml(detailText)}</div>` : ''}
+            ${detailHtml ? `<div class="bs-detail">${detailHtml}</div>` : ''}
             ${recipeNotesHtml}
             ${noteHtml}
           </td>`;

@@ -117,6 +117,7 @@ const exportsTail = `
   annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
   detectFlourType, ingredientIsFlour,
   toppingIngredientNames, ingredientWeightRole, doughSumPct, toppingGramsPerUnit, finalUnitWeight,
+  perUnitDoughDetail, boldUnitWeightHtml,
   __setRecipes: (r) => { recipes = r; },
   __editorStages: () => _editorStages,
   __sr: () => _scheduleResult,
@@ -1388,6 +1389,22 @@ const fullSeg = ctrlSegs.find(s => /stage-sub-btn/.test(s) && /<select/.test(s))
 const order = [/stage-sub-btn/, /stage-ing-btn/, /<select/, /stage-active-btn/, /stage-actmin/, /stage-note-btn/].map(re => fullSeg.search(re));
 hvOk &= hv('controls line orders subs→ing→equip→active→active-min→notes', !!fullSeg && order.every((v, i) => v >= 0 && (i === 0 || v > order[i - 1])));
 hvOk &= hv('active-minutes is its own control, not appended to the duration', !/stage-dur[^>]*>[^<]*stage-actmin/.test(stageHtml) && /stage-actmin/.test(stageHtml));
+
+// --- Shaping weight: bolded on the bake sheet, surfaced in the schedule hover ---
+hvOk &= hv('boldUnitWeightHtml bolds "N g each"', api.boldUnitWeightHtml('divide into 138 g each') === 'divide into <strong>138 g each</strong>');
+hvOk &= hv('boldUnitWeightHtml bolds "N g per pan" / per recipe, splitting on middot', api.boldUnitWeightHtml('705 g per pan').includes('<strong>705 g per pan</strong>') && api.boldUnitWeightHtml('300 g per Sesame · 110 g per Plain') === '<strong>300 g per Sesame</strong> · <strong>110 g per Plain</strong>');
+hvOk &= hv('boldUnitWeightHtml leaves non-weight text alone', api.boldUnitWeightHtml('2 min × 12 bagels = 24 min total') === '2 min × 12 bagels = 24 min total');
+seedPlan({ [SEED.bagel]: 12 }); api.__setPlan({ [SEED.bagel]: 12 });
+els['deadline-default-input'].value = fmtLocal(tomorrow8);
+['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+api.renderSchedule();
+const Hh = api.buildBakeSheetHelpers();
+const shapeEv = api.__sr().events.find(e => e.process === 'bagel' && /^Shape bagels/.test(e.title));
+const hoverHtml = shapeEv ? api.hoverHtmlFor(shapeEv, Hh) : '';
+hvOk &= hv('schedule hover on a shaping step shows the unit weight', /Unit weight/.test(hoverHtml) && /<strong>\d+\s*g\s+each<\/strong>/.test(hoverHtml));
+const mixEv = api.__sr().events.find(e => e.process === 'bagel' && /^Mix/.test(e.title));
+hvOk &= hv('schedule hover on a non-shaping step has no Unit weight section', mixEv && !/Unit weight/.test(api.hoverHtmlFor(mixEv, Hh)));
 
 allOk &= hvOk;
 
