@@ -1080,7 +1080,7 @@
       </div>
       <div class="row" id="r-weight-row">
         <label id="r-weight-label" style="width:120px">Weight per <span id="r-unit-label">loaf</span></label>
-        <input type="number" id="r-weight" min="0" step="10" oninput="updateRecipeEditorCostDisplay()" />
+        <input type="number" id="r-weight" min="0" step="10" oninput="onUnitWeightInput()" onchange="onUnitWeightCommit()" title="Per-unit weight. Editing it scales the whole recipe up or down, keeping every ingredient in proportion." />
         <span class="muted">grams</span>
       </div>
       <div class="row" id="r-batch-yield-row" style="display:none">
@@ -13555,6 +13555,10 @@ ${notesHtml}
         s = '<span style="color:var(--danger)">Mark at least one ingredient as flour so we can convert to baker\'s %.</span>';
       } else {
         const doughPerUnit = Math.round(doughTotal / yld);
+        // Keep the per-unit weight box in sync with the grams entered (unless the user is
+        // editing it right now — onUnitWeightInput drives the rescale in that case).
+        const wEl = document.getElementById('r-weight');
+        if (wEl && document.activeElement !== wEl) wEl.value = doughPerUnit;
         s = 'Flour: <strong>' + Math.round(flourTotal) + ' g</strong> · Dough: <strong>' + Math.round(doughTotal) + ' g</strong> · Per ' + escapeHtml(unit) + ': <strong>' + doughPerUnit + ' g</strong>';
         if (liquidTotal > 0) s += ' · Hydration: ' + Math.round((liquidTotal / flourTotal) * 100) + '%';
         if (toppingTotal > 0) s += ' · + topping ' + Math.round(toppingTotal / yld) + ' g → <strong>' + Math.round((doughTotal + toppingTotal) / yld) + ' g</strong>/' + escapeHtml(unit);
@@ -13594,6 +13598,32 @@ ${notesHtml}
   function currentViewYield() {
     const el = document.getElementById('r-batch-yield');
     return Math.max(1, Math.round(Number(el ? el.value : 1) || 1));
+  }
+  // The per-unit weight box. In percent mode the value IS loafWeight and amounts are
+  // flour-relative, so proportions are preserved automatically — just refresh live. In grams
+  // mode the rescale waits for commit (onUnitWeightCommit) so a partially-typed value can't
+  // momentarily collapse tiny ingredients to zero.
+  function onUnitWeightInput() {
+    if (recipeEntryMode === 'percent') updateFlourSummary();
+    updateRecipeEditorCostDisplay();
+  }
+  // Commit (blur/Enter): in grams mode, scale every ingredient's grams so the per-unit dough
+  // weight hits the entered target, keeping all proportions the same.
+  function onUnitWeightCommit() {
+    if (recipeEntryMode !== 'grams') return;
+    const rows = readEditorRows();
+    const yld = currentViewYield();
+    const doughTotal = rows.reduce((sum, r) => sum + (r.role === 'dough' ? r.amount : 0), 0);
+    const target = Number(document.getElementById('r-weight').value) || 0;
+    if (doughTotal > 0 && target > 0) {
+      const scale = (target * yld) / doughTotal;
+      document.querySelectorAll('#r-ingredients .ing-pct').forEach(inp => {
+        const v = Number(inp.value);
+        if (Number.isFinite(v) && v !== 0) inp.value = round2(v * scale);
+      });
+    }
+    updateFlourSummary();
+    updateRecipeEditorCostDisplay();
   }
   // The yield input was edited directly: rescale and (re)define the remembered batch.
   function onBatchYieldChange() {
@@ -13674,8 +13704,9 @@ ${notesHtml}
 
     recipeEntryMode = mode;
     if (mode === 'grams') { _editorViewYield = yld; updateBatchToggleLabel(); }
-    // Toggle UI chrome.
-    document.getElementById('r-weight-row').style.display = mode === 'grams' ? 'none' : '';
+    // Toggle UI chrome. The per-unit weight box stays visible in both modes (in grams mode
+    // it's kept in sync by updateFlourSummary and rescales the whole recipe when edited).
+    document.getElementById('r-weight-row').style.display = '';
     document.getElementById('r-batch-yield-row').style.display = mode === 'grams' ? '' : 'none';
     document.getElementById('r-mode-hint-percent').style.display = mode === 'grams' ? 'none' : '';
     document.getElementById('r-mode-hint-grams').style.display = mode === 'grams' ? '' : 'none';

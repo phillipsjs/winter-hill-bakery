@@ -1362,6 +1362,11 @@ hvOk &= hv('a pantry link to a non-flour item overrides a flour-ish name', api.i
 // The per-ingredient role controls are highlight-when-selected toggle buttons (Anchor flour
 // / Process aid), not checkboxes.
 hvOk &= hv('ingredient role controls are toggle buttons (Anchor flour / Process aid), not checkboxes', /ing-anchor-btn tiny[^"]*"[^>]*onclick="onAnchorToggle\(this\)"/.test(html) && /ing-aid-btn tiny[^"]*"[^>]*onclick="onProcessAidToggle\(this\)"/.test(html) && !/ing-anchor-cb|ing-unit-cb|onUnitWeightToggle/.test(html));
+// The per-unit weight box rescales the recipe proportionally: live feedback on input, the
+// grams-mode rescale on commit (so a partial value can't zero out tiny ingredients).
+hvOk &= hv('per-unit weight box is wired to rescale the recipe (oninput + onchange)', /id="r-weight"[^>]*oninput="onUnitWeightInput\(\)"[^>]*onchange="onUnitWeightCommit\(\)"/.test(html));
+hvOk &= hv('grams-mode commit scales each ingredient so per-unit dough hits the target', /function onUnitWeightCommit\(\)[\s\S]*?const scale = \(target \* yld\) \/ doughTotal;[\s\S]*?\.ing-pct[\s\S]*?round2\(v \* scale\)/.test(scriptBody));
+hvOk &= hv('per-unit weight box stays visible in both entry modes', /document\.getElementById\('r-weight-row'\)\.style\.display = '';\s*\n\s*document\.getElementById\('r-batch-yield-row'\)\.style\.display = mode === 'grams'/.test(scriptBody));
 
 // --- Ingredient weight roles: process aids + toppings vs unit weight ---
 // A bagel: 100 g flour-equivalent dough, 5% sesame topping, plus boil-water salt & lye that
