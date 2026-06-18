@@ -11147,10 +11147,12 @@ ${notesHtml}
     events.push({
       time: addMinutes(weighEndTime, -weighDuration),
       title: 'Weigh ingredients',
-      detail: loafRecipes.length > 1
+      detail: (loafRecipes.length > 1
         ? `${weighDuration} min active · ${loafRecipes.length} recipes`
-        : `${weighDuration} min active`,
+        : `${weighDuration} min active`)
+        + (numContainers > 1 ? ` · weigh per batch (${numContainers} containers)` : ''),
       process: 'loaf',
+      mixBatchContents: loafBatchContents,
     });
     const autolyseRestMin = Math.max(0, loafAgg.autolyseMin - SCHED.AUTOLYSE_ACTIVE_MIN);
     events.push({
@@ -11498,10 +11500,12 @@ ${notesHtml}
       events.push({
         time: addMinutes(muffinWeighEnd, -muffinWeighDuration),
         title: 'Weigh ingredients',
-        detail: muffinRecipes.length > 1
+        detail: (muffinRecipes.length > 1
           ? `${muffinWeighDuration} min active · ${muffinRecipes.length} recipes`
-          : `${muffinWeighDuration} min active`,
+          : `${muffinWeighDuration} min active`)
+          + (muffinMixBatches > 1 ? ` · weigh per batch (${muffinMixBatches} mixer loads)` : ''),
         process: 'muffin',
+        mixBatchCount: muffinMixBatches > 1 ? muffinMixBatches : undefined,
       });
       const muffinBulkHrLabel = (muffinAgg.bulkMin / 60).toFixed(muffinAgg.bulkMin % 60 === 0 ? 0 : 1);
       const muffinMixerName = (muffinRecipes.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
@@ -11592,10 +11596,12 @@ ${notesHtml}
       events.push({
         time: addMinutes(bagelWeighEnd, -bagelWeighDuration),
         title: 'Weigh ingredients',
-        detail: bagelRecipes.length > 1
+        detail: (bagelRecipes.length > 1
           ? `${bagelWeighDuration} min active · ${bagelRecipes.length} recipes`
-          : `${bagelWeighDuration} min active`,
+          : `${bagelWeighDuration} min active`)
+          + (bagelMixBatches > 1 ? ` · weigh per batch (${bagelMixBatches} mixer loads)` : ''),
         process: 'bagel',
+        mixBatchCount: bagelMixBatches > 1 ? bagelMixBatches : undefined,
       });
       const bagelBulkHrLabel = (bagelAgg.bulkMin / 60).toFixed(bagelAgg.bulkMin % 60 === 0 ? 0 : 1);
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
@@ -13276,7 +13282,17 @@ ${notesHtml}
         ? `<div class="bs-ing-warn">⚠ ${escapeHtml(ings.fallbackRecipes.join(', '))} ${ings.fallbackRecipes.length > 1 ? 'use' : 'uses'} default ingredients here — not all recipes tag this step.</div>`
         : '';
       const batched = (ev.mixBatchContents || ev.mixBatchCount) ? batchedBlocks(ev, ings) : null;
-      if (batched) return warn + batched;
+      if (batched) {
+        // For the weigh step, lead with a note that the amounts shown are per batch (the
+        // recipe is split across multiple proofing containers or mixer loads).
+        let lead = '';
+        if (/Weigh ingredients/.test(ev.title || '')) {
+          const n = (ev.mixBatchContents && ev.mixBatchContents.length) || ev.mixBatchCount;
+          const what = ev.mixBatchContents ? `${n} containers` : `${n} mixer loads`;
+          lead = `<div class="bs-batch-note">Amounts are per batch — split across ${what}.</div>`;
+        }
+        return warn + lead + batched;
+      }
       if (ings.type === 'simple') return warn + ingTableHtml(ings.rows);
       // byRecipe
       return warn + ings.recipes.map(r => recipeBlockHtml(r.name, r.count, r.ingredients)).join('');
@@ -13321,8 +13337,9 @@ ${notesHtml}
       const lines = [];
       // Per-container mix steps: list one container per batch, numbered to line up
       // with the "Batch N" ingredient sets. The contents live in the ingredients
-      // column, so show only the vessel here.
-      if (Array.isArray(ev.mixBatchContents) && ev.mixBatchContents.length > 1) {
+      // column, so show only the vessel here. (Weighing uses a scale, not the
+      // proofing containers, so it skips this even though it carries the batch split.)
+      if (!/Weigh ingredients/.test(ev.title || '') && Array.isArray(ev.mixBatchContents) && ev.mixBatchContents.length > 1) {
         ev.mixBatchContents.forEach((b, i) => lines.push(`Batch ${i + 1}: ${b.label}`));
       } else {
         const cont = getEventContainer(ev);
@@ -13430,6 +13447,9 @@ ${notesHtml}
     // container so the container (Equipment) lines up exactly with its ingredient set.
     // Returns one {equipHtml, ingHtml} per batch, or null when the step isn't split.
     const getEventBatchRows = ev => {
+      // Weighing happens on a scale, not in the proofing containers, so the weigh step
+      // stays a single row (its per-batch amounts come from renderIngCol/batchedBlocks).
+      if (/Weigh ingredients/.test(ev.title || '')) return null;
       if (!Array.isArray(ev.mixBatchContents) || ev.mixBatchContents.length <= 1) return null;
       const ings = getEventIngredients(ev);
       if (!ings || ings.type !== 'byRecipe' || !ings.recipes.length) return null;

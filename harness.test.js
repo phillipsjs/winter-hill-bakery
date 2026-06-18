@@ -987,6 +987,40 @@ if (weigh) api.setStepNote(api.stepNoteKey(weigh), 'sift the flour');
 const hoverWeigh2 = weigh ? api.hoverHtmlFor(weigh, api.buildBakeSheetHelpers()) : '';
 hvOk &= hv('note appears in the step hover tooltip', /sift the flour/.test(hoverWeigh2) && /Note/.test(hoverWeigh2));
 if (weigh) api.setStepNote(api.stepNoteKey(weigh), '');
+
+// --- Weigh step reflects batch weights when a recipe is batched into mixers/containers ---
+// Bagels mix in mixer-limited loads (cap 10): 30 bagels → 3 loads. The weigh step carries
+// that split + a note, and the bake-sheet ingredient column leads with a per-batch note.
+seedPlan({ [SEED.bagel]: 30 }); api.__setPlan({ [SEED.bagel]: 30 });
+els['deadline-default-input'].value = fmtLocal(tomorrow8);
+['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+api.renderSchedule();
+const HbWeigh = api.buildBakeSheetHelpers();
+const bWeigh = api.__sr().events.find(e => e.process === 'bagel' && /^Weigh ingredients/.test(e.title));
+hvOk &= hv('bagel weigh carries the mixer-load count (30 bagels → 3 loads)', !!bWeigh && bWeigh.mixBatchCount === 3);
+hvOk &= hv('bagel weigh detail notes per-batch weighing', !!bWeigh && /weigh per batch \(3 mixer loads\)/.test(bWeigh.detail));
+hvOk &= hv('bagel weigh ingredient column leads with the per-batch note', !!bWeigh && /Amounts are per batch — split across 3 mixer loads/.test(HbWeigh.renderIngCol(bWeigh)));
+// An unbatched plan (8 bagels → 1 load) gets no per-batch note.
+seedPlan({ [SEED.bagel]: 8 }); api.__setPlan({ [SEED.bagel]: 8 });
+api.renderSchedule();
+const bWeigh1 = api.__sr().events.find(e => e.process === 'bagel' && /^Weigh ingredients/.test(e.title));
+hvOk &= hv('unbatched bagel weigh has no per-batch note', !!bWeigh1 && bWeigh1.mixBatchCount === undefined && !/weigh per batch/.test(bWeigh1.detail));
+// Loaves split across proofing containers: the weigh step shows per-batch amounts + note,
+// but keeps the proofing containers OUT of its Equipment column (weighing uses a scale).
+api.__setContainers([
+  { id: 'lc-w', name: 'Levain jar', maxDoughGrams: 2000, processTag: 'levain' },
+  { id: 'dc-w', name: 'Small dough tub', maxDoughGrams: 1500, processTag: 'loaf' },
+]);
+seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
+api.renderSchedule();
+const HlWeigh = api.buildBakeSheetHelpers();
+const loafWeighEv = api.__sr().events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+hvOk &= hv('loaf weigh carries the per-container batch split (>1 container)', !!loafWeighEv && Array.isArray(loafWeighEv.mixBatchContents) && loafWeighEv.mixBatchContents.length > 1);
+hvOk &= hv('loaf weigh ingredient column shows per-batch amounts + note', !!loafWeighEv && /Amounts are per batch — split across \d+ containers/.test(HlWeigh.renderIngCol(loafWeighEv)));
+hvOk &= hv('loaf weigh keeps proofing containers out of its Equipment column', !!loafWeighEv && !/Batch \d/.test(HlWeigh.getEventEquipment(loafWeighEv)));
+api.__setContainers([]);
+
 // Schedule inline note control: add/edit button is present and no-print.
 const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
 hvOk &= hv('schedule note control shows "+ note" button when empty', /\+ note/.test(ncEmpty) && /class="schedule-note-btn no-print"/.test(ncEmpty));
