@@ -129,6 +129,7 @@ const exportsTail = `
   __setOvens: (o) => { userOvens = o; },
   __setContainers: (c) => { userContainers = c; },
   pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
+  pickDoughContainer,
   __recipes: () => recipes,
 };`;
 
@@ -1287,6 +1288,20 @@ const levPick = pickerFor(e => /Levain Build/.test(e.title));
 hvOk &= hv('bake sheet levain build offers a container picker', /Container/.test(levPick) && /onLevainContainerChange/.test(levPick) && /no-print/.test(levPick));
 const chillPick = pickerFor(e => api.eventStageType(e) === 'chill');
 hvOk &= hv('bake sheet step with no editable equipment shows no picker', chillPick === '');
+// Bulk-ferment container picker now appears for bagels (and muffins), not just loaves.
+const bagelBulkPick = pickerFor(e => e.process === 'bagel' && api.eventStageType(e) === 'bulk');
+hvOk &= hv('bake sheet bagel bulk ferment offers a container picker', /Container/.test(bagelBulkPick) && /data-kind="container"/.test(bagelBulkPick));
+const loafBulkPick = pickerFor(e => e.process === 'loaf' && api.eventStageType(e) === 'bulk');
+hvOk &= hv('bake sheet loaf bulk ferment still offers a container picker', /data-kind="container"/.test(loafBulkPick));
+hvOk &= hv('container picker auto option reads "Change container", not "auto"', /Change container/.test(bagelBulkPick) && !/— auto/.test(bagelBulkPick));
+// pickDoughContainer honors a preference (so the bagel/muffin picker actually takes effect).
+api.__setContainers([
+  { id: 'small', name: 'Small tub', maxDoughGrams: 3000, processTag: 'loaf' },
+  { id: 'big', name: 'Big tub', maxDoughGrams: 12000, processTag: 'any' },
+]);
+hvOk &= hv('pickDoughContainer auto-picks the smallest that fits', api.pickDoughContainer(2000).id === 'small');
+hvOk &= hv('pickDoughContainer honors an explicit container preference', api.pickDoughContainer(2000, ['big']).id === 'big');
+hvOk &= hv('pickDoughContainer falls back to auto when the preferred container is gone', api.pickDoughContainer(2000, ['ghost']).id === 'small');
 
 // Topping is its own step: bagels now boil and top as separate steps, and a recipe's
 // topping stage drives that step's ingredients (e.g. everything seasoning).

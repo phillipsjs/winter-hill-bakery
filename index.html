@@ -7667,10 +7667,16 @@ ${notesHtml}
     return eligible.find(c => c.maxDoughGrams >= totalGrams) || eligible[eligible.length - 1];
   }
   // Smallest proofing/dough container that holds totalGrams of bulk-fermenting dough.
-  function pickDoughContainer(totalGrams) {
-    const eligible = userContainers
-      .filter(c => c.processTag === 'any' || c.processTag === 'loaf')
-      .sort((a, b) => a.maxDoughGrams - b.maxDoughGrams);
+  function pickDoughContainer(totalGrams, prefIds) {
+    let eligible = userContainers
+      .filter(c => c.processTag === 'any' || c.processTag === 'loaf');
+    // Honor an explicit container preference (set from the bake plan / bake sheet picker);
+    // fall back to the full eligible set if the preferred container is gone.
+    if (prefIds && prefIds.length) {
+      const pref = eligible.filter(c => prefIds.includes(c.id));
+      if (pref.length) eligible = pref;
+    }
+    eligible = eligible.sort((a, b) => a.maxDoughGrams - b.maxDoughGrams);
     if (eligible.length === 0) return null;
     return eligible.find(c => c.maxDoughGrams >= totalGrams) || eligible[eligible.length - 1];
   }
@@ -11331,7 +11337,7 @@ ${notesHtml}
         : `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix · ${muffinLevainNote}`;
       // Muffin dough bulk-ferments together in one container after mixing.
       const muffinDoughG = muffinRecipes.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
-      const muffinBulkCont = pickDoughContainer(muffinDoughG);
+      const muffinBulkCont = pickDoughContainer(muffinDoughG, muffinRecipes.flatMap(r => r.preferredContainerIds || []));
       const muffinBulkContainer = muffinBulkCont ? muffinBulkCont.name : 'dough tub';
       events.push({
         time: muffinMixStart,
@@ -11426,7 +11432,7 @@ ${notesHtml}
       // Dough is mixed straight into the bulk-ferment container, so compute it up front
       // and surface it on both the mix and the bulk-ferment steps.
       const bagelDoughG = bagelRecipes.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
-      const bagelBulkCont = pickDoughContainer(bagelDoughG);
+      const bagelBulkCont = pickDoughContainer(bagelDoughG, bagelRecipes.flatMap(r => r.preferredContainerIds || []));
       const bagelBulkContainer = bagelBulkCont ? bagelBulkCont.name : 'dough tub';
       events.push({
         time: bagelMixStart,
@@ -13220,7 +13226,7 @@ ${notesHtml}
           const stream = /\(muffins\)/.test(ev.title) ? 'muffin' : /\(bagels\)/.test(ev.title) ? 'bagel' : 'shared';
           const build = /Build 1/.test(ev.title) ? 'b1' : 'b2';
           const cur = getLevainContainerPref(stream, build);
-          const opts = [['', '— auto —'], ...lev.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])];
+          const opts = [['', 'Change container…'], ...lev.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])];
           rows.push(labeled('Container', `<select class="settings-select bp-equip-select" onchange="onLevainContainerChange(this)" data-levain-key="${stream}" data-build="${build}">`
             + opts.map(([v, l]) => `<option value="${escapeAttr(v)}"${cur === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('') + `</select>`));
         }
@@ -13228,10 +13234,16 @@ ${notesHtml}
       if (evType === 'mix' && userMixers.length) eq('mixer', 'preferredMixerIds', [['', '— none —'], ...userMixers.map(m => [m.id, m.name])]);
       if ((evType === 'bake' || (sub && sub.type === 'bake')) && userOvens.length >= 2) eq('oven', 'preferredOvenId', [['', '— auto —'], ...userOvens.map(o => [o.id, o.name])]);
       if ((evType === 'boil' || (sub && sub.type === 'boil')) && userPots.length) eq('pot', 'preferredPotId', [['', '— no pot —'], ...userPots.map(p => [p.id, p.name + (p.size ? ` (${p.size})` : '')])]);
-      // Loaf bulk-ferment / dough container.
-      if (ev.process === 'loaf' && /autolyse|Mix in salt|Stretch & fold|Bulk ferment/.test(ev.title)) {
-        const loafCont = userContainers.filter(c => c.processTag === 'any' || c.processTag === 'loaf');
-        if (loafCont.length && ids.length) rows.push(labeled('Container', bakePlanEquipSelect('container', ids, sharedPrefId(ids, 'preferredContainerIds'), [['', '— auto (smallest that fits) —'], ...loafCont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])));
+      // Dough container — shown wherever the dough actually sits in one of the kitchen's
+      // containers: the bulk-ferment tub for loaf/muffin/bagel pre-shape steps, and the
+      // cold-proof container for simple/enriched. (Loaf cold proof uses bannetons, not a
+      // tub, so it's excluded here.)
+      const bulkStep = ['loaf', 'muffin', 'bagel'].includes(ev.process) && ['autolyse', 'mix', 'fold', 'bulk'].includes(evType);
+      const chillStep = ['simple', 'enriched'].includes(ev.process) && evType === 'chill';
+      if ((bulkStep || chillStep) && ids.length) {
+        const tags = chillStep ? ['any'] : ['any', 'loaf'];
+        const cont = userContainers.filter(c => tags.includes(c.processTag));
+        if (cont.length) rows.push(labeled('Container', bakePlanEquipSelect('container', ids, sharedPrefId(ids, 'preferredContainerIds'), [['', 'Change container…'], ...cont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])));
       }
       return rows.length ? `<div class="bs-equip-edit no-print">${rows.join('')}</div>` : '';
     };
