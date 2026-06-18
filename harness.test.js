@@ -129,7 +129,7 @@ const exportsTail = `
   __setOvens: (o) => { userOvens = o; },
   __setContainers: (c) => { userContainers = c; },
   pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
-  pickDoughContainer,
+  pickDoughContainer, planBakes, bakeRankMap, moveBakeOrder, renderBakeOrderPlan,
   __recipes: () => recipes,
 };`;
 
@@ -1404,6 +1404,34 @@ const plainW = { loafWeight: 100, ingredients: [{ name: 'Bread flour', pct: 100,
 hvOk &= hv('plain recipe: doughSumPct equals the raw % sum (back-compat)', api.doughSumPct(plainW) === 170);
 hvOk &= hv('plain recipe: final unit weight equals loafWeight (back-compat)', api.finalUnitWeight(plainW) === 100);
 loafR.stages = loafR.stages.filter(s => s.type !== 'topping');
+
+// --- Bake order: a per-recipe bakeRank the deck planner honors ---
+hvOk &= hv('bakeRankMap is null when no recipe has a bakeRank (keeps default packing)', api.bakeRankMap([{ name: 'A' }, { name: 'B' }]) === null);
+const brm = api.bakeRankMap([{ name: 'A', bakeRank: 1 }, { name: 'B', bakeRank: 0 }, { name: 'C' }]);
+hvOk &= hv('bakeRankMap normalizes bakeRank to 0..n in order (B<A<C)', brm.B === 0 && brm.A === 1 && brm.C === 2);
+// Two equal-size recipes, one deck per batch: default packs A first (insertion/tie order);
+// with a rank putting B first, B leads the first bake.
+const capAB = { A: 4, B: 4 };
+const defBatches = api.planBakes({ A: 4, B: 4 }, capAB, 1);
+hvOk &= hv('default packing leads with the first-listed recipe', defBatches[0][0].items[0].name === 'A');
+const rankBatches = api.planBakes({ A: 4, B: 4 }, capAB, 1, { B: 0, A: 1 });
+hvOk &= hv('a bakeRank order leads the first bake with the chosen recipe', rankBatches[0][0].items[0].name === 'B');
+hvOk &= hv('ranking still fills decks (B fully in batch 1, A in batch 2)', rankBatches[0][0].items[0].count === 4 && rankBatches[1][0].items[0].name === 'A');
+// A small leftover of the lead recipe shares its deck with the next (decks stay full).
+const mixBatches = api.planBakes({ A: 1, B: 8 }, { A: 4, B: 4 }, 1, { A: 0, B: 1 });
+hvOk &= hv('lead recipe leftover shares a deck to fill it (A+B in the first deck)', mixBatches[0][0].items.length === 2 && mixBatches[0][0].items.some(it => it.name === 'A') && mixBatches[0][0].total === 4);
+
+// moveBakeOrder writes bakeRank across the type's in-plan recipes and reorders them.
+const _br = api.__recipes();
+const loafIds = _br.filter(r => api.getProcessType(r) === 'sourdough-loaf').map(r => r.id);
+if (loafIds.length >= 2) {
+  loafIds.forEach(id => { const r = _br.find(x => x.id === id); delete r.bakeRank; });
+  api.__setPlan(Object.fromEntries(loafIds.map(id => [id, 6])));
+  api.moveBakeOrder(loafIds[1], 'sourdough-loaf', -1); // bump the 2nd loaf to the front
+  const r0 = _br.find(r => r.id === loafIds[1]);
+  hvOk &= hv('moveBakeOrder gives the promoted loaf the earliest bakeRank (0)', r0.bakeRank === 0);
+  hvOk &= hv('moveBakeOrder ranks the whole loaf group (all get a finite bakeRank)', loafIds.every(id => Number.isFinite(Number(_br.find(r => r.id === id).bakeRank))));
+}
 
 // Emptying the bake plan must hide ALL equipment cards (regression: the Boiling/pot card
 // lingered after the last boiling recipe was removed).

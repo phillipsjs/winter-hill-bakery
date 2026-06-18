@@ -1028,6 +1028,18 @@
       </details>
     </div>
 
+    <div class="card totals" id="bake-order-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Bake order</h2>
+          <span id="bake-order-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">When several breads of a type share the oven, choose which bakes first. The earliest-listed bread leads the first bake; decks still fill, so leftovers may share a deck.</p>
+        <div id="bake-order-output" style="margin-top:8px"></div>
+      </details>
+    </div>
+
     <div class="card totals" id="pot-overview-card" style="display:none">
       <details class="plan-details">
         <summary>
@@ -7162,7 +7174,7 @@ ${notesHtml}
       levainCard.style.display = 'none';
       // Hide every plan equipment card so none lingers with stale content (e.g. the Boiling
       // card persisting after the last boiling recipe is removed).
-      ['container-card', 'banneton-card', 'pan-card', 'mixer-card', 'oven-overview-card', 'pot-overview-card'].forEach(id => {
+      ['container-card', 'banneton-card', 'pan-card', 'mixer-card', 'oven-overview-card', 'bake-order-card', 'pot-overview-card'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
@@ -7259,6 +7271,7 @@ ${notesHtml}
     renderPanPlan();
     renderMixerPlan();
     renderOvenOverview();
+    renderBakeOrderPlan();
     renderPotPlan();
   }
 
@@ -7746,6 +7759,56 @@ ${notesHtml}
       return Array.isArray(v) ? (v[0] || '') : (v || '');
     });
     return vals.every(v => v === vals[0]) ? (vals[0] || '') : '';
+  }
+
+  // Bake-order card: when ≥2 breads of a type share the oven, let the baker order which
+  // bakes first (writes recipe.bakeRank, which the deck planner honors).
+  const BAKE_ORDER_TYPES = [
+    { pt: 'sourdough-loaf', label: 'Loaves' },
+    { pt: 'sourdough-muffin', label: 'Muffins' },
+  ];
+  function bakeOrderRecipes(pt) {
+    const list = recipes.filter(r => getProcessType(r) === pt && (plan[r.id] || 0) > 0);
+    const rank = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
+    return list.sort((a, b) => rank(a) - rank(b)); // stable: array order on ties
+  }
+  function renderBakeOrderPlan() {
+    const card = document.getElementById('bake-order-card');
+    const out = document.getElementById('bake-order-output');
+    const summaryEl = document.getElementById('bake-order-summary');
+    if (!card || !out) return;
+    const groups = BAKE_ORDER_TYPES
+      .map(g => ({ ...g, list: bakeOrderRecipes(g.pt) }))
+      .filter(g => g.list.length >= 2); // only meaningful with 2+ sharing the oven
+    if (!groups.length) { card.style.display = 'none'; return; }
+    out.innerHTML = groups.map(g => {
+      const rows = g.list.map((r, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span class="muted" style="width:18px;text-align:right">${i + 1}.</span>
+        <span style="flex:1;min-width:120px">${escapeHtml(r.name)}</span>
+        <span class="muted" style="font-size:0.85rem">${plan[r.id]} ${escapeHtml(r.unit || 'loaf')}${plan[r.id] === 1 ? '' : 's'}</span>
+        <span class="stage-move">
+          <button type="button" onclick="moveBakeOrder('${escapeAttr(r.id)}','${g.pt}',-1)"${i === 0 ? ' disabled' : ''} title="Bake earlier">▲</button>
+          <button type="button" onclick="moveBakeOrder('${escapeAttr(r.id)}','${g.pt}',1)"${i === g.list.length - 1 ? ' disabled' : ''} title="Bake later">▼</button>
+        </span>
+      </div>`).join('');
+      const head = groups.length > 1 ? `<div style="font-weight:600;font-size:0.9rem;margin:8px 0 2px">${escapeHtml(g.label)}</div>` : '';
+      return head + rows;
+    }).join('');
+    if (summaryEl) summaryEl.textContent = groups.map(g => `${g.list.length} ${g.label.toLowerCase()}`).join(' · ');
+    card.style.display = '';
+  }
+  // Move a recipe earlier/later in its type's bake order, then renumber the whole group so
+  // every bread in it carries an explicit bakeRank (0..n-1).
+  function moveBakeOrder(id, pt, dir) {
+    const list = bakeOrderRecipes(pt);
+    const idx = list.findIndex(r => r.id === id);
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= list.length) return;
+    const t = list[idx]; list[idx] = list[j]; list[j] = t;
+    list.forEach((r, i) => { r.bakeRank = i; });
+    saveRecipes();
+    renderSchedule();
+    renderTotals();
   }
 
   // Boiling card: recipes with a boil step + the pot they boil in (switchable here).
@@ -9685,10 +9748,22 @@ ${notesHtml}
   //   3. Same kind per bake — among loadings with equal total, prefer
   //      homogeneous decks; biggest-recipe-first ordering ensures leftover
   //      scraps concentrate in one trailing deck
-  function planBakes(items, deckCapByName, maxDecks) {
+  // Build a name→rank map from a list of recipes' bakeRank, but only when the baker has set
+  // an order (≥1 recipe has a bakeRank) — otherwise return null so planBakes keeps its
+  // default size-greedy packing. Recipes without a bakeRank sort after ranked ones.
+  function bakeRankMap(recipeList) {
+    if (!recipeList.some(r => Number.isFinite(Number(r.bakeRank)))) return null;
+    const rankOf = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
+    const ordered = [...recipeList].sort((a, b) => rankOf(a) - rankOf(b)); // stable: keeps array order on ties
+    const map = {};
+    ordered.forEach((r, i) => { map[r.name] = i; });
+    return map;
+  }
+  function planBakes(items, deckCapByName, maxDecks, rankByName) {
     const remaining = { ...items };
     const totalLeft = () => Object.values(remaining).reduce((s, c) => s + c, 0);
     if (totalLeft() === 0) return [];
+    const rankOfName = (n) => (rankByName && rankByName[n] != null) ? rankByName[n] : Infinity;
 
     const pickBestDeck = () => {
       const names = Object.keys(remaining).filter(n => remaining[n] > 0);
@@ -9705,7 +9780,11 @@ ${notesHtml}
         for (let j = i + 1; j < names.length; j++) {
           const n1 = names[i], n2 = names[j];
           const cap = Math.min(deckCapByName[n1], deckCapByName[n2]);
-          const [first, second] = remaining[n1] >= remaining[n2] ? [n1, n2] : [n2, n1];
+          // When the baker set an order, fill the lower-rank recipe's deck first and top it
+          // up with the next; otherwise put the larger-remaining recipe first (denser packing).
+          const [first, second] = rankByName
+            ? (rankOfName(n1) <= rankOfName(n2) ? [n1, n2] : [n2, n1])
+            : (remaining[n1] >= remaining[n2] ? [n1, n2] : [n2, n1]);
           const a = Math.min(cap, remaining[first]);
           const b = Math.min(cap - a, remaining[second]);
           if (a > 0 && b > 0) {
@@ -9717,7 +9796,12 @@ ${notesHtml}
           }
         }
       }
+      // Each candidate's rank is the earliest (lowest) rank among its recipes.
+      const candRank = (c) => Math.min(...c.items.map(it => rankOfName(it.name)));
       candidates.sort((x, y) => {
+        // When the baker set an order, lead with the lowest-rank recipe; still prefer the
+        // fullest deck within that rank so leftovers pack together.
+        if (rankByName) { const rx = candRank(x), ry = candRank(y); if (rx !== ry) return rx - ry; }
         if (x.total !== y.total) return y.total - x.total;
         if (x.homog !== y.homog) return x.homog ? -1 : 1;
         return 0;
@@ -9747,11 +9831,12 @@ ${notesHtml}
       deckCapByName[r.name] = getRecipeSpec(r).deckCapacity || 4;
     }
     const items = {};
+    const inPlan = [];
     for (const r of loafRecipes) {
       const c = planMap[r.id] || 0;
-      if (c > 0) items[r.name] = c;
+      if (c > 0) { items[r.name] = c; inPlan.push(r); }
     }
-    return planBakes(items, deckCapByName, getGlobalOvenDecks());
+    return planBakes(items, deckCapByName, getGlobalOvenDecks(), bakeRankMap(inPlan));
   }
 
   function planMuffinBakes(muffinRecipes, planMap) {
@@ -9760,11 +9845,12 @@ ${notesHtml}
       deckCapByName[r.name] = getRecipeSpec(r).deckCapacity || SCHED.MUFFIN_DECK_CAPACITY;
     }
     const items = {};
+    const inPlan = [];
     for (const r of muffinRecipes) {
       const c = planMap[r.id] || 0;
-      if (c > 0) items[r.name] = c;
+      if (c > 0) { items[r.name] = c; inPlan.push(r); }
     }
-    return planBakes(items, deckCapByName, getGlobalOvenDecks());
+    return planBakes(items, deckCapByName, getGlobalOvenDecks(), bakeRankMap(inPlan));
   }
 
   function pickLevainBuild(buildKey, refTime, override) {
