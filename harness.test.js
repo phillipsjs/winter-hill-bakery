@@ -115,7 +115,7 @@ const exportsTail = `
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
   annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
-  detectFlourType, ingredientIsFlour,
+  detectFlourType, ingredientIsFlour, ingredientIsWater,
   toppingIngredientNames, ingredientWeightRole, doughSumPct, toppingGramsPerUnit, finalUnitWeight,
   perUnitDoughDetail, boldUnitWeightHtml,
   __setRecipes: (r) => { recipes = r; },
@@ -1020,6 +1020,39 @@ hvOk &= hv('loaf weigh carries the per-container batch split (>1 container)', !!
 hvOk &= hv('loaf weigh ingredient column shows per-batch amounts + note', !!loafWeighEv && /Amounts are per batch — split across \d+ containers/.test(HlWeigh.renderIngCol(loafWeighEv)));
 hvOk &= hv('loaf weigh keeps proofing containers out of its Equipment column', !!loafWeighEv && !/Batch \d/.test(HlWeigh.getEventEquipment(loafWeighEv)));
 api.__setContainers([]);
+
+// --- Water temperature: recorded on the water ingredient, shown on the bake sheet ---
+// Detection: by name, and by a kitchen-ingredient link's Water category.
+api.__setPantry([{ id: 'pan-h2o', name: 'Filtered water', category: 'Water' }, { id: 'pan-bf', name: 'Bread flour', category: 'Flours' }]);
+hvOk &= hv('ingredientIsWater true by name', api.ingredientIsWater('Warm water', '') === true);
+hvOk &= hv('ingredientIsWater true via a Water-category link on an odd name', api.ingredientIsWater('H2O', 'pan-h2o') === true);
+hvOk &= hv('ingredientIsWater false for a flour link', api.ingredientIsWater('Bread flour', 'pan-bf') === false);
+api.__setPantry(api.SEED_PANTRY);
+// Bake sheet: a recipe whose water records a temperature shows it next to the water row.
+const wbat = api.__recipes().find(r => r.id === SEED.batard);
+const wIng = wbat && wbat.ingredients.find(i => /water/i.test(i.name));
+if (wbat && wIng) {
+  const prevWT = wIng.waterTempF;
+  wIng.waterTempF = 92;
+  seedPlan({ [SEED.batard]: 4 }); api.__setPlan({ [SEED.batard]: 4 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const Hw = api.buildBakeSheetHelpers();
+  const autolyseEv = api.__sr().events.find(e => e.process === 'loaf' && /autolyse/i.test(e.title));
+  const wHtml = autolyseEv ? Hw.renderIngCol(autolyseEv) : '';
+  hvOk &= hv('water temperature shows next to water on the bake sheet', /🌡/.test(wHtml) && /(92|33)/.test(wHtml));
+  // No recorded temp → no badge.
+  wIng.waterTempF = undefined;
+  api.renderSchedule();
+  const Hw2 = api.buildBakeSheetHelpers();
+  const autolyseEv2 = api.__sr().events.find(e => e.process === 'loaf' && /autolyse/i.test(e.title));
+  hvOk &= hv('no water-temp badge when none is recorded', !!autolyseEv2 && !/🌡/.test(Hw2.renderIngCol(autolyseEv2)));
+  wIng.waterTempF = prevWT;
+} else {
+  console.log('  [notes] SKIP — batard water ingredient not found for water-temp test');
+}
 
 // Schedule inline note control: add/edit button is present and no-print.
 const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });

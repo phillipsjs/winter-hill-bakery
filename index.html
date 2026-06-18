@@ -215,12 +215,22 @@
   table.ingredients th { color: var(--muted); font-weight: 500; font-size: 0.85rem; }
   table.ingredients td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .ingredient-edit-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 6px;
+  }
+  .ingredient-edit-row .ing-main {
     display: grid;
     grid-template-columns: 1fr 80px 130px 130px 32px;
     gap: 8px;
     align-items: center;
-    margin-bottom: 6px;
   }
+  /* Contextual per-ingredient line — shown only when the row needs it (e.g. water temp). */
+  .ing-water-temp { display: none; align-items: center; gap: 6px; font-size: 0.8rem;
+    color: var(--muted); padding-left: 2px; }
+  .ingredient-edit-row.is-water .ing-water-temp { display: flex; }
+  .ing-water-temp input { width: 64px; }
   .ingredient-edit-row select {
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -774,6 +784,7 @@
   .bs-ings { width: 240px; }
   .bs-ings table { font-size: 0.78rem; margin: 0; }
   .bs-ings table td { padding: 1px 4px; border: none; }
+  .bs-ing-temp { color: #2f6f86; font-weight: 600; white-space: nowrap; }
   .bs-ings .bs-recipe-label { font-size: 0.75rem; font-weight: 600;
     color: var(--accent-dark); margin-bottom: 2px; }
   .bs-ings .bs-batch-note { font-size: 0.72rem; font-weight: 600; font-style: italic;
@@ -9232,21 +9243,30 @@ ${notesHtml}
     // Pre-fill the kitchen-ingredient link: the saved one, else a suggestion by name so
     // existing recipes surface (and persist on save) a match against the default pantry.
     const linkId = (prefill && prefill.pantryId) ? prefill.pantryId : suggestPantryLinkFor(name);
+    const waterTempF = (prefill && prefill.waterTempF != null && prefill.waterTempF !== '') ? Number(prefill.waterTempF) : null;
     row.innerHTML = `
-      <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
-      <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
-      <select class="ing-tag" onchange="onTagChange(this)" title="${INGREDIENT_TAG_HELP}">
-        ${ingredientTagOptions(processAid ? 'aid' : (flourType || ''))}
-      </select>
-      <input type="hidden" class="ing-flour-type" value="${flourType}" />
-      <input type="hidden" class="ing-process-aid" value="${processAid ? '1' : ''}" />
-      <select class="ing-pantry" onchange="onIngredientPantryChange(this)" title="Link to a kitchen ingredient — drives cost and flags whether this flour needs milling">
-        ${pantryLinkOptionsHtml(linkId, editorAllowsLevainLink())}
-      </select>
-      <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
+      <div class="ing-main">
+        <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
+        <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
+        <select class="ing-tag" onchange="onTagChange(this)" title="${INGREDIENT_TAG_HELP}">
+          ${ingredientTagOptions(processAid ? 'aid' : (flourType || ''))}
+        </select>
+        <input type="hidden" class="ing-flour-type" value="${flourType}" />
+        <input type="hidden" class="ing-process-aid" value="${processAid ? '1' : ''}" />
+        <select class="ing-pantry" onchange="onIngredientPantryChange(this)" title="Link to a kitchen ingredient — drives cost and flags whether this flour needs milling">
+          ${pantryLinkOptionsHtml(linkId, editorAllowsLevainLink())}
+        </select>
+        <button class="danger tiny" onclick="removeIngredientRow(this)" aria-label="Remove">×</button>
+      </div>
+      <label class="ing-water-temp" title="${WATER_TEMP_HELP}">🌡 Water temperature
+        <input type="number" class="ing-water-temp-input" step="1" value="${waterTempF != null ? escapeAttr(tempInputValue(waterTempF)) : ''}" placeholder="${escapeAttr(tempInputValue(75))}" />
+        <span class="ing-water-temp-unit">${tempUnitLabel()}</span>
+        <span>— optional, shown on the bake sheet</span>
+      </label>
     `;
     wrap.appendChild(row);
     updateRowFlourUI(row); // auto-detect a flour role for the tag dropdown when untagged
+    updateRowWaterUI(row); // reveal the water-temperature field for water rows
     updateFlourSummary();
   }
 
@@ -9309,7 +9329,7 @@ ${notesHtml}
     }
     sel.dataset.prevValue = sel.value;
     const row = sel.closest('.ingredient-edit-row');
-    if (row) updateRowFlourUI(row);  // a flour link reveals the Anchor option (and vice-versa)
+    if (row) { updateRowFlourUI(row); updateRowWaterUI(row); }  // a link reveals the Anchor / water-temp option
     updateFlourSummary();            // re-sync the ingredient-controlled mill stage
     updateRecipeEditorCostDisplay(); // refresh the live cost readout
   }
@@ -9367,6 +9387,12 @@ ${notesHtml}
       if (flourType) ing.flourType = flourType;
       if (processAid) ing.processAid = true;
       if (pantryId) ing.pantryId = pantryId;
+      // Water temperature: kept only for water ingredients (the field is hidden otherwise).
+      const waterTempEl = row.querySelector('.ing-water-temp-input');
+      if (waterTempEl && ingredientIsWater(iname, pantryId)) {
+        const wt = tempFromInput(waterTempEl.value);
+        if (wt != null) ing.waterTempF = wt;
+      }
       ingredients.push(ing);
     }
     if (ingredients.length === 0) { alert('Add at least one ingredient.'); return; }
@@ -13025,6 +13051,7 @@ ${notesHtml}
             grams: flourWeight * ((Number(i.pct) || 0) / 100),
             flourType: i.flourType || '',
             pantryId: i.pantryId || '',
+            waterTempF: (i.waterTempF != null && i.waterTempF !== '') ? Number(i.waterTempF) : null,
           })),
           processType: getProcessType(r),
         };
@@ -13087,9 +13114,10 @@ ${notesHtml}
   function buildBakeSheetHelpers() {
     const ingData = computeBakeSheetIngredientData();
     const ingTableHtml = rows =>
-      `<table><tbody>${rows.map(r =>
-        `<tr><td>${escapeHtml(r.name)}</td><td class="num">${formatGrams(r.grams)}</td></tr>`
-      ).join('')}</tbody></table>`;
+      `<table><tbody>${rows.map(r => {
+        const temp = (r.waterTempF != null && r.waterTempF !== '') ? ` <span class="bs-ing-temp">🌡 ${escapeHtml(fmtTemp(r.waterTempF))}</span>` : '';
+        return `<tr><td>${escapeHtml(r.name)}${temp}</td><td class="num">${formatGrams(r.grams)}</td></tr>`;
+      }).join('')}</tbody></table>`;
 
     // Map each event to its ingredient data based on title
     const getEventIngredients = ev => {
@@ -13258,7 +13286,7 @@ ${notesHtml}
 
       const renderBatch = spec => spec.parts.map(p => {
         const src = perUnit[p.name];
-        const rows = src.rows.map(i => ({ name: i.name, grams: (i.grams / Math.max(1, src.count)) * p.count }));
+        const rows = src.rows.map(i => ({ name: i.name, grams: (i.grams / Math.max(1, src.count)) * p.count, waterTempF: i.waterTempF }));
         return recipeBlockHtml(p.name, p.count, rows);
       }).join('');
 
@@ -13461,7 +13489,7 @@ ${notesHtml}
         const parts = (b.contents || []).filter(c => perUnit[c.recipe]).map(c => ({ name: c.recipe, count: c.count }));
         const ingBlocks = parts.map(p => {
           const src = perUnit[p.name];
-          const rows = src.rows.map(ig => ({ name: ig.name, grams: (ig.grams / Math.max(1, src.count)) * p.count }));
+          const rows = src.rows.map(ig => ({ name: ig.name, grams: (ig.grams / Math.max(1, src.count)) * p.count, waterTempF: ig.waterTempF }));
           return recipeBlockHtml(p.name, p.count, rows);
         }).join('');
         const equipLines = [escapeHtml(b.label)];
@@ -13635,6 +13663,26 @@ ${notesHtml}
     }
     return !!detectFlourType(name) || categIngredient(name) === 'Flours';
   }
+  // Tooltip + detection for the contextual water-temperature field. Bakers sometimes hit a
+  // specific water temperature to steer dough temperature (and thus fermentation), so the
+  // field surfaces on water rows for them to record it. Display-only — kept on the recipe and
+  // shown on the bake sheet; it doesn't change the schedule.
+  const WATER_TEMP_HELP = escapeAttr('Record the temperature of the water you use. Water temperature steers the dough temperature and how fast it ferments. This is kept with the recipe and shown on the bake sheet — it does not change the schedule.');
+  function ingredientIsWater(name, pantryId) {
+    if (pantryId && pantryId !== '__levain__' && pantryId !== '__free__') {
+      const p = pantryItems.find(x => x.id === pantryId);
+      if (p) return (p.category || categIngredient(p.name)) === 'Water';
+    }
+    return /water/i.test(name || '');
+  }
+  // Toggle the water-temperature line for a row based on its current name / kitchen link.
+  function updateRowWaterUI(row) {
+    if (!row) return;
+    const nameEl = row.querySelector('.ing-name');
+    const pantryEl = row.querySelector('.ing-pantry');
+    const isWater = ingredientIsWater(nameEl ? nameEl.value : '', pantryEl ? pantryEl.value : '');
+    row.classList.toggle('is-water', isWater);
+  }
   // Per-ingredient "Tag" dropdown options. Anchor/specialty map to .ing-flour-type, aid maps
   // to .ing-process-aid — those hidden fields stay the source of truth for save/load/rebalance
   // and the weight model. New tags can be added here (and handled in applyIngredientTag).
@@ -13698,6 +13746,7 @@ ${notesHtml}
     const row = input.closest('.ingredient-edit-row');
     const before = row.querySelector('.ing-flour-type').value;
     updateRowFlourUI(row); // auto-detect a flour role into the Tag dropdown when untagged
+    updateRowWaterUI(row); // reveal/hide the water-temperature field
     if (row.querySelector('.ing-flour-type').value !== before) rebalanceAnchors();
     // Auto-link to a matching kitchen ingredient (or the levain) when the row isn't linked
     // yet, so recipe ingredients stay aligned to the pantry (and milling flags) by default.
