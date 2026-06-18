@@ -1359,6 +1359,9 @@ hvOk &= hv('non-flours do not auto-detect a flour role', api.detectFlourType('Wa
 hvOk &= hv('ingredientIsFlour: true for flour names, false for others', api.ingredientIsFlour('Bread flour', '') === true && api.ingredientIsFlour('Semolina', '') === true && api.ingredientIsFlour('Butter', '') === false);
 hvOk &= hv('a pantry link to a Flours item marks the row a flour even with an odd name', api.ingredientIsFlour('House blend', 'pan-bread') === true);
 hvOk &= hv('a pantry link to a non-flour item overrides a flour-ish name', api.ingredientIsFlour('flour sack', 'pan-water') === false);
+// The per-ingredient role controls are highlight-when-selected toggle buttons (Anchor flour
+// / Process aid), not checkboxes.
+hvOk &= hv('ingredient role controls are toggle buttons (Anchor flour / Process aid), not checkboxes', /ing-anchor-btn tiny[^"]*"[^>]*onclick="onAnchorToggle\(this\)"/.test(html) && /ing-aid-btn tiny[^"]*"[^>]*onclick="onProcessAidToggle\(this\)"/.test(html) && !/ing-anchor-cb|ing-unit-cb|onUnitWeightToggle/.test(html));
 
 // --- Ingredient weight roles: process aids + toppings vs unit weight ---
 // A bagel: 100 g flour-equivalent dough, 5% sesame topping, plus boil-water salt & lye that

@@ -230,18 +230,7 @@
     color: var(--ink);
   }
   .ing-role-cell { min-width: 0; }
-  .ing-anchor-ctrl, .ing-aid-ctrl {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.8rem;
-    color: var(--ink);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .ing-aid-ctrl { color: var(--muted); }
-  .ing-anchor-ctrl input, .ing-aid-ctrl input { margin: 0; flex: none; }
-  .ing-anchor-help { color: var(--muted); font-size: 0.82rem; pointer-events: none; }
+  .ing-role-cell .tiny { white-space: nowrap; width: 100%; }
   .bake-row {
     display: grid;
     grid-template-columns: 1fr 90px auto auto;
@@ -9085,16 +9074,8 @@ ${notesHtml}
       <input type="text" class="ing-name" placeholder="Ingredient name" value="${escapeAttr(name)}" onblur="onIngredientNameBlur(this)" />
       <input type="number" class="ing-pct" min="0" step="0.1" placeholder="${amountPlaceholder}" value="${pct}" oninput="onIngredientPctInput(this)" />
       <span class="ing-role-cell">
-        <label class="ing-anchor-ctrl" title="${ANCHOR_FLOUR_HELP}">
-          <input type="checkbox" class="ing-anchor-cb" onchange="onAnchorToggle(this)" />
-          <span>Anchor flour</span>
-          <span class="ing-anchor-help" aria-hidden="true">ⓘ</span>
-        </label>
-        <label class="ing-aid-ctrl" title="${UNIT_WEIGHT_HELP}">
-          <input type="checkbox" class="ing-unit-cb" onchange="onUnitWeightToggle(this)"${processAid ? '' : ' checked'} />
-          <span>In unit wt</span>
-          <span class="ing-anchor-help" aria-hidden="true">ⓘ</span>
-        </label>
+        <button type="button" class="ing-anchor-btn tiny${flourType === 'anchor' ? '' : ' secondary'}" onclick="onAnchorToggle(this)" title="${ANCHOR_FLOUR_HELP}">⚓ Anchor flour</button>
+        <button type="button" class="ing-aid-btn tiny${processAid ? '' : ' secondary'}" onclick="onProcessAidToggle(this)" title="${PROCESS_AID_HELP}">Process aid</button>
       </span>
       <input type="hidden" class="ing-flour-type" value="${flourType}" />
       <input type="hidden" class="ing-process-aid" value="${processAid ? '1' : ''}" />
@@ -13426,10 +13407,10 @@ ${notesHtml}
     if (/flour|\brye\b|redeemer|whole wheat|whole grain|spelt|einkorn|buckwheat|kamut|durum|semolina|red wheat/.test(n)) return 'specialty';
     return '';
   }
-  // Tooltip explaining what an anchor flour is (shown on the Anchor checkbox + ⓘ).
-  const ANCHOR_FLOUR_HELP = escapeAttr('Anchor flours (bread flour, all-purpose) are the base of the dough — the app auto-adjusts them so all flours sum to 100%. Leave unchecked for a specialty flour (rye, whole wheat, spelt…) whose percentage you set yourself.');
-  // Tooltip for the "In unit wt" checkbox (process-aid control on non-flour rows).
-  const UNIT_WEIGHT_HELP = escapeAttr('Does this end up in the finished unit? Leave checked for dough ingredients and toppings. Uncheck for a process aid that\'s discarded — e.g. salt or lye added to the boiling water — so it\'s still bought and costed but doesn\'t add to the unit weight.');
+  // Tooltips for the role toggle buttons. The button is highlighted (accent) when its role
+  // is selected, and a gray outline when not.
+  const ANCHOR_FLOUR_HELP = escapeAttr('Highlight for an anchor flour (bread flour, all-purpose) — the app auto-adjusts anchors so all flours sum to 100%. Leave un-highlighted for a specialty flour (rye, whole wheat, spelt…) whose percentage you set yourself.');
+  const PROCESS_AID_HELP = escapeAttr('Highlight to mark a process aid that\'s discarded — e.g. salt or lye added to the boiling water. It\'s still bought and costed, but doesn\'t add to the unit weight or the dough math.');
   // Is this ingredient a flour? Trust an explicit link to a kitchen ingredient's category
   // first, otherwise detect from the name (so anything the baker types as a flour reveals
   // the Anchor option without a per-ingredient dropdown).
@@ -13440,50 +13421,50 @@ ${notesHtml}
     }
     return !!detectFlourType(name) || categIngredient(name) === 'Flours';
   }
-  // Show the Anchor-flour control only on rows detected as flour; keep the hidden
-  // .ing-flour-type field (the value all of save/load/rebalance read) in sync. The control
-  // stays in its grid cell via visibility (not display) so non-flour rows still align.
+  // Each row's role cell hosts one of two toggle buttons: flour rows get the Anchor-flour
+  // toggle, everything else gets the Process-aid toggle. The hidden .ing-flour-type /
+  // .ing-process-aid fields (which save/load/rebalance read) stay the source of truth; this
+  // keeps the visible button (which one shows + its highlighted/selected state) in sync.
   function updateRowFlourUI(row) {
     if (!row) return;
     const hidden = row.querySelector('.ing-flour-type');
-    const ctrl = row.querySelector('.ing-anchor-ctrl');
-    const aidCtrl = row.querySelector('.ing-aid-ctrl');
-    const cb = row.querySelector('.ing-anchor-cb');
-    if (!hidden || !ctrl) return;
+    const anchorBtn = row.querySelector('.ing-anchor-btn');
+    const aidBtn = row.querySelector('.ing-aid-btn');
+    if (!hidden || !anchorBtn) return;
     const name = (row.querySelector('.ing-name').value || '').trim();
     const pantryEl = row.querySelector('.ing-pantry');
     const pantryId = pantryEl ? pantryEl.value : '';
     const isFlour = !!hidden.value || ingredientIsFlour(name, pantryId);
-    // Same grid cell (.ing-role-cell, always a grid item so rows stay aligned) hosts either
-    // control: flours get Anchor, everything else gets the "In unit weight" toggle.
-    ctrl.style.display = isFlour ? '' : 'none';
-    if (aidCtrl) aidCtrl.style.display = isFlour ? 'none' : '';
+    anchorBtn.style.display = isFlour ? '' : 'none';
+    if (aidBtn) aidBtn.style.display = isFlour ? 'none' : '';
     if (isFlour) {
       if (!hidden.value) hidden.value = detectFlourType(name) || 'specialty'; // first time we detect it
-      if (cb) cb.checked = hidden.value === 'anchor';
+      anchorBtn.classList.toggle('secondary', hidden.value !== 'anchor'); // highlighted when anchor
       const aid = row.querySelector('.ing-process-aid'); // flours are always part of the dough
-      if (aid && aid.value) { aid.value = ''; const ucb = row.querySelector('.ing-unit-cb'); if (ucb) ucb.checked = true; }
+      if (aid && aid.value) { aid.value = ''; if (aidBtn) aidBtn.classList.add('secondary'); }
     } else if (hidden.value) {
       hidden.value = ''; // no longer a flour (e.g. relinked to a non-flour ingredient)
-      if (cb) cb.checked = false;
     }
   }
-  // "In unit weight" checkbox: unchecked → process aid (discarded; excluded from unit weight
-  // + dough math). Checked → counts toward the unit.
-  function onUnitWeightToggle(cb) {
-    const row = cb.closest('.ingredient-edit-row');
+  // Process-aid toggle: highlighted → process aid (discarded; excluded from unit weight +
+  // dough math). Un-highlighted → counts toward the unit.
+  function onProcessAidToggle(btn) {
+    const row = btn.closest('.ingredient-edit-row');
     const aid = row && row.querySelector('.ing-process-aid');
     if (!aid) return;
-    aid.value = cb.checked ? '' : '1';
+    const isAid = !aid.value; // toggling on
+    aid.value = isAid ? '1' : '';
+    btn.classList.toggle('secondary', !isAid);
     updateFlourSummary();
   }
-  // Anchor checkbox: checked → anchor flour, unchecked → specialty. Rebalances anchors so
-  // flours still sum to 100% in percent mode.
-  function onAnchorToggle(cb) {
-    const row = cb.closest('.ingredient-edit-row');
+  // Anchor toggle: highlighted → anchor flour, un-highlighted → specialty. Rebalances
+  // anchors so flours still sum to 100% in percent mode.
+  function onAnchorToggle(btn) {
+    const row = btn.closest('.ingredient-edit-row');
     const hidden = row && row.querySelector('.ing-flour-type');
     if (!hidden) return;
-    hidden.value = cb.checked ? 'anchor' : 'specialty';
+    hidden.value = hidden.value === 'anchor' ? 'specialty' : 'anchor';
+    btn.classList.toggle('secondary', hidden.value !== 'anchor');
     rebalanceAnchors();
     updateFlourSummary();
   }
