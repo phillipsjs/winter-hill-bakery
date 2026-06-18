@@ -1395,6 +1395,18 @@ hvOk &= hv('plain recipe: doughSumPct equals the raw % sum (back-compat)', api.d
 hvOk &= hv('plain recipe: final unit weight equals loafWeight (back-compat)', api.finalUnitWeight(plainW) === 100);
 loafR.stages = loafR.stages.filter(s => s.type !== 'topping');
 
+// Emptying the bake plan must hide ALL equipment cards (regression: the Boiling/pot card
+// lingered after the last boiling recipe was removed).
+api.__setPots([{ id: 'potX', name: 'Stockpot', size: '20 qt', quantity: 1 }]);
+api.__setPlan({ [SEED.bagel]: 12 }); seedPlan({ [SEED.bagel]: 12 });
+api.renderTotals();
+const potCardShownWithBagels = getEl('pot-overview-card').style.display !== 'none';
+api.__setPlan({}); seedPlan({});
+api.renderTotals();
+hvOk &= hv('Boiling (pot) card shows with a bagel in the plan', potCardShownWithBagels);
+hvOk &= hv('emptying the plan hides the Boiling (pot) card', getEl('pot-overview-card').style.display === 'none');
+hvOk &= hv('emptying the plan hides the banneton + pan cards too', getEl('banneton-card').style.display === 'none' && getEl('pan-card').style.display === 'none');
+
 // --- Stage editor: per-step options live on their own line, in order
 // (1) substeps (2) ingredients (3) equipment (4) active/passive (5) active min (6) notes. ---
 api.__setOvens([{ id: 'ov1', name: 'Deck', decks: 3 }]);

@@ -7155,12 +7155,12 @@ ${notesHtml}
     if (activeRecipes.length === 0) {
       card.style.display = 'none';
       levainCard.style.display = 'none';
-      const cc = document.getElementById('container-card');
-      if (cc) cc.style.display = 'none';
-      const oc = document.getElementById('oven-overview-card');
-      if (oc) oc.style.display = 'none';
-      const mc = document.getElementById('mixer-card');
-      if (mc) mc.style.display = 'none';
+      // Hide every plan equipment card so none lingers with stale content (e.g. the Boiling
+      // card persisting after the last boiling recipe is removed).
+      ['container-card', 'banneton-card', 'pan-card', 'mixer-card', 'oven-overview-card', 'pot-overview-card'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
       if (intro) intro.style.display = 'none';
       if (cta) cta.style.display = 'none';
       return;
