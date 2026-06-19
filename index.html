@@ -13170,6 +13170,9 @@ ${notesHtml}
           name: r.name,
           unit: r.unit || 'unit',
           count,
+          // Bake order set on the Bake Plan page, so per-recipe steps (weigh, etc.) list
+          // recipes in the order they'll bake. Unranked recipes sort last, keeping list order.
+          bakeRank: Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity,
           ingredients: (r.ingredients || []).map(i => ({
             name: i.name,
             pct: Number(i.pct) || 0,
@@ -13269,14 +13272,15 @@ ${notesHtml}
         return levainSrc ? { type: 'simple', rows: levainSrc.build2 } : null;
       }
 
-      // Recipes relevant to this event's process
+      // Recipes relevant to this event's process, ordered by the baker's bake order so the
+      // weigh (and other per-recipe) steps list them in the sequence they'll bake.
       const byProc = ingData.byRecipe.filter(r =>
         !proc ||
         (proc === 'loaf'     && r.processType === 'sourdough-loaf') ||
         (proc === 'muffin'   && r.processType === 'sourdough-muffin') ||
         (proc === 'bagel'    && r.processType === 'bagel') ||
         (proc === 'focaccia' && r.processType === 'focaccia')
-      );
+      ).sort((a, b) => a.bakeRank - b.bakeRank);
 
       // The per-recipe ingredient subset the title-based heuristic would show at this
       // step (used as the fallback for recipes that DON'T tag this stage).

@@ -1080,6 +1080,36 @@ hvOk &= hv('revert restores the edited recipe’s mixer capacity', mxArr[0].reci
 hvOk &= hv('revert leaves other recipes’ mixer capacities untouched', mxArr[0].recipeCapacities['other-recipe'] === 5);
 api.__setMixers([]);
 
+// --- Weigh step lists recipes in the bake order set on the Bake Plan page ---
+{
+  const lr = api.__recipes();
+  const bat = lr.find(r => r.id === SEED.batard);
+  const boule = lr.find(r => r.id === SEED.boule);
+  if (bat && boule) {
+    const prevB = bat.bakeRank, prevO = boule.bakeRank;
+    const weighRecipeIds = () => {
+      api.renderSchedule();
+      const H = api.buildBakeSheetHelpers();
+      const ev = api.__sr().events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+      const ings = ev ? H.getEventIngredients(ev) : null;
+      return ings && ings.type === 'byRecipe' ? ings.recipes.map(r => r.id) : [];
+    };
+    seedPlan({ [SEED.batard]: 4, [SEED.boule]: 4 }); api.__setPlan({ [SEED.batard]: 4, [SEED.boule]: 4 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    bat.bakeRank = 1; boule.bakeRank = 0;   // boule bakes first
+    const order1 = weighRecipeIds();
+    hvOk &= hv('weigh step lists recipes in bake order (boule before batard)', order1[0] === SEED.boule && order1[1] === SEED.batard);
+    bat.bakeRank = 0; boule.bakeRank = 1;    // reorder → batard first
+    const order2 = weighRecipeIds();
+    hvOk &= hv('reordering on the bake plan flips the weigh step order', order2[0] === SEED.batard && order2[1] === SEED.boule);
+    bat.bakeRank = prevB; boule.bakeRank = prevO;
+  } else {
+    console.log('  [notes] SKIP — batard/boule seeds not present for bake-order weigh test');
+  }
+}
+
 // Schedule inline note control: add/edit button is present and no-print.
 const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
 hvOk &= hv('schedule note control shows "+ note" button when empty', /\+ note/.test(ncEmpty) && /class="schedule-note-btn no-print"/.test(ncEmpty));
