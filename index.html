@@ -2718,6 +2718,7 @@
       bulkMin: 240,
       shapeMinPerUnit: 7,
       foldsCount: 5,
+      foldIntervalMin: 30,
       bakeTempF: 500,
       schedulable: true,
     },
@@ -2746,6 +2747,7 @@
       bulkMin: 75,          // ~60 min bulk + pan-rise starts here; pan rise 60-90 min is separate
       shapeMinPerUnit: 10,  // oil pan, stretch dough to fit, dimple
       foldsCount: 4,        // 4 bowl folds, 15 min apart
+      foldIntervalMin: 15,
       bakeTempF: 475,
       schedulable: true,
     },
@@ -2807,7 +2809,7 @@
 
   const SCHEDULER_OVERRIDE_FIELDS = [
     'bakeMin', 'ovenCapacity', 'deckCapacity', 'coldProofHr', 'warmupMin',
-    'autolyseMin', 'bulkMin', 'foldsCount', 'shapeMinPerUnit',
+    'autolyseMin', 'bulkMin', 'foldsCount', 'foldIntervalMin', 'shapeMinPerUnit',
   ];
 
   function getProcessType(recipe) {
@@ -3257,7 +3259,10 @@
     let s, v;
     if ((s = find('autolyse')) && (v = _numOrNull(recipe.autolyseMin)) != null) s.duration.min = v;
     if ((s = find('bulk')) && (v = _numOrNull(recipe.bulkMin)) != null) s.duration.min = v;
-    if ((s = find('fold')) && (v = _numOrNull(recipe.foldsCount)) != null) s.duration.count = v;
+    if ((s = find('fold'))) {
+      if ((v = _numOrNull(recipe.foldsCount)) != null) s.duration.count = v;
+      if ((v = _numOrNull(recipe.foldIntervalMin)) != null) s.duration.intervalMin = v;
+    }
     if ((s = find('shape')) && (v = _numOrNull(recipe.shapeMinPerUnit)) != null) s.duration.minPerUnit = v;
     if ((s = find('warmup')) && (v = _numOrNull(recipe.warmupMin)) != null) s.duration.min = v;
     if ((s = find('bake'))) {
@@ -3323,6 +3328,7 @@
     emit('bulkMin', bulk ? bulk.duration.min : 0, dbulk ? dbulk.duration.min : 0);
     const fold = sfind('fold'), dfold = dfind('fold');
     emit('foldsCount', fold ? fold.duration.count : 0, dfold ? dfold.duration.count : 0);
+    emit('foldIntervalMin', fold ? fold.duration.intervalMin : null, dfold ? dfold.duration.intervalMin : null);
     const shape = sfind('shape'), dshape = dfind('shape');
     emit('shapeMinPerUnit', shape ? shape.duration.minPerUnit : 0, dshape ? dshape.duration.minPerUnit : 0);
     const warmup = sfind('warmup'), dwarm = dfind('warmup');
@@ -9524,7 +9530,7 @@ ${notesHtml}
     // Steps & timing come from the stage editor → derived scheduler params.
     const stageParams = (processType !== 'levain') ? paramsFromStages(_editorStages, processType) : {};
     const overrides = {};
-    ['bakeMin', 'coldProofHr', 'warmupMin', 'autolyseMin', 'bulkMin', 'foldsCount', 'shapeMinPerUnit'].forEach(f => {
+    ['bakeMin', 'coldProofHr', 'warmupMin', 'autolyseMin', 'bulkMin', 'foldsCount', 'foldIntervalMin', 'shapeMinPerUnit'].forEach(f => {
       if (f in stageParams) overrides[f] = stageParams[f] === '' ? null : stageParams[f];
     });
     // Oven/deck capacity still come from their own inputs.
@@ -10146,6 +10152,7 @@ ${notesHtml}
       autolyseMin:  maxOr(loafSpecs.map(s => s.autolyseMin), SCHED.AUTOLYSE_MIN),
       bulkMin:      fermentScale(maxOr(loafSpecs.map(s => s.bulkMin), SCHED.BULK_AFTER_FOLDS_MIN)),
       foldsCount:   maxOr(loafSpecs.map(s => s.foldsCount), SCHED.FOLDS_COUNT),
+      foldIntervalMin: maxOr(loafSpecs.map(s => s.foldIntervalMin).filter(v => Number.isFinite(Number(v))), SCHED.FOLD_INTERVAL_MIN),
     };
     const muffinAgg = totalMuffins > 0 ? {
       bakeMin:      maxOr(muffinSpecs.map(s => s.bakeMin), SCHED.BAKE_MIN),
@@ -10168,12 +10175,14 @@ ${notesHtml}
       warmupMin:       fermentScale(maxOr(focacciaSpecs.map(s => s.warmupMin),       PROCESS_TEMPLATES.focaccia.warmupMin)),
       bulkMin:         fermentScale(maxOr(focacciaSpecs.map(s => s.bulkMin),         PROCESS_TEMPLATES.focaccia.bulkMin)),
       foldsCount:      maxOr(focacciaSpecs.map(s => s.foldsCount),      PROCESS_TEMPLATES.focaccia.foldsCount),
+      foldIntervalMin: maxOr(focacciaSpecs.map(s => s.foldIntervalMin).filter(v => Number.isFinite(Number(v))), PROCESS_TEMPLATES.focaccia.foldIntervalMin),
       shapeMinPerUnit: maxOr(focacciaSpecs.map(s => s.shapeMinPerUnit), PROCESS_TEMPLATES.focaccia.shapeMinPerUnit),
       autolyseMin:     maxOr(focacciaSpecs.map(s => s.autolyseMin),     PROCESS_TEMPLATES.focaccia.autolyseMin),
       bakeTempF:       maxOr(focacciaRecipes.map(r => recipeBakeTempF(r, PROCESS_TEMPLATES.focaccia.bakeTempF)), PROCESS_TEMPLATES.focaccia.bakeTempF),
     } : null;
     const millingFloursFocaccia = millingFloursForRecipes(focacciaRecipes);
-    const FOCACCIA_FOLD_INTERVAL_MIN = 15;
+    // Minutes between folds — from the focaccia recipe's fold step (falls back to 15).
+    const FOCACCIA_FOLD_INTERVAL_MIN = focacciaAgg ? focacciaAgg.foldIntervalMin : 15;
     const FOCACCIA_MIX_ACTIVE_MIN = 10;
     const FOCACCIA_COOL_MIN = 20;
     // Per-process cooling comes from each recipe's editable cool stage (the longest cool
@@ -10871,8 +10880,8 @@ ${notesHtml}
       const shapeAnchorDur = loafColdProofHours === 0 ? totalContainerShapeDur : firstContainerShapeDur;
       shapePhaseStart = addMinutes(fridgeIn, -shapeAnchorDur);
       lastFoldTime = addMinutes(shapePhaseStart, -loafAgg.bulkMin);
-      firstFoldTime = addMinutes(lastFoldTime, -(loafAgg.foldsCount - 1) * SCHED.FOLD_INTERVAL_MIN);
-      mixTime = addMinutes(firstFoldTime, -(SCHED.FOLD_INTERVAL_MIN + (containerInfo.length - 1) * SCHED.SALT_LEVAIN_MIX_MIN));
+      firstFoldTime = addMinutes(lastFoldTime, -(loafAgg.foldsCount - 1) * loafAgg.foldIntervalMin);
+      mixTime = addMinutes(firstFoldTime, -(loafAgg.foldIntervalMin + (containerInfo.length - 1) * SCHED.SALT_LEVAIN_MIX_MIN));
       autolyseStart = addMinutes(mixTime, -(loafAgg.autolyseMin + (containerInfo.length - 1) * SCHED.AUTOLYSE_ACTIVE_MIN));
     }
     const numContainers = containerInfo.length;
@@ -11318,12 +11327,12 @@ ${notesHtml}
       time: mixTime,
       title: 'Mix in salt + ripe levain',
       detail: (numContainers > 1
-        ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`
-        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${SCHED.FOLD_INTERVAL_MIN} min rest before fold 1`) + sharedContainerStr,
+        ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${loafAgg.foldIntervalMin} min rest before fold 1`
+        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${loafAgg.foldIntervalMin} min rest before fold 1`) + sharedContainerStr,
       process: 'loaf', colDetails: prepColDetails, mixBatchContents: loafBatchContents, equipStrip: sharedContainerStr,
     });
     for (let k = 0; k < loafAgg.foldsCount; k++) {
-      const foldTime = addMinutes(firstFoldTime, k * SCHED.FOLD_INTERVAL_MIN);
+      const foldTime = addMinutes(firstFoldTime, k * loafAgg.foldIntervalMin);
       const isLast = k === loafAgg.foldsCount - 1;
       const activeStr = numContainers > 1
         ? `${SCHED.FOLD_ACTIVE_MIN} min × ${numContainers} containers = ${SCHED.FOLD_ACTIVE_MIN * numContainers} min active`
@@ -11333,7 +11342,7 @@ ${notesHtml}
         title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}`,
         detail: (isLast
           ? `${activeStr} · last fold, then bulk ferment`
-          : `${activeStr} · next fold in ${SCHED.FOLD_INTERVAL_MIN} min`) + sharedContainerStr,
+          : `${activeStr} · next fold in ${loafAgg.foldIntervalMin} min`) + sharedContainerStr,
         process: 'loaf', colDetails: prepColDetails, equipStrip: sharedContainerStr,
       });
     }

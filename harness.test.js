@@ -1110,6 +1110,44 @@ api.__setMixers([]);
   }
 }
 
+// --- Stretch & fold: the recipe sets BOTH the number of folds and the minutes between ---
+// Round-trip: an override flows into the fold stage and back out of paramsFromStages.
+{
+  const rt = api.stagesFromRecipe({ processType: 'sourdough-loaf', foldIntervalMin: 25, ingredients: [] });
+  const foldStage = rt.find(s => s.type === 'fold');
+  hvOk &= hv('stagesFromRecipe applies foldIntervalMin to the fold step', !!foldStage && foldStage.duration.intervalMin === 25);
+  const params = api.paramsFromStages(rt, 'sourdough-loaf');
+  hvOk &= hv('paramsFromStages round-trips foldIntervalMin', params.foldIntervalMin === 25);
+  // Default interval (30) derives back to blank, so seed recipes stay unchanged.
+  const rtDef = api.stagesFromRecipe({ processType: 'sourdough-loaf', ingredients: [] });
+  hvOk &= hv('paramsFromStages emits blank foldIntervalMin at the template default', api.paramsFromStages(rtDef, 'sourdough-loaf').foldIntervalMin === '');
+}
+// Scheduling: the loaf engine spaces the Stretch & fold events by the recipe's interval.
+{
+  const bat = api.__recipes().find(r => r.id === SEED.batard);
+  if (bat) {
+    const prev = bat.foldIntervalMin;
+    const foldGaps = () => {
+      api.renderSchedule();
+      const t = api.__sr().events.filter(e => e.process === 'loaf' && /^Stretch & fold/.test(e.title)).sort((a, b) => a.time - b.time).map(e => e.time.getTime());
+      return t.slice(1).map((x, i) => Math.round((x - t[i]) / 60000));
+    };
+    seedPlan({ [SEED.batard]: 4 }); api.__setPlan({ [SEED.batard]: 4 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    bat.foldIntervalMin = 45;
+    const g45 = foldGaps();
+    hvOk &= hv('loaf folds are spaced by the recipe interval (45 min apart)', g45.length > 0 && g45.every(g => g === 45));
+    bat.foldIntervalMin = 20;
+    const g20 = foldGaps();
+    hvOk &= hv('changing the fold interval respaces the folds (20 min apart)', g20.length > 0 && g20.every(g => g === 20));
+    bat.foldIntervalMin = prev;
+  } else {
+    console.log('  [notes] SKIP — batard seed not present for fold-interval test');
+  }
+}
+
 // Schedule inline note control: add/edit button is present and no-print.
 const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
 hvOk &= hv('schedule note control shows "+ note" button when empty', /\+ note/.test(ncEmpty) && /class="schedule-note-btn no-print"/.test(ncEmpty));
