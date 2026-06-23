@@ -476,6 +476,21 @@
   }
   .schedule-col-iconbtn:hover { opacity: 1; background: var(--accent-dark); color: #fff; }
   .schedule-col-header:hover .schedule-col-iconbtn { opacity: 1; }
+  /* Instant styled hover tooltip for the split/merge controls. */
+  .schedule-col-iconbtn { position: relative; }
+  .schedule-col-iconbtn::after {
+    content: attr(data-tip);
+    position: absolute; top: calc(100% + 7px); left: 0;
+    background: var(--accent-dark, #2b2b2b); color: #fff;
+    padding: 6px 9px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    font-size: 0.72rem; font-weight: 500; line-height: 1.25;
+    text-transform: none; letter-spacing: normal; white-space: nowrap;
+    opacity: 0; transform: translateY(-2px); pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease; z-index: 50;
+  }
+  .schedule-col-iconbtn:hover::after, .schedule-col-iconbtn:focus-visible::after {
+    opacity: 1; transform: translateY(0);
+  }
   .schedule-hour-cols {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -13121,10 +13136,10 @@ ${notesHtml}
         const loafColCount = presentCols.filter(isLoafColKey).length;
         if (!splitOn && names && names.length > 1) {
           // Far-left split control on the merged multi-recipe loaf column header.
-          ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" title="Split into one column per recipe" aria-label="Split into one column per recipe">${SPLIT_COLS_ICON}</button>`;
+          ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" data-tip="Split these loaves into one column per recipe" aria-label="Split into one column per recipe">${SPLIT_COLS_ICON}</button>`;
         } else if (splitOn && loafColCount > 1 && key === presentCols.find(isLoafColKey)) {
           // One far-left merge control on the FIRST loaf column header.
-          ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colmerge-btn no-print" onclick="toggleSplitLoafCols()" title="Merge these recipes back into one column" aria-label="Merge recipes back into one column">${MERGE_COLS_ICON}</button>`;
+          ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colmerge-btn no-print" onclick="toggleSplitLoafCols()" data-tip="Merge these recipes back into a single column" aria-label="Merge recipes back into one column">${MERGE_COLS_ICON}</button>`;
         }
       }
       return `${ctrl}<span class="schedule-col-names">${label}</span>`;
