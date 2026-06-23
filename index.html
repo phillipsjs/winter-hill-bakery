@@ -345,6 +345,17 @@
     row-gap: 10px;
     margin-top: 12px;
   }
+  /* Collapsible "Schedule Controls" / "Schedule Overrides" sections on the Schedule tab. */
+  details#schedule-controls-details { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  details#schedule-overrides-details { margin-top: 12px; }
+  .schedule-section-summary {
+    cursor: pointer; font-weight: 700; font-size: 0.95rem; color: var(--accent-dark);
+    list-style: none; display: flex; align-items: center; gap: 7px; user-select: none;
+  }
+  .schedule-section-summary::-webkit-details-marker { display: none; }
+  .schedule-section-summary::before { content: '▸'; font-size: 0.8em; transition: transform 0.12s ease; }
+  details[open] > .schedule-section-summary::before { transform: rotate(90deg); }
+  details#schedule-overrides-details > .schedule-section-summary { font-size: 0.88rem; font-weight: 600; }
   .schedule-inputs-grid.single-col,
   .schedule-inputs-grid.cols-1 { grid-template-columns: 1fr; }
   .schedule-inputs-grid.cols-2 { grid-template-columns: 1fr 1fr; }
@@ -1572,7 +1583,18 @@
         <label style="width:120px">Default deadline:</label>
         <input type="datetime-local" id="deadline-default-input" />
       </div>
-      <div class="row" id="bake-time-default-row" style="align-items:center; gap:10px; margin-top:8px">
+      <details id="schedule-controls-details">
+        <summary class="schedule-section-summary">Schedule Controls</summary>
+
+      <details id="recipe-deadlines-details" open style="margin-top:10px;display:none">
+        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem">Per-recipe deadlines <span class="muted" style="font-weight:400;font-size:0.85rem">(optional — leave blank to use the default)</span></summary>
+        <div id="recipe-deadlines-list" style="margin-top:8px"></div>
+      </details>
+
+      <details id="schedule-overrides-details">
+        <summary class="schedule-section-summary">Schedule Overrides</summary>
+
+      <div class="row" id="bake-time-default-row" style="align-items:center; gap:10px; margin-top:10px">
         <label style="width:120px">Bake time:</label>
         <select id="bake-time-default-input" class="settings-select">
           <option value="">— any (use deadline) —</option>
@@ -1582,11 +1604,6 @@
           <option value="evening">Evening (6 PM – 10 PM)</option>
         </select>
       </div>
-
-      <details id="recipe-deadlines-details" open style="margin-top:12px;display:none">
-        <summary style="cursor:pointer;font-weight:600;font-size:0.9rem">Per-recipe deadlines <span class="muted" style="font-weight:400;font-size:0.85rem">(optional — leave blank to use the default)</span></summary>
-        <div id="recipe-deadlines-list" style="margin-top:8px"></div>
-      </details>
 
       <div id="coldproof-grid-heading" style="margin-top:14px;display:none">
         <hr class="sep" />
@@ -1814,6 +1831,9 @@
           </select>
         </div>
       </div>
+
+      </details><!-- /schedule-overrides-details -->
+      </details><!-- /schedule-controls-details -->
     </div>
 
     <div class="card" id="schedule-card">
