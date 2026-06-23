@@ -1148,6 +1148,34 @@ api.__setMixers([]);
   }
 }
 
+// --- Loaf-wide prep steps (Weigh) stay in the loaf columns, not spread into muffin ---
+// Repro: two DISTINCT loaf doughs split into per-dough columns while muffins share the levain.
+{
+  const recs = api.__recipes();
+  const boule = recs.find(r => r.id === SEED.boule);
+  const bat = recs.find(r => r.id === SEED.batard);
+  if (boule && bat) {
+    const savedIngs = boule.ingredients;
+    boule.ingredients = boule.ingredients.map(i => i.name === 'Water' ? { ...i, pct: 80 } : i); // distinct dough
+    seedPlan({ [SEED.batard]: 6, [SEED.boule]: 6, [SEED.muffin]: 12 });
+    api.__setPlan({ [SEED.batard]: 6, [SEED.boule]: 6, [SEED.muffin]: 12 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    const sr = api.__sr();
+    const loafCols = (sr.loafColumns || []).map(c => c.key);
+    const weigh = sr.events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+    const cdKeys = weigh && weigh.colDetails ? Object.keys(weigh.colDetails) : [];
+    hvOk &= hv('two distinct loaf doughs split into per-dough columns', loafCols.length === 2);
+    hvOk &= hv('loaf Weigh step carries per-loaf-column detail (not full-width "shared")', cdKeys.length > 0);
+    hvOk &= hv('loaf Weigh colDetails are keyed to loaf columns only, not muffin', cdKeys.length > 0 && cdKeys.every(k => loafCols.includes(k)) && !cdKeys.some(k => /muffin/.test(k)));
+    boule.ingredients = savedIngs;
+  } else {
+    console.log('  [notes] SKIP — boule/batard seeds not present for column-spread test');
+  }
+}
+
 // Schedule inline note control: add/edit button is present and no-print.
 const ncEmpty = api.noteControlHtml({ process: 'loaf', title: 'Mix dough' });
 hvOk &= hv('schedule note control shows "+ note" button when empty', /\+ note/.test(ncEmpty) && /class="schedule-note-btn no-print"/.test(ncEmpty));

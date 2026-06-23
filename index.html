@@ -11311,7 +11311,10 @@ ${notesHtml}
         ? `${weighDuration} min active · ${loafRecipes.length} recipes`
         : `${weighDuration} min active`)
         + (numContainers > 1 ? ` · weigh per batch (${numContainers} containers)` : ''),
-      process: 'loaf',
+      // colDetails (like the other loaf prep steps) keeps this loaf-wide step in its own
+      // column cells when loaves split into per-dough columns — otherwise it renders "shared"
+      // and spreads full-width across the muffin/bagel columns too.
+      process: 'loaf', colDetails: prepColDetails,
       mixBatchContents: loafBatchContents,
     });
     const autolyseRestMin = Math.max(0, loafAgg.autolyseMin - SCHED.AUTOLYSE_ACTIVE_MIN);
