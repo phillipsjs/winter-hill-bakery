@@ -134,6 +134,7 @@ const exportsTail = `
   panNamesForRecipesG, panCapacityForRecipesG, panCoversRecipe,
   ratioSignature, sameDough, clusterDoughs,
   loadSplitLoafCols, setSplitLoafCols, toggleSplitLoafCols,
+  getOvenCoolGapMin, setOvenCoolGapMin, getOvenShowEndOff, setOvenShowEndOff,
   __recipes: () => recipes,
 };`;
 
@@ -1989,6 +1990,35 @@ allOk &= hvOk;
   els['coldproof-loaf-input'].value = '';
   api.__setRecipes(api.SEED_RECIPES.slice());
   allOk &= bnOk;
+}
+
+// --- B2/B3: oven cool-gap is tunable, and the end-of-session "Turn off" step toggles ---
+{
+  let obOk = true;
+  api.__setOvens([{ id: 'o1', name: 'Deck oven', decks: 3 }]);
+  api.__setRecipes(api.SEED_RECIPES.slice());
+  const plan = { [SEED.muffin]: 12 };
+  api.__setPlan(plan); seedPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  // B2: cool-gap getter/setter + default (bumped to 90).
+  api.setOvenCoolGapMin(null);
+  obOk &= hv('oven cool-gap defaults to 90 min (was a hardcoded 60)', api.getOvenCoolGapMin() === 90);
+  api.setOvenCoolGapMin(120);
+  obOk &= hv('oven cool-gap is tunable', api.getOvenCoolGapMin() === 120);
+  api.setOvenCoolGapMin(null);
+  // B3: end-of-session turn-off step shows by default, hides when toggled off.
+  const turnOffs = () => { api.renderSchedule(); return (api.__sr().events || []).filter(e => /^Turn off/.test(e.title)).length; };
+  api.setOvenShowEndOff(true);
+  obOk &= hv('end-of-session "Turn off oven" step shows by default', turnOffs() >= 1);
+  api.setOvenShowEndOff(false);
+  obOk &= hv('toggling it off hides the end-of-session "Turn off oven" step', turnOffs() === 0);
+  api.setOvenShowEndOff(true);
+  // Both settings ride the synced settings payload.
+  api.setOvenCoolGapMin(105); api.setOvenShowEndOff(false);
+  obOk &= hv('oven behavior settings are in the synced payload', api.getLocalSettings().ovenCoolGapMin === 105 && api.getLocalSettings().ovenShowEndOff === false);
+  api.setOvenCoolGapMin(null); api.setOvenShowEndOff(true);
+  allOk &= obOk;
 }
 
 // --- A4: focaccia claims its pan(s) (and the focaccia-only fast path returns equipClaims) ---

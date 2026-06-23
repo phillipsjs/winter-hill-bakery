@@ -1423,6 +1423,26 @@
     </div>
 
     <div class="card" style="margin-top:20px">
+      <details class="plan-details" id="oven-behavior-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Oven behavior</h2>
+          <span class="muted" style="font-size:0.85rem;font-weight:normal">How long an oven holds heat, and whether to show end-of-bake oven-off steps</span>
+        </summary>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+          <span class="muted" style="font-size:0.9rem">Oven goes cold after</span>
+          <input type="number" id="oven-cool-gap-input" min="15" max="240" step="5" placeholder="90" style="width:80px;flex:none" oninput="onOvenCoolGapChange()" />
+          <span class="muted" style="font-size:0.9rem">min idle</span>
+        </div>
+        <p class="muted" style="margin:6px 0 0;font-size:0.85rem">If two bakes on one oven are more than this far apart, the later one preheats from room temp (and the earlier one turns off). Default 90 min.</p>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.9rem;cursor:pointer">
+          <input type="checkbox" id="oven-end-off-input" onchange="onOvenEndOffChange()" style="flex:none" />
+          Show a “Turn off oven” step after each oven’s final bake
+        </label>
+      </details>
+    </div>
+
+    <div class="card" style="margin-top:20px">
       <details class="plan-details" id="kitchen-hours-details">
         <summary>
           <span class="plan-card-toggle">▶</span>
@@ -2322,6 +2342,39 @@
     return Math.round(cToF(n));
   }
   // ---- Proofing temperature → fermentation timing ----
+  // Oven behavior settings (B2/B3). Cool-gap: idle minutes after which an oven is treated as
+  // cold (so the next bake preheats from room temp). Default 90 — 60 was too short for most
+  // ovens. End-off step: whether to show a "Turn off <oven>" step after an oven's final bake.
+  const OVEN_COOL_GAP_KEY = 'whb-oven-cool-gap-v1';
+  const DEFAULT_OVEN_COOL_GAP_MIN = 90;
+  const OVEN_END_OFF_KEY = 'whb-oven-end-off-v1';
+  function getOvenCoolGapMin() {
+    const v = localStorage.getItem(OVEN_COOL_GAP_KEY);
+    return (v != null && v !== '' && isFinite(Number(v)) && Number(v) > 0) ? Math.round(Number(v)) : DEFAULT_OVEN_COOL_GAP_MIN;
+  }
+  function setOvenCoolGapMin(v) {
+    if (v == null || v === '' || !isFinite(Number(v)) || Number(v) <= 0) localStorage.removeItem(OVEN_COOL_GAP_KEY);
+    else localStorage.setItem(OVEN_COOL_GAP_KEY, String(Math.round(Number(v))));
+  }
+  function getOvenShowEndOff() { return localStorage.getItem(OVEN_END_OFF_KEY) !== '0'; } // default: show
+  function setOvenShowEndOff(on) { if (on) localStorage.removeItem(OVEN_END_OFF_KEY); else localStorage.setItem(OVEN_END_OFF_KEY, '0'); }
+  function onOvenCoolGapChange() {
+    const el = document.getElementById('oven-cool-gap-input');
+    setOvenCoolGapMin(el && el.value !== '' ? el.value : null);
+    refreshOvenBehaviorUI(); renderSchedule(); if (typeof scheduleSyncToGist === 'function') scheduleSyncToGist();
+  }
+  function onOvenEndOffChange() {
+    const el = document.getElementById('oven-end-off-input');
+    setOvenShowEndOff(!el || !!el.checked);
+    renderSchedule(); if (typeof scheduleSyncToGist === 'function') scheduleSyncToGist();
+  }
+  function refreshOvenBehaviorUI() {
+    const gap = document.getElementById('oven-cool-gap-input');
+    if (gap) gap.value = (localStorage.getItem(OVEN_COOL_GAP_KEY) || '') === '' ? '' : String(getOvenCoolGapMin());
+    const off = document.getElementById('oven-end-off-input');
+    if (off) off.checked = getOvenShowEndOff();
+  }
+
   // The kitchen/proofer temperature sets how fast warm fermentation runs. Stored in F
   // (display respects the unit preference). If unset we assume 70°F for all timing.
   const PROOFING_TEMP_KEY = 'whb-proofing-temp-v1';
@@ -4463,7 +4516,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit(), proofingTempF: proofingTempIsSet() ? getProofingTempF() : null, stepNotes: loadStepNotes(), levainContainers: loadLevainContainerPrefs(), splitLoafCols: loadSplitLoafCols() };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit(), proofingTempF: proofingTempIsSet() ? getProofingTempF() : null, stepNotes: loadStepNotes(), levainContainers: loadLevainContainerPrefs(), splitLoafCols: loadSplitLoafCols(), ovenCoolGapMin: localStorage.getItem(OVEN_COOL_GAP_KEY) ? getOvenCoolGapMin() : null, ovenShowEndOff: getOvenShowEndOff() };
   }
 
   function applyRemoteSettings(settings) {
@@ -4536,6 +4589,8 @@ ${notesHtml}
     if (typeof settings.splitLoafCols === 'boolean') {
       setSplitLoafCols(settings.splitLoafCols);
     }
+    if ('ovenCoolGapMin' in settings) { setOvenCoolGapMin(settings.ovenCoolGapMin); refreshOvenBehaviorUI(); }
+    if (typeof settings.ovenShowEndOff === 'boolean') { setOvenShowEndOff(settings.ovenShowEndOff); refreshOvenBehaviorUI(); }
   }
 
   async function pushSettingsToGist() {
@@ -6975,7 +7030,7 @@ ${notesHtml}
     closeHamburger();
     if (name === 'plan') renderPlan();
     if (name === 'recipes') renderRecipes();
-    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderPots(); renderKitchenWindows(); refreshTempUnitUI(); }
+    if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderPots(); renderKitchenWindows(); refreshTempUnitUI(); refreshOvenBehaviorUI(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') { renderRecipeDeadlines(); renderSchedule(); }
     if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -10766,7 +10821,7 @@ ${notesHtml}
           if (i > 0) {
             const prev = list[i - 1];
             const gapMs = curr.desiredFirst.getTime() - prev.s.lastBakeEnd.getTime();
-            if (gapMs > SCHED.OVEN_COOL_GAP_MIN * 60000) {
+            if (gapMs > getOvenCoolGapMin() * 60000) {
               // Big idle gap → oven cools to room temp. The earlier bake turns the
               // oven off; this bake preheats from cold (no temp-change-from-prev).
               prev.s.turnOffAfter = true;
@@ -10788,8 +10843,10 @@ ${notesHtml}
           curr.ovenId = ovenId;
           curr.prevKind = i > 0 ? list[i - 1].kind : null;
         }
-        // The last bake in this oven ends the session — turn the oven off afterward.
-        if (list.length) list[list.length - 1].s.turnOffAfter = true;
+        // The last bake in this oven ends the session — turn the oven off afterward. Flag it
+        // as end-of-session so the "Turn off" step can be hidden (B3) without affecting the
+        // mid-session gap turn-offs (which drive cold restarts and must stay).
+        if (list.length) { list[list.length - 1].s.turnOffAfter = true; list[list.length - 1].s.turnOffEndOfSession = true; }
       };
 
       // Initial assignment: preferred ovens first (honored), then remaining
@@ -12320,7 +12377,7 @@ ${notesHtml}
       // schedule doesn't assume it stays hot. The next bake preheats from room temp.
       // Loaves fold this into the "Last loaves out — start cooling" step above, so
       // skip the standalone turn-off for the loaf process.
-      if (s && s.turnOffAfter && s.lastBakeEnd && process !== 'loaf') {
+      if (s && s.turnOffAfter && s.lastBakeEnd && process !== 'loaf' && !(s.turnOffEndOfSession && !getOvenShowEndOff())) {
         const ovenLabel = s.ovenName || 'the oven';
         events.push({
           time: new Date(s.lastBakeEnd),
