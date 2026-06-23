@@ -10858,12 +10858,16 @@ ${notesHtml}
       fridgeIn = addHours(firstBakeStart, -loafColdProofHours);
       const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
       const multiDough = containerGroups.length > 1;
+      const colRank = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
       containerGroups.forEach((group, gi) => {
         const colKey = multiDough ? `loaf#${gi}` : 'loaf';
-        const names = [...new Set((group.items || []).map(it => it.recipe.name))];
+        // Names in bake-plan order (bakeRank), de-duplicated — used both to route steps and,
+        // when several recipes share a column, to stack them in the column header.
+        const orderedRecs = (group.items || []).map(it => it.recipe).slice().sort((a, b) => colRank(a) - colRank(b));
+        const names = [...new Set(orderedRecs.map(r => r.name))];
         names.forEach(n => loafRecipeColKey.set(n, colKey));
         if (multiDough) {
-          loafColumns.push({ key: colKey, label: names.join(', ') });
+          loafColumns.push({ key: colKey, label: names.join(', '), names });
         }
         for (const c of group.containers) {
           containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves, containerName: c.containerName, colKey });
@@ -12395,10 +12399,11 @@ ${notesHtml}
       const prefix = `g${gi}~`;
       const dlLabel = group.combined ? ' · one dough (staggered)' : ` · ${fmtDl(group.ms)}`;
       const singleDough = !(res.loafColumns && res.loafColumns.length);
-      let cols = (res.loafColumns || []).map(c => ({ key: prefix + c.key, label: c.label + dlLabel }));
+      const grpRank = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
+      let cols = (res.loafColumns || []).map(c => ({ key: prefix + c.key, label: c.label + dlLabel, names: c.names }));
       if (!cols.length) {
-        const names = [...new Set(group.recipes.map(r => r.name))].join(', ');
-        cols = [{ key: prefix + 'loaf', label: names + dlLabel }];
+        const names = [...new Set(group.recipes.slice().sort((a, b) => grpRank(a) - grpRank(b)).map(r => r.name))];
+        cols = [{ key: prefix + 'loaf', label: names.join(', ') + dlLabel, names }];
       }
       out.loafColumns.push(...cols);
       res.events.forEach(ev => {
@@ -12971,8 +12976,14 @@ ${notesHtml}
     // signature share a column). Each column = {key, label}; events route by columnKey.
     const PROC_LABELS = { loaf: 'Sourdough loaves', muffin: 'English muffins', bagel: 'Bagels', focaccia: 'Focaccia' };
     const PROC_TYPE = { loaf: 'sourdough-loaf', muffin: 'sourdough-muffin', bagel: 'bagel', focaccia: 'focaccia' };
+    // Recipes feeding a bread process column, in bake-plan order (bakeRank; unranked last).
+    const colRank = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
+    const breadColRecs = (proc) => recipes
+      .filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) === PROC_TYPE[proc])
+      .slice().sort((a, b) => colRank(a) - colRank(b));
+    const breadColNames = (proc) => breadColRecs(proc).map(r => r.name);
     const breadColLabel = (proc) => {
-      const names = recipes.filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) === PROC_TYPE[proc]).map(r => r.name);
+      const names = breadColNames(proc);
       return names.length ? names.join(', ') : PROC_LABELS[proc];
     };
     const columns = [];
@@ -12983,17 +12994,25 @@ ${notesHtml}
     if (hasLoaves) {
       // Merged multi-group/combined results carry explicit loaf columns (≥1, namespaced);
       // a plain single-call result has none (single dough) → fall back to one 'loaf' column.
-      if (loafCols.length >= 1) loafCols.forEach(c => columns.push({ key: c.key, label: c.label }));
-      else columns.push({ key: 'loaf', label: breadColLabel('loaf') });
+      if (loafCols.length >= 1) loafCols.forEach(c => columns.push({ key: c.key, label: c.label, names: c.names }));
+      else columns.push({ key: 'loaf', label: breadColLabel('loaf'), names: breadColNames('loaf') });
     }
-    if (hasMuffins) columns.push({ key: 'muffin', label: breadColLabel('muffin') });
-    if (hasBagels) columns.push({ key: 'bagel', label: breadColLabel('bagel') });
-    if (hasFocacciaResult) columns.push({ key: 'focaccia', label: breadColLabel('focaccia') });
+    if (hasMuffins) columns.push({ key: 'muffin', label: breadColLabel('muffin'), names: breadColNames('muffin') });
+    if (hasBagels) columns.push({ key: 'bagel', label: breadColLabel('bagel'), names: breadColNames('bagel') });
+    if (hasFocacciaResult) columns.push({ key: 'focaccia', label: breadColLabel('focaccia'), names: breadColNames('focaccia') });
     (result.sideColumns || []).forEach(c => columns.push({ key: c.key, label: c.label }));
     const presentCols = columns.map(c => c.key);
     const colLabelMap = {};
-    columns.forEach(c => { colLabelMap[c.key] = c.label; });
+    const colNamesMap = {};
+    columns.forEach(c => { colLabelMap[c.key] = c.label; if (Array.isArray(c.names)) colNamesMap[c.key] = c.names; });
     const colLabelFor = (key) => colLabelMap[key] || key;
+    // Header content for a column: when several recipes share it, stack their names (bake-plan
+    // order) one per line instead of a comma-joined single line; otherwise the plain label.
+    const colHeaderHtml = (key) => {
+      const names = colNamesMap[key];
+      if (names && names.length > 1) return names.map(escapeHtml).join('<br>');
+      return escapeHtml(colLabelFor(key));
+    };
     const splitView = presentCols.length >= 2;
     // Route an event to a column: shared (levain, etc.) spans all columns; side events
     // carry their own columnKey; bread events fall back to their process name.
@@ -13114,7 +13133,7 @@ ${notesHtml}
         <div></div>
         <div class="schedule-hour-content">
           <div class="schedule-hour-cols" style="${colsStyle}">
-            ${presentCols.map(p => `<div class="schedule-col-header">${escapeHtml(colLabelFor(p))}</div>`).join('')}
+            ${presentCols.map(p => `<div class="schedule-col-header">${colHeaderHtml(p)}</div>`).join('')}
           </div>
         </div>
       </div>`;

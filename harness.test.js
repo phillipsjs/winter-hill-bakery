@@ -1212,6 +1212,28 @@ api.__setMixers([]);
     bat.ingredients = savedBatIngs;
     bat.stages = savedBatStages;
     boule.ingredients = orig;
+
+    // When several recipes share ONE loaf column, the header stacks their names (one per line,
+    // bake-plan order) rather than a comma-joined single line. Needs a 2nd column (muffin) so
+    // the header row renders (split view); seed muffins and rank batard ahead of boule.
+    bat.ingredients = orig.map(i => ({ ...i }));
+    boule.ingredients = orig.map(i => ({ ...i }));
+    const prevBatRank = bat.bakeRank, prevBouRank = boule.bakeRank;
+    bat.bakeRank = 0; boule.bakeRank = 1;
+    seedPlan({ [SEED.batard]: 6, [SEED.boule]: 6, [SEED.muffin]: 12 });
+    api.__setPlan({ [SEED.batard]: 6, [SEED.boule]: 6, [SEED.muffin]: 12 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    const hdrs = (getEl('schedule-output').innerHTML.match(/<div class="schedule-col-header">([\s\S]*?)<\/div>/g) || [])
+      .map(s => s.replace(/<div class="schedule-col-header">/, '').replace(/<\/div>/, ''));
+    const loafHdr = hdrs.find(h => /Batard/.test(h) && /Boule/.test(h));
+    hvOk &= hv('a shared loaf column stacks recipe names on separate lines (<br>, not comma-joined)', !!loafHdr && loafHdr.includes('<br>') && !loafHdr.includes(','));
+    hvOk &= hv('stacked column names follow bake-plan order (batard rank 0 before boule rank 1)', !!loafHdr && loafHdr.indexOf('Batard') < loafHdr.indexOf('Boule'));
+    bat.bakeRank = prevBatRank; boule.bakeRank = prevBouRank;
+    bat.ingredients = savedBatIngs;
+    boule.ingredients = orig;
   } else {
     console.log('  [notes] SKIP — boule/batard seeds not present for dough-rounding test');
   }
