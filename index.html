@@ -7475,8 +7475,9 @@ ${notesHtml}
     // toppings (applied per-unit after shaping) and process aids (dusting flour, boil-bath
     // salt/lye) don't change the dough you mix & bulk-ferment, so e.g. a plain boule and a
     // sesame-topped batard of the identical dough share one column / one bulk ferment instead
-    // of splitting. Percentages are rounded to 1 decimal so sub-0.1% rounding noise — common
-    // when one recipe was entered in grams and another in % — doesn't spuriously split them.
+    // of splitting. Percentages are rounded to 1 decimal here, but dough GROUPING goes through
+    // sameDough() (tolerance-based) — fixed rounding can't merge values that straddle a
+    // rounding boundary (e.g. 73.04 vs 73.06), which grams-mode re-rounding readily produces.
     const tn = toppingIngredientNames(recipe);
     return [...(recipe.ingredients || [])]
       .filter(i => ingredientWeightRole(recipe, i, tn) === 'dough')
@@ -7484,6 +7485,46 @@ ${notesHtml}
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(i => `${i.name}:${i.pct}`)
       .join('|');
+  }
+
+  // Map of dough-role ingredient name → baker's %, for tolerance comparison.
+  function doughRatioMap(recipe) {
+    const tn = toppingIngredientNames(recipe);
+    const m = {};
+    for (const i of (recipe && recipe.ingredients) || []) {
+      if (ingredientWeightRole(recipe, i, tn) === 'dough') {
+        m[(i.name || '').trim().toLowerCase()] = Number(i.pct) || 0;
+      }
+    }
+    return m;
+  }
+  // Whether two recipes are the SAME dough for scheduling: identical dough-ingredient set
+  // and every baker's % within `tol` (default 0.15% of flour). Tolerance — not exact match —
+  // because a recipe entered/scaled in grams re-derives its %s via round2, so the "same"
+  // dough can drift by a few hundredths of a percent (and changing one recipe's overall
+  // weight rescales its grams, nudging the ratios). 0.15% absorbs that noise while still
+  // keeping a deliberate ≥~0.5% hydration/levain change as a genuinely distinct dough.
+  function sameDough(a, b, tol) {
+    tol = tol == null ? 0.15 : tol;
+    const ma = doughRatioMap(a), mb = doughRatioMap(b);
+    const keys = new Set([...Object.keys(ma), ...Object.keys(mb)]);
+    for (const k of keys) {
+      if (!(k in ma) || !(k in mb)) return false; // an ingredient present in only one
+      if (Math.abs(ma[k] - mb[k]) > tol) return false;
+    }
+    return true;
+  }
+  // Cluster recipes into same-dough groups (first-match against each cluster's representative),
+  // returning an array of recipe-arrays. Used instead of exact-signature grouping so tiny
+  // ratio drift doesn't split otherwise-identical doughs into separate schedule columns.
+  function clusterDoughs(recipes) {
+    const clusters = []; // [{ rep, items: [recipe,…] }]
+    for (const r of recipes || []) {
+      let c = clusters.find(c => sameDough(c.rep, r));
+      if (!c) { c = { rep: r, items: [] }; clusters.push(c); }
+      c.items.push(r);
+    }
+    return clusters.map(c => c.items);
   }
 
   function splitEvenly(total, n) {
@@ -7596,19 +7637,18 @@ ${notesHtml}
       .filter(r => (planMap[r.id] || 0) > 0 && (getProcessType(r) !== 'simple' || simpleChills(r)))
       .map(r => ({ recipe: r, count: planMap[r.id], dough: r.loafWeight * planMap[r.id] }));
     if (active.length === 0) return [];
-    const groups = new Map();
-    for (const a of active) {
-      const sig = ratioSignature(a.recipe);
-      if (!groups.has(sig)) groups.set(sig, []);
-      groups.get(sig).push(a);
-    }
+    // Group by dough with a tolerance (sameDough) rather than an exact signature, so a few
+    // hundredths of a percent of ratio drift — e.g. from re-rounding grams when one recipe's
+    // overall weight changed — doesn't split otherwise-identical doughs into separate columns.
+    const groups = clusterDoughs(active.map(a => a.recipe))
+      .map(recs => recs.map(r => active.find(a => a.recipe === r)));
     // Eligible user containers for loaf proofing, smallest first
     const eligible = (userCont || [])
       .filter(c => c.processTag === 'any' || c.processTag === 'loaf')
       .slice()
       .sort((a, b) => a.maxDoughGrams - b.maxDoughGrams);
 
-    return Array.from(groups.values()).map(items => {
+    return groups.map(items => {
       const totalDough = items.reduce((s, i) => s + i.dough, 0);
 
       // Chilled dough doesn't rise, so a chilling container can be filled to its full

@@ -130,7 +130,7 @@ const exportsTail = `
   __setContainers: (c) => { userContainers = c; },
   pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
   pickDoughContainer, planBakes, bakeRankMap, moveBakeOrder, renderBakeOrderPlan, bakeOrderGroups,
-  ratioSignature,
+  ratioSignature, sameDough, clusterDoughs,
   __recipes: () => recipes,
 };`;
 
@@ -1156,6 +1156,7 @@ api.__setMixers([]);
   const bat = recs.find(r => r.id === SEED.batard);
   if (boule && bat) {
     const orig = boule.ingredients.map(i => ({ ...i }));
+    const batOrig = bat.ingredients.map(i => ({ ...i }));
     const split = () => { api.renderSchedule(); return (api.__sr().loafColumns || []).length > 0; };
     const setup = () => {
       seedPlan({ [SEED.batard]: 6, [SEED.boule]: 6 }); api.__setPlan({ [SEED.batard]: 6, [SEED.boule]: 6 });
@@ -1165,9 +1166,19 @@ api.__setMixers([]);
     };
     boule.ingredients = orig.map(i => i.name === 'Water' ? { ...i, pct: 73.04 } : i); setup();
     hvOk &= hv('a sub-0.1% rounding difference keeps loaves as ONE dough (no column split)', split() === false);
+    // Boundary-straddle: 73.04 vs 73.06 are 0.02% apart but round to 73.0 / 73.1 — fixed
+    // rounding would split them; tolerance-based sameDough keeps them one dough.
+    boule.ingredients = orig.map(i => i.name === 'Water' ? { ...i, pct: 73.04 } : i);
+    bat.ingredients = bat.ingredients.map(i => i.name === 'Water' ? { ...i, pct: 73.06 } : i);
+    setup();
+    hvOk &= hv('ratio drift across a rounding boundary (73.04 vs 73.06) stays ONE dough', split() === false);
+    hvOk &= hv('sameDough is true for boundary-straddling drift (73.04 vs 73.06)', api.sameDough(boule, bat) === true);
+    bat.ingredients = batOrig.map(i => ({ ...i }));
     boule.ingredients = orig.map(i => i.name === 'Water' ? { ...i, pct: 76 } : i); setup();
-    hvOk &= hv('a real (≥0.1%) ratio difference still splits into separate dough columns', split() === true);
+    hvOk &= hv('a real (≥0.5%) ratio difference still splits into separate dough columns', split() === true);
+    hvOk &= hv('sameDough is false for a real ratio difference (73 vs 76)', api.sameDough(boule, bat) === false);
     boule.ingredients = orig;
+    bat.ingredients = batOrig.map(i => ({ ...i }));
 
     // Same dough, but the batard carries a sesame TOPPING (applied per-unit after shaping):
     // the dough is identical, so they must stay ONE column / one bulk ferment — toppings and
