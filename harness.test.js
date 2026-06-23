@@ -1319,8 +1319,13 @@ api.__setMixers([]);
     // Headers: two separate per-recipe loaf headers, not one comma/<br>-joined header.
     const hdrs = (splitHtml.match(/<div class="schedule-col-header">([\s\S]*?)<\/div>/g) || []);
     hvOk &= hv('split ON: separate per-recipe loaf column headers', hdrs.some(h => /Batard/.test(h) && !/Boule/.test(h)) && hdrs.some(h => /Boule/.test(h) && !/Batard/.test(h)));
-    // Each split per-recipe loaf header hosts a "merge" control.
-    hvOk &= hv('split ON: per-recipe loaf headers show a "merge" button', hdrs.filter(h => /schedule-colsplit-btn[^>]*>merge</.test(h)).length === 2);
+    // A single "merge" overlay sits centered over (between) the loaf columns — not one per header.
+    {
+      const mergeAll = (splitHtml.match(/schedule-colmerge-btn/g) || []).length;
+      const overlay = splitHtml.match(/<button[^>]*schedule-colmerge-btn[^>]*style="grid-column: 1 \/ span (\d+);"[^>]*>merge<\/button>/);
+      hvOk &= hv('split ON: exactly one "merge" overlay, spanning the loaf columns', mergeAll === 1 && !!overlay && Number(overlay[1]) === 2);
+      hvOk &= hv('split ON: per-recipe headers carry no inline split/merge button', !hdrs.some(h => /schedule-colsplit-btn|schedule-colmerge-btn/.test(h)));
+    }
 
     api.setSplitLoafCols(false);
     boule.ingredients = savedBou; bat.ingredients = savedBat;
