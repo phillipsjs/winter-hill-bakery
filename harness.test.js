@@ -1212,6 +1212,22 @@ api.__setMixers([]);
     boule.ingredients = orig;
     bat.ingredients = batOrig.map(i => ({ ...i }));
 
+    // A leftover 0%-pct ingredient is treated as absent (no spurious split); a real flour
+    // difference (bread vs AP, or a real rye %) still keeps the doughs distinct.
+    boule.ingredients = orig.map(i => ({ ...i }));
+    bat.ingredients = orig.map(i => ({ ...i })).concat([{ name: 'Spelt flour', pct: 0, flourType: 'spelt' }]);
+    setup();
+    hvOk &= hv('a 0%-listed dough ingredient does NOT split the column (treated as absent)', split() === false);
+    hvOk &= hv('sameDough ignores a 0%-pct ingredient', api.sameDough(boule, bat) === true);
+    bat.ingredients = orig.map(i => ({ ...i })).concat([{ name: 'Spelt flour', pct: 8, flourType: 'spelt' }]);
+    hvOk &= hv('a REAL extra flour (8%) still splits the dough', api.sameDough(boule, bat) === false);
+    // Same %s but bread flour vs AP must stay distinct (no flour-equivalence merging).
+    boule.ingredients = [{ name: 'Bread flour', pct: 100, flourType: 'bread' }, { name: 'Water', pct: 73 }, { name: 'Levain', pct: 22 }, { name: 'Salt', pct: 2.5 }];
+    bat.ingredients = [{ name: 'All purpose flour', pct: 100, flourType: 'ap' }, { name: 'Water', pct: 73 }, { name: 'Levain', pct: 22 }, { name: 'Salt', pct: 2.5 }];
+    hvOk &= hv('bread flour vs all-purpose stay distinct doughs (no flour-equivalence merge)', api.sameDough(boule, bat) === false);
+    boule.ingredients = orig;
+    bat.ingredients = batOrig.map(i => ({ ...i }));
+
     // Same dough, but the batard carries a sesame TOPPING (applied per-unit after shaping):
     // the dough is identical, so they must stay ONE column / one bulk ferment — toppings and
     // process aids (dusting flour) are excluded from the dough signature.

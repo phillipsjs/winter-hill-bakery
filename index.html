@@ -7539,6 +7539,11 @@ ${notesHtml}
     return 'Other';
   }
 
+  // An ingredient listed at ~0% contributes nothing to the dough, so the dough signature
+  // treats it as absent — a recipe carrying a leftover "Rye flour: 0%" row matches one that
+  // simply omits rye, instead of splitting into a separate column. (A real ingredient — even
+  // a different flour like AP vs. bread flour at a normal % — still keeps the doughs distinct.)
+  const DOUGH_SIG_PCT_MIN = 0.05;
   function ratioSignature(recipe) {
     // Two recipes count as "the same dough" (one mix/fold, one schedule column) when their
     // DOUGH ingredient name + baker's % match. Only dough-role ingredients are compared —
@@ -7550,7 +7555,7 @@ ${notesHtml}
     // rounding boundary (e.g. 73.04 vs 73.06), which grams-mode re-rounding readily produces.
     const tn = toppingIngredientNames(recipe);
     return [...(recipe.ingredients || [])]
-      .filter(i => ingredientWeightRole(recipe, i, tn) === 'dough')
+      .filter(i => ingredientWeightRole(recipe, i, tn) === 'dough' && (Number(i.pct) || 0) >= DOUGH_SIG_PCT_MIN)
       .map(i => ({ name: (i.name || '').trim().toLowerCase(), pct: Math.round((Number(i.pct) || 0) * 10) / 10 }))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(i => `${i.name}:${i.pct}`)
@@ -7562,7 +7567,7 @@ ${notesHtml}
     const tn = toppingIngredientNames(recipe);
     const m = {};
     for (const i of (recipe && recipe.ingredients) || []) {
-      if (ingredientWeightRole(recipe, i, tn) === 'dough') {
+      if (ingredientWeightRole(recipe, i, tn) === 'dough' && (Number(i.pct) || 0) >= DOUGH_SIG_PCT_MIN) {
         m[(i.name || '').trim().toLowerCase()] = Number(i.pct) || 0;
       }
     }
