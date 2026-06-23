@@ -810,7 +810,10 @@
     border-bottom: 2px solid var(--border); font-size: 0.78rem; color: var(--muted); }
   .bakesheet-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
   .bs-time { color: var(--accent-dark); font-weight: 600; font-size: 0.82rem;
-    white-space: nowrap; width: 110px; }
+    white-space: nowrap; width: 110px; vertical-align: top; height: 1px; }
+  /* Fill the (possibly tall, rowspanned) Time cell so the note button can sit at its bottom. */
+  .bs-time-inner { display: flex; flex-direction: column; height: 100%; gap: 6px; }
+  .bs-note-btn-wrap { margin-top: auto; padding-top: 8px; }
   .bs-step strong { font-size: 0.88rem; }
   .bs-detail { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
   .bs-recipes { margin: 5px 0 1px; display: flex; flex-wrap: wrap; gap: 3px; }
@@ -13985,14 +13988,22 @@ ${notesHtml}
         const noteKey = stepNoteKey(ev);
         const noteText = getStepNoteFor(ev);
         const recipeNotesHtml = recipeStageNotesHtml(ev, H);
-        const noteHtml = `<div class="bs-note-wrap">${noteText ? `<div class="bs-note">📝 ${escapeHtml(noteText)}</div>` : ''}<button type="button" class="bs-note-btn no-print" data-note-key="${escapeAttr(noteKey)}" onclick="editStepNote(this.dataset.noteKey)">${noteText ? 'Edit note' : '+ Add note'}</button></div>`;
+        // The note TEXT stays in the Step column (where it reads alongside the instruction);
+        // the add/edit BUTTON moves to the bottom of the first (Time / recipes) column.
+        const noteTextHtml = noteText ? `<div class="bs-note-wrap"><div class="bs-note">📝 ${escapeHtml(noteText)}</div></div>` : '';
+        const noteBtnHtml = `<button type="button" class="bs-note-btn no-print" data-note-key="${escapeAttr(noteKey)}" onclick="editStepNote(this.dataset.noteKey)">${noteText ? 'Edit note' : '+ Add note'}</button>`;
         const stepCell = `
-          <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>${fmtRange(ev)}${recipesLabel}</td>
+          <td class="bs-time"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
+            <div class="bs-time-inner">
+              <div class="bs-time-main">${fmtRange(ev)}${recipesLabel}</div>
+              <div class="bs-note-btn-wrap no-print">${noteBtnHtml}</div>
+            </div>
+          </td>
           <td class="bs-step"${rowCount > 1 ? ` rowspan="${rowCount}"` : ''}>
             <strong>${escapeHtml(titleText)}</strong>
             ${detailHtml ? `<div class="bs-detail">${detailHtml}</div>` : ''}
             ${recipeNotesHtml}
-            ${noteHtml}
+            ${noteTextHtml}
           </td>`;
         if (!batches) {
           return `

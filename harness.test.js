@@ -828,6 +828,20 @@ bsOk &= bsk('loaf levain build lists its ingredients', /Levain Build 1/.test(bak
 // but their levain is the shared one — must still list ingredients, not render empty.
 bsOk &= bsk('muffin-only levain build lists ingredients', /Mature starter/.test(bakeSheetHtml({ [SEED.muffin]: 12 })));
 bsOk &= bsk('bagel-only levain build lists ingredients', /Mature starter/.test(bakeSheetHtml({ [SEED.bagel]: 10 })));
+
+// The note add/edit button sits at the bottom of the first (Time) column; the note TEXT
+// stays in the Step column once created.
+{
+  api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Gather ingredients' }), 'sift the rye');
+  const h = bakeSheetHtml({ [SEED.batard]: 8 });
+  const timeCells = h.match(/<td class="bs-time"[^>]*>[\s\S]*?<\/td>/g) || [];
+  const stepCells = h.match(/<td class="bs-step"[^>]*>[\s\S]*?<\/td>/g) || [];
+  bsOk &= bsk('note button is in the first (Time) column, not the Step column',
+    timeCells.some(td => /bs-note-btn-wrap[\s\S]*?bs-note-btn/.test(td)) && !stepCells.some(td => /bs-note-btn/.test(td)));
+  bsOk &= bsk('note text stays in the Step column (not the Time column)',
+    stepCells.some(td => /bs-note">📝 sift the rye/.test(td)) && !timeCells.some(td => /📝/.test(td)));
+  api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Gather ingredients' }), '');
+}
 allOk &= bsOk;
 
 // ---- editable bake-plan cards: switching equipment updates the recipe preference ----
