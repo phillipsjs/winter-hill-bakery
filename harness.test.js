@@ -1970,7 +1970,24 @@ allOk &= hvOk;
   api.__setBannetons([{ id: 'b1', name: 'Banneton', quantity: 24 }]);
   api.renderSchedule();
   bnOk &= hv('enough bannetons → no banneton warning', !(api.__sr().warnings || []).some(w => /Not enough bannetons/.test(w.msg || '')));
+
+  // A3: banneton capacity respects per-recipe eligibility (recipeIds), not the whole pool.
+  // 8 bannetons restricted to batard + 4 universal: a DIFFERENT loaf only has 4 usable, so its
+  // 8 loaves are flagged even though 12 bannetons exist in total.
+  const boule = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.boule)));
+  boule.ingredients = boule.ingredients.map(i => i.name === 'Water' ? { ...i, pct: 90 } : i); // distinct dough → own container
+  api.__setBannetons([{ id: 'bz', name: 'Oval banneton', quantity: 8, recipeIds: [SEED.batard] }, { id: 'bu', name: 'Round banneton', quantity: 4 }]);
+  api.__setContainers([{ id: 'c1', name: 'Tub', maxDoughGrams: 20000, quantity: 4, processTag: 'any' }]);
+  api.__setRecipes([api.SEED_RECIPES.find(r => r.id === SEED.batard), boule]);
+  const plan2 = { [SEED.batard]: 8, [boule.id]: 8 };
+  api.__setPlan(plan2); seedPlan(plan2);
+  els['coldproof-loaf-input'].value = '8-12';
+  api.renderSchedule();
+  const bw = (api.__sr().warnings || []).filter(w => /Not enough bannetons/.test(w.msg || ''));
+  bnOk &= hv('banneton capacity respects per-recipe eligibility (restricted loaf flagged on its subset)',
+    bw.length === 1 && /usable for these loaves \(Round banneton\)/.test(bw[0].msg) && /you have 4/.test(bw[0].msg));
   els['coldproof-loaf-input'].value = '';
+  api.__setRecipes(api.SEED_RECIPES.slice());
   allOk &= bnOk;
 }
 

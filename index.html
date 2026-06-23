@@ -11674,9 +11674,19 @@ ${notesHtml}
           detail: `${fmtColdProof(cpMs)} cold proof`,
           process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
         });
-        // Each loaf occupies one banneton while it cold-proofs in the fridge.
+        // Each loaf occupies one banneton while it cold-proofs in the fridge. Capacity is the
+        // bannetons ELIGIBLE for this container's recipes (same recipeIds filter the labels use),
+        // not the whole pool — so loaves restricted to a few bannetons are checked against those.
         // (containerInfo stores the per-container loaf count as `loaves`, not `totalLoaves`.)
-        addClaim('banneton', 'Loaf cold proof', '(bannetons)', c.loaves || 0, fridgeTime, bakeStart);
+        const bannetonIds = new Set((c.contents || []).map(l => loafNameToId.get(l.recipe)).filter(Boolean));
+        const eligibleBannetons = userBannetons.filter(b => !b.recipeIds || b.recipeIds.length === 0 || b.recipeIds.some(id => bannetonIds.has(id)));
+        const eligibleBannetonCap = eligibleBannetons.reduce((a, b) => a + (b.quantity || 0), 0);
+        // Pool/group key: the full pool reads "(bannetons)"; a restricted subset keys by its
+        // banneton names so disjoint eligibility sets are deconflicted independently.
+        const bannetonKey = eligibleBannetons.length === userBannetons.length
+          ? '(bannetons)'
+          : ([...new Set(eligibleBannetons.map(b => b.name))].join(' + ') || '(bannetons)');
+        addClaim('banneton', 'Loaf cold proof', bannetonKey, c.loaves || 0, fridgeTime, bakeStart, eligibleBannetonCap || null);
       }
     }
     const loafColdProofRange = containerColdProofMs.length > 0
@@ -12655,7 +12665,8 @@ ${notesHtml}
         const when = `around ${fmt.format(new Date(peakT))}`;
         let msg;
         if (pool === 'banneton') {
-          msg = `⚠ Not enough bannetons — ${peak} loaves cold-proofing at once but you have ${capacity}, ${when}.`;
+          const which = (name && name !== '(bannetons)') ? ` usable for these loaves (${name})` : '';
+          msg = `⚠ Not enough bannetons${which} — ${peak} loaves cold-proofing at once but you have ${capacity}, ${when}.`;
         } else if (pool === 'pan') {
           msg = `⚠ Pan “${name}” over capacity — ${peak} items on it at once but it holds ${capacity}, ${when}.`;
         } else if (pool === 'oven') {
