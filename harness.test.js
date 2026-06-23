@@ -1300,7 +1300,7 @@ api.__setMixers([]);
     {
       const mergedHdr = (getEl('schedule-output').innerHTML.match(/<div class="schedule-col-header">[\s\S]*?<\/div>/g) || [])
         .find(x => /Batard/.test(x) && /Boule/.test(x));
-      hvOk &= hv('merged loaf column header shows a "split" button', !!mergedHdr && /schedule-colsplit-btn[^>]*>split</.test(mergedHdr));
+      hvOk &= hv('merged loaf column header shows a split icon button', !!mergedHdr && /schedule-colsplit-btn[^>]*><svg/.test(mergedHdr) && !/>split</.test(mergedHdr));
     }
 
     api.setSplitLoafCols(true); setup();
@@ -1322,8 +1322,8 @@ api.__setMixers([]);
     // A single "merge" overlay sits centered over (between) the loaf columns — not one per header.
     {
       const mergeAll = (splitHtml.match(/schedule-colmerge-btn/g) || []).length;
-      const overlay = splitHtml.match(/<button[^>]*schedule-colmerge-btn[^>]*style="grid-column: 1 \/ span (\d+);"[^>]*>merge<\/button>/);
-      hvOk &= hv('split ON: exactly one "merge" overlay, spanning the loaf columns', mergeAll === 1 && !!overlay && Number(overlay[1]) === 2);
+      const overlay = splitHtml.match(/<button[^>]*schedule-colmerge-btn[^>]*style="grid-column: 1 \/ span (\d+);"[^>]*><svg[\s\S]*?<\/svg><\/button>/);
+      hvOk &= hv('split ON: exactly one merge icon overlay, spanning the loaf columns', mergeAll === 1 && !!overlay && Number(overlay[1]) === 2);
       hvOk &= hv('split ON: per-recipe headers carry no inline split/merge button', !hdrs.some(h => /schedule-colsplit-btn|schedule-colmerge-btn/.test(h)));
     }
 

@@ -469,20 +469,23 @@
   .schedule-col-names { min-width: 0; }
   /* The header grid is the positioning context for the single "merge" overlay. */
   .schedule-header-cols { position: relative; }
-  .schedule-colsplit-btn, .schedule-colmerge-btn {
-    flex: none; padding: 1px 8px;
-    border: 1px solid var(--border); border-radius: 999px; background: var(--surface, #fff);
-    color: var(--accent-dark); font: inherit; font-size: 0.66rem; font-weight: 600;
-    letter-spacing: 0.4px; text-transform: uppercase; cursor: pointer; white-space: nowrap;
+  /* Icon split/merge controls, integrated into the column header. */
+  .schedule-col-iconbtn {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0; border-radius: 6px;
+    border: 1px solid transparent; background: transparent; color: var(--accent-dark);
+    cursor: pointer; opacity: 0.6; transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
   }
-  .schedule-colsplit-btn:hover, .schedule-colmerge-btn:hover {
-    border-color: var(--accent-dark); background: var(--accent-dark); color: #fff;
-  }
-  /* One merge control centered over (between) the loaf columns, vertically centered. */
+  .schedule-col-iconbtn:hover { opacity: 1; background: var(--accent-dark); color: #fff; }
+  .schedule-col-header:hover .schedule-colsplit-btn { opacity: 1; }
+  /* The merge control floats centered over (between) the loaf columns, vertically centered. */
   .schedule-colmerge-btn {
     grid-row: 1; justify-self: center; align-self: center; z-index: 2;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    width: 24px; height: 24px; border-radius: 50%; opacity: 1;
+    border: 1px solid var(--border); background: var(--surface, #fff);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
   }
+  .schedule-colmerge-btn:hover { background: var(--accent-dark); color: #fff; border-color: var(--accent-dark); }
   .schedule-hour-cols {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -12297,6 +12300,10 @@ ${notesHtml}
     renderSchedule();
     if (typeof scheduleSyncToGist === 'function') scheduleSyncToGist();
   }
+  // Column split/merge glyphs: a center divider with arrows pointing apart (split) or
+  // together (merge) — the standard "separate vs. combine columns" metaphor.
+  const SPLIT_COLS_ICON = `<svg viewBox="0 0 18 18" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v12"/><path d="M6 6 3 9l3 3"/><path d="M12 6l3 3-3 3"/></svg>`;
+  const MERGE_COLS_ICON = `<svg viewBox="0 0 18 18" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v12"/><path d="M3 6l3 3-3 3"/><path d="M15 6l-3 3 3 3"/></svg>`;
 
   const COMBINE_DOUGHS_KEY = 'whb-combine-doughs-v1';
   function loadCombineDoughs() {
@@ -13120,7 +13127,7 @@ ${notesHtml}
       const label = (names && names.length > 1) ? names.map(escapeHtml).join('<br>') : escapeHtml(colLabelFor(key));
       let ctrl = '';
       if (isLoafColKey(key) && !loadSplitLoafCols() && names && names.length > 1) {
-        ctrl = `<button type="button" class="schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" title="Show each recipe in its own column">split</button>`;
+        ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" title="Split into one column per recipe" aria-label="Split into one column per recipe">${SPLIT_COLS_ICON}</button>`;
       }
       return `<span class="schedule-col-names">${label}</span>${ctrl}`;
     };
@@ -13263,7 +13270,7 @@ ${notesHtml}
       // spanning the loaf columns rather than one button per column.
       const loafHdrCount = presentCols.filter(isLoafColKey).length;
       const mergeOverlay = (loadSplitLoafCols() && loafHdrCount > 1)
-        ? `<button type="button" class="schedule-colmerge-btn no-print" style="grid-column: 1 / span ${loafHdrCount};" onclick="toggleSplitLoafCols()" title="Merge these recipes back into one column">merge</button>`
+        ? `<button type="button" class="schedule-col-iconbtn schedule-colmerge-btn no-print" style="grid-column: 1 / span ${loafHdrCount};" onclick="toggleSplitLoafCols()" title="Merge these recipes back into one column" aria-label="Merge recipes back into one column">${MERGE_COLS_ICON}</button>`
         : '';
       html += `<div class="schedule-hour-row schedule-hour-header-row schedule-sticky-header">
         <div></div>
