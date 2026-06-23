@@ -487,6 +487,13 @@
   }
   .schedule-shared-col { font-size: 0.78rem; line-height: 1.3; white-space: pre-line; }
   .schedule-shared-col-empty { opacity: 0.3; }
+  .schedule-controls { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+  .schedule-split-toggle {
+    border: 1px solid var(--border); background: var(--surface, #fff); color: var(--accent-dark);
+    border-radius: 6px; padding: 5px 11px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  }
+  .schedule-split-toggle:hover { border-color: var(--accent-dark); }
+  .schedule-split-toggle.is-on { background: var(--accent-dark); color: #fff; border-color: var(--accent-dark); }
   .schedule-day-grid {
     display: grid;
     grid-template-columns: 56px 1fr;
@@ -4396,7 +4403,7 @@ ${notesHtml}
 
   function getLocalSettings() {
     const { start, end } = getQuietHours();
-    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit(), proofingTempF: proofingTempIsSet() ? getProofingTempF() : null, stepNotes: loadStepNotes(), levainContainers: loadLevainContainerPrefs() };
+    return { quietStart: start, quietEnd: end, kitchenOpenWindows: loadKitchenWindows(), ovens: userOvens, bannetons: userBannetons, pans: userPans, mixers: userMixers, pots: userPots, containers: userContainers, customCategories: userCategories, bakeryName: localStorage.getItem(BAKERY_NAME_KEY) || '', bakeryLogo: localStorage.getItem(BAKERY_LOGO_KEY) || '', tempUnit: getTempUnit(), proofingTempF: proofingTempIsSet() ? getProofingTempF() : null, stepNotes: loadStepNotes(), levainContainers: loadLevainContainerPrefs(), splitLoafCols: loadSplitLoafCols() };
   }
 
   function applyRemoteSettings(settings) {
@@ -4465,6 +4472,9 @@ ${notesHtml}
     if (settings.levainContainers && typeof settings.levainContainers === 'object') {
       _levainContainerPrefs = settings.levainContainers;
       saveLevainContainerPrefs();
+    }
+    if (typeof settings.splitLoafCols === 'boolean') {
+      setSplitLoafCols(settings.splitLoafCols);
     }
   }
 
@@ -10829,6 +10839,8 @@ ${notesHtml}
     // shape / into-fridge steps are tagged to it. A single loaf dough keeps the plain
     // 'loaf' column (unchanged), and the aggregated mix/fold/bake stay shared.
     let loafColumns = [];
+    let splitLoaf = false; // user toggle: one column per loaf recipe (set in the loaf block)
+    let loafColAttrFor = (contents, fallbackColKey) => ({ columnKey: fallbackColKey });
     const loafRecipeColKey = new Map(); // recipe name -> loaf column key (for shared-step breakdowns)
     let shapePhaseStart = null, lastFoldTime = null, firstFoldTime = null, mixTime = null, autolyseStart = null;
 
@@ -10859,20 +10871,55 @@ ${notesHtml}
       const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
       const multiDough = containerGroups.length > 1;
       const colRank = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
+      // "Split loaves by recipe" (user toggle): one column per loaf RECIPE even when they share
+      // a dough. The dough stays one batch (mix/fold/bulk are shared and span all loaf columns);
+      // only recipe-specific steps (shaping, baking) confine to — or span — the recipes they
+      // touch. When off, columns are per dough (same-dough loaves merge into one column).
+      splitLoaf = loadSplitLoafCols() && loafRecipes.length > 1;
       containerGroups.forEach((group, gi) => {
         const colKey = multiDough ? `loaf#${gi}` : 'loaf';
         // Names in bake-plan order (bakeRank), de-duplicated — used both to route steps and,
         // when several recipes share a column, to stack them in the column header.
         const orderedRecs = (group.items || []).map(it => it.recipe).slice().sort((a, b) => colRank(a) - colRank(b));
         const names = [...new Set(orderedRecs.map(r => r.name))];
-        names.forEach(n => loafRecipeColKey.set(n, colKey));
-        if (multiDough) {
-          loafColumns.push({ key: colKey, label: names.join(', '), names });
+        if (!splitLoaf) {
+          names.forEach(n => loafRecipeColKey.set(n, colKey));
+          if (multiDough) loafColumns.push({ key: colKey, label: names.join(', '), names });
         }
         for (const c of group.containers) {
           containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves, containerName: c.containerName, colKey });
         }
       });
+      if (splitLoaf) {
+        // One column per loaf recipe, in bake-plan order. loafRecipeColKey maps each recipe to
+        // its own column so per-recipe steps (shape/bake) route there; shared dough steps carry
+        // no columnKey and span all loaf columns at render time.
+        loafRecipes.slice()
+          .filter(r => (plan[r.id] || 0) > 0)
+          .sort((a, b) => colRank(a) - colRank(b))
+          .forEach(r => {
+            const ck = `loaf::${r.id}`;
+            loafRecipeColKey.set(r.name, ck);
+            loafColumns.push({ key: ck, label: r.name, names: [r.name] });
+          });
+      }
+      // Column attribution for a per-container loaf step (shape / into-fridge) from its contents.
+      // Split mode: one recipe → confine to its column (columnKey); several → span them (colDetails,
+      // which the renderer draws across just the involved columns). Off: the dough's colKey.
+      loafColAttrFor = (contents, fallbackColKey) => {
+        if (!splitLoaf) return { columnKey: fallbackColKey };
+        const cd = {};
+        (contents || []).forEach(x => {
+          const ck = loafRecipeColKey.get(x.recipe);
+          if (!ck) return;
+          const line = `${x.count} × ${x.recipe}`;
+          cd[ck] = cd[ck] ? `${cd[ck]}\n${line}` : line;
+        });
+        const keys = Object.keys(cd);
+        if (keys.length === 1) return { columnKey: keys[0] };
+        if (keys.length > 1) return { colDetails: cd };
+        return { columnKey: fallbackColKey };
+      };
       containerShape = containerInfo.map(c => {
         let preshapeMin = 0;
         let finalShapeMin = 0;
@@ -11305,7 +11352,10 @@ ${notesHtml}
     // when loaves are split into per-dough columns, each column shows its own
     // container(s) instead of the aggregate list crammed into the shared detail.
     let prepColDetails = null;
-    if (loafColumns.length > 1 && numContainers > 0) {
+    // In split-by-recipe mode the shared dough steps span all loaf columns and the dough is one
+    // batch, so a per-container breakdown keyed to the dough colKey ('loaf') doesn't map to the
+    // per-recipe columns — skip it and let those steps show their normal detail across the span.
+    if (!splitLoaf && loafColumns.length > 1 && numContainers > 0) {
       prepColDetails = {};
       containerInfo.forEach((c, i) => {
         const contents = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
@@ -11482,21 +11532,21 @@ ${notesHtml}
         detail: shape.benchRest === 0
           ? `${preshapeBaseDetail} · first loaves rest naturally while you finish (no separate bench rest needed)`
           : preshapeBaseDetail,
-        process: 'loaf', columnKey: c.colKey, container: shapeContainer, equipStripTitle: suffix,
+        process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: shapeContainer, equipStripTitle: suffix,
       });
       if (shape.benchRest > 0) {
         events.push({
           time: benchRestStartT,
           title: `Bench rest${suffix}`,
           detail: `${shape.benchRest} min rest (loaf 1 already rested ~${shape.naturalRest} min during preshape)`,
-          process: 'loaf', columnKey: c.colKey, container: shapeContainer, equipStripTitle: suffix,
+          process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: shapeContainer, equipStripTitle: suffix,
         });
       }
       events.push({
         time: finalShapeStartT,
         title: `Final shape${suffix}`,
         detail: `${shapeBreakdown(c, 'final')} = ${shape.finalShapeMin} min total`,
-        process: 'loaf', columnKey: c.colKey, container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
+        process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
       });
 
       cursorTime = containerEndT;
@@ -11531,7 +11581,7 @@ ${notesHtml}
           time: fridgeTime,
           title: `Into fridge${suffix}`,
           detail: `${fmtColdProof(cpMs)} cold proof`,
-          process: 'loaf', columnKey: c.colKey, container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
+          process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
         });
         // Each loaf occupies one banneton while it cold-proofs in the fridge.
         addClaim('banneton', 'Loaf cold proof', '(bannetons)', c.totalLoaves || 0, fridgeTime, bakeStart);
@@ -12194,6 +12244,19 @@ ${notesHtml}
   // riding along with the EARLIEST group — then merge. A single loaf deadline takes the
   // plain single-call path, so existing schedules stay byte-identical.
   // Doughs (by ratio signature) the baker has opted to combine into one staggered-bake batch.
+  // Split loaves into one schedule column per recipe (even when they share a dough). Off by
+  // default — same-dough loaves merge into one column. Synced via the settings gist.
+  const SPLIT_LOAF_COLS_KEY = 'whb-split-loaf-cols-v1';
+  function loadSplitLoafCols() { return localStorage.getItem(SPLIT_LOAF_COLS_KEY) === '1'; }
+  function setSplitLoafCols(on) {
+    if (on) localStorage.setItem(SPLIT_LOAF_COLS_KEY, '1'); else localStorage.removeItem(SPLIT_LOAF_COLS_KEY);
+  }
+  function toggleSplitLoafCols() {
+    setSplitLoafCols(!loadSplitLoafCols());
+    renderSchedule();
+    if (typeof scheduleSyncToGist === 'function') scheduleSyncToGist();
+  }
+
   const COMBINE_DOUGHS_KEY = 'whb-combine-doughs-v1';
   function loadCombineDoughs() {
     try { const a = JSON.parse(localStorage.getItem(COMBINE_DOUGHS_KEY) || '[]'); return new Set(Array.isArray(a) ? a : []); }
@@ -13026,12 +13089,22 @@ ${notesHtml}
     // box — visually spilling across the muffin/bagel columns they don't touch. Detect the
     // loaf columns so such a step can instead span ONLY the loaf columns (always the
     // leading, contiguous block of presentCols).
-    const isLoafColKey = (k) => k === 'loaf' || /(^|~)loaf(#\d+)?$/.test(k);
+    const isLoafColKey = (k) => /(^|~)loaf($|#|::)/.test(k);
     const loafColKeys = presentCols.filter(isLoafColKey);
-    // A loaf-wide step should be confined to the loaf columns only when those columns are a
-    // proper subset of all columns (i.e. there are also muffin/bagel/etc. columns present).
+    // A loaf-wide step renders as a box spanning ONLY the loaf columns it actually touches —
+    // not full-width across muffin/bagel, and (in split-by-recipe mode) not across loaf columns
+    // for recipes it doesn't involve. A step qualifies when its colKey is a loaf key that isn't
+    // itself a present column (so it's not already routed to a single column via byProc).
     const loafScopedShared = (ev) =>
-      isLoafColKey(colKeyOf(ev)) && loafColKeys.length > 0 && loafColKeys.length < presentCols.length;
+      isLoafColKey(colKeyOf(ev)) && !presentCols.includes(colKeyOf(ev)) && loafColKeys.length > 0;
+    // The loaf columns a shared loaf step involves: the colDetails keys present as columns, or
+    // (no colDetails → whole-dough step) every loaf column. Returns presentCols indices.
+    const loafInvolvedIdxs = (ev) => {
+      let keys = ev.colDetails ? Object.keys(ev.colDetails).filter(k => loafColKeys.includes(k)) : [];
+      if (!keys.length) keys = loafColKeys;
+      const idxs = keys.map(k => presentCols.indexOf(k)).filter(i => i >= 0);
+      return idxs.length ? idxs : loafColKeys.map(k => presentCols.indexOf(k));
+    };
 
     const buildInput1El = document.getElementById('build1-ratio-input');
     const buildInput2El = document.getElementById('build2-ratio-input');
@@ -13063,6 +13136,15 @@ ${notesHtml}
     }
 
     let html = '';
+    // Split-by-recipe toggle: only meaningful (and shown) when ≥2 loaf recipes are in the plan.
+    if (hasLoaves && breadColRecs('loaf').length > 1) {
+      const splitOn = loadSplitLoafCols();
+      html += `<div class="schedule-controls no-print">
+        <button type="button" class="schedule-split-toggle${splitOn ? ' is-on' : ''}" onclick="toggleSplitLoafCols()">
+          ${splitOn ? '◫ Merge loaves into shared columns' : '▥ Split loaves into one column per recipe'}
+        </button>
+      </div>`;
+    }
     if (result.warnings && result.warnings.length) {
       const dismissed = loadDismissedWarnings();
       const visibleWarnings = result.warnings.filter(w => !dismissed.has(warningKey(w)));
@@ -13200,12 +13282,16 @@ ${notesHtml}
               let cellHtml = '';
               for (const ev of bucket.shared) {
                 if (loafScopedShared(ev)) {
-                  // Confine a loaf-wide step to the loaf columns: render its box inside the
-                  // column grid spanning only the leading loaf columns, so it no longer
-                  // stretches across the muffin/bagel columns.
+                  // Render the box inside the column grid spanning only the loaf columns this
+                  // step actually touches (the contiguous range covering its involved columns).
+                  // A whole-dough step covers all loaf columns; a single-recipe shape/bake
+                  // confines to one; a mixed bake spans the ones it mixes.
+                  const idxs = loafInvolvedIdxs(ev);
+                  const minI = Math.min(...idxs), maxI = Math.max(...idxs);
+                  const sliceCols = presentCols.slice(minI, maxI + 1);
                   cellHtml += `<div class="schedule-hour-cols" style="${colsStyle}">`
-                    + `<div style="grid-column: 1 / span ${loafColKeys.length};">`
-                    + renderSharedEvent(ev, null, loafColKeys)
+                    + `<div style="grid-column: ${minI + 1} / span ${maxI - minI + 1};">`
+                    + renderSharedEvent(ev, null, sliceCols)
                     + `</div></div>`;
                 } else {
                   cellHtml += renderSharedEvent(ev);

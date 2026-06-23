@@ -131,6 +131,7 @@ const exportsTail = `
   pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
   pickDoughContainer, planBakes, bakeRankMap, moveBakeOrder, renderBakeOrderPlan, bakeOrderGroups,
   ratioSignature, sameDough, clusterDoughs,
+  loadSplitLoafCols, setSplitLoafCols, toggleSplitLoafCols,
   __recipes: () => recipes,
 };`;
 
@@ -1270,6 +1271,63 @@ api.__setMixers([]);
   } else {
     console.log('  [notes] SKIP — boule/batard seeds not present for column-spread test');
   }
+}
+
+// --- "Split loaves into one column per recipe" toggle ---
+{
+  const recs = api.__recipes();
+  const boule = recs.find(r => r.id === SEED.boule);
+  const bat = recs.find(r => r.id === SEED.batard);
+  if (boule && bat) {
+    const savedBou = boule.ingredients, savedBat = bat.ingredients;
+    const savedBouRank = boule.bakeRank, savedBatRank = bat.bakeRank;
+    // Same dough (so they'd merge by default), distinct bake order, plus muffins for a 2nd col.
+    bat.ingredients = boule.ingredients.map(i => ({ ...i }));
+    bat.bakeRank = 0; boule.bakeRank = 1;
+    const setup = () => {
+      seedPlan({ [SEED.batard]: 6, [SEED.boule]: 6, [SEED.muffin]: 12 });
+      api.__setPlan({ [SEED.batard]: 6, [SEED.boule]: 6, [SEED.muffin]: 12 });
+      els['deadline-default-input'].value = fmtLocal(tomorrow8);
+      ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+      localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+      api.renderSchedule();
+    };
+
+    api.setSplitLoafCols(false); setup();
+    let sr = api.__sr();
+    hvOk &= hv('split OFF: same-dough loaves stay ONE merged loaf column', (sr.loafColumns || []).length === 0);
+    hvOk &= hv('split toggle button is shown when ≥2 loaf recipes are planned', /schedule-split-toggle/.test(getEl('schedule-output').innerHTML));
+
+    api.setSplitLoafCols(true); setup();
+    sr = api.__sr();
+    const cols = (sr.loafColumns || []).map(c => c.key);
+    hvOk &= hv('split ON: one loaf column per recipe (2 cols)', cols.length === 2 && cols.every(k => /^loaf::/.test(k)));
+    hvOk &= hv('split ON: loaf columns are in bake-plan order (batard rank 0 before boule rank 1)',
+      cols[0] === `loaf::${SEED.batard}` && cols[1] === `loaf::${SEED.boule}`);
+    // Whole-dough step (Weigh) has no per-recipe key → spans ALL loaf columns, not the muffin.
+    const weigh = sr.events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+    hvOk &= hv('split ON: the shared Weigh step has no columnKey/colDetails (whole-dough → spans loaf cols)',
+      weigh && !weigh.columnKey && !weigh.colDetails);
+    const splitHtml = getEl('schedule-output').innerHTML;
+    const wSpan = splitHtml.match(/grid-column: 1 \/ span (\d+);"><div class="schedule-event schedule-event-shared"[^>]*>(?:(?!schedule-event-shared)[\s\S])*?Weigh ingredients/);
+    hvOk &= hv('split ON: Weigh box spans both loaf columns (span 2), not the muffin', !!wSpan && Number(wSpan[1]) === 2);
+    // Headers: two separate per-recipe loaf headers, not one comma/<br>-joined header.
+    const hdrs = (splitHtml.match(/<div class="schedule-col-header">([\s\S]*?)<\/div>/g) || []);
+    hvOk &= hv('split ON: separate per-recipe loaf column headers', hdrs.some(h => /Batard/.test(h) && !/Boule/.test(h)) && hdrs.some(h => /Boule/.test(h) && !/Batard/.test(h)));
+
+    api.setSplitLoafCols(false);
+    boule.ingredients = savedBou; bat.ingredients = savedBat;
+    boule.bakeRank = savedBouRank; bat.bakeRank = savedBatRank;
+  } else {
+    console.log('  [notes] SKIP — boule/batard seeds not present for split-loaf test');
+  }
+}
+// The split preference is carried in the synced settings payload.
+{
+  api.setSplitLoafCols(true);
+  hvOk &= hv('split-loaf preference is included in synced settings', api.getLocalSettings().splitLoafCols === true);
+  api.setSplitLoafCols(false);
+  hvOk &= hv('split-loaf preference round-trips off', api.getLocalSettings().splitLoafCols === false && api.loadSplitLoafCols() === false);
 }
 
 // Schedule inline note control: add/edit button is present and no-print.
