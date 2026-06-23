@@ -7499,13 +7499,16 @@ ${notesHtml}
     return m;
   }
   // Whether two recipes are the SAME dough for scheduling: identical dough-ingredient set
-  // and every baker's % within `tol` (default 0.15% of flour). Tolerance — not exact match —
-  // because a recipe entered/scaled in grams re-derives its %s via round2, so the "same"
-  // dough can drift by a few hundredths of a percent (and changing one recipe's overall
-  // weight rescales its grams, nudging the ratios). 0.15% absorbs that noise while still
-  // keeping a deliberate ≥~0.5% hydration/levain change as a genuinely distinct dough.
+  // and every baker's % within `tol` (default 0.6% of flour). Tolerance — not exact match —
+  // because a recipe entered/scaled in grams re-derives its %s via round2 from integer-gram
+  // amounts, so changing one recipe's overall weight rescales those grams and nudges EVERY
+  // ratio. Observed real drift between two recipes that started identical: up to ~0.23% on the
+  // largest flour, ~0.19% on water. 0.6% comfortably absorbs that (with headroom for a coarser
+  // rescale) while still treating a deliberate ≥~1% hydration/flour-blend change as a distinct
+  // dough — and for scheduling purposes (one mix, one bulk-ferment, one fold timeline) two
+  // doughs within 0.6% on every ingredient genuinely share a timeline anyway.
   function sameDough(a, b, tol) {
-    tol = tol == null ? 0.15 : tol;
+    tol = tol == null ? 0.6 : tol;
     const ma = doughRatioMap(a), mb = doughRatioMap(b);
     const keys = new Set([...Object.keys(ma), ...Object.keys(mb)]);
     for (const k of keys) {

@@ -1175,8 +1175,25 @@ api.__setMixers([]);
     hvOk &= hv('sameDough is true for boundary-straddling drift (73.04 vs 73.06)', api.sameDough(boule, bat) === true);
     bat.ingredients = batOrig.map(i => ({ ...i }));
     boule.ingredients = orig.map(i => i.name === 'Water' ? { ...i, pct: 76 } : i); setup();
-    hvOk &= hv('a real (≥0.5%) ratio difference still splits into separate dough columns', split() === true);
+    hvOk &= hv('a real (~3%) ratio difference still splits into separate dough columns', split() === true);
     hvOk &= hv('sameDough is false for a real ratio difference (73 vs 76)', api.sameDough(boule, bat) === false);
+    boule.ingredients = orig;
+    bat.ingredients = batOrig.map(i => ({ ...i }));
+
+    // Real-world drift: two recipes that started identical, then one had its overall weight
+    // bumped — re-deriving every % from re-rounded grams. Observed up to ~0.23% drift on the
+    // largest flour. These MUST stay one dough; a deliberate ~3% change must still split.
+    bat.ingredients = [
+      { name: 'Bread flour', pct: 65.14, flourType: 'bread' }, { name: 'All purpose flour', pct: 22.29, flourType: 'ap' },
+      { name: 'Rye flour', pct: 6.29, flourType: 'rye' }, { name: 'Red wheat (Redeemer)', pct: 6.29, flourType: 'wheat' },
+      { name: 'Water', pct: 73 }, { name: 'Levain', pct: 22 }, { name: 'Salt', pct: 2.5 }];
+    boule.ingredients = [
+      { name: 'Bread flour', pct: 64.91, flourType: 'bread' }, { name: 'All purpose flour', pct: 22.37, flourType: 'ap' },
+      { name: 'Rye flour', pct: 6.36, flourType: 'rye' }, { name: 'Red wheat (Redeemer)', pct: 6.36, flourType: 'wheat' },
+      { name: 'Water', pct: 72.81 }, { name: 'Levain', pct: 22.15 }, { name: 'Salt', pct: 2.63 }];
+    setup();
+    hvOk &= hv('real weight-rescale drift (≤0.23%) keeps loaves as ONE dough (no split)', split() === false);
+    hvOk &= hv('sameDough true for the actual drifted boule/batard recipes', api.sameDough(boule, bat) === true);
     boule.ingredients = orig;
     bat.ingredients = batOrig.map(i => ({ ...i }));
 
