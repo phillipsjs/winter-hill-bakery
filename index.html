@@ -541,6 +541,12 @@
     row-gap: 6px;
     align-items: start;
   }
+  /* Wide split views (≥5 columns) scroll horizontally; keep the left time gutter pinned. */
+  .schedule-hscroll { overflow-x: auto; overflow-y: visible; padding-bottom: 6px; }
+  .schedule-hscroll .schedule-hour-label,
+  .schedule-hscroll .schedule-hour-header-row > div:first-child {
+    position: sticky; left: 0; z-index: 3; background: var(--card);
+  }
   .schedule-day-grid .schedule-hour-label {
     padding-top: 4px;
   }
@@ -13295,7 +13301,14 @@ ${notesHtml}
     // minmax(0, 1fr) keeps every column an equal width even when one cell holds a long
     // unbreakable line — otherwise a 1fr (= minmax(auto,1fr)) column grows to its content
     // and collapses the empty sibling columns, making an in-column step look full-width.
-    const colsStyle = `grid-template-columns: repeat(${presentCols.length}, minmax(0, 1fr));`;
+    // Past ~4 columns the equal-width tracks get cramped, so give each a readable minimum and
+    // let the schedule scroll horizontally (the left time gutter stays pinned). Gated to ≥5
+    // columns so the common case is unchanged (and keeps its sticky header).
+    const manyCols = splitView && presentCols.length >= 5;
+    const colsStyle = manyCols
+      ? `grid-template-columns: repeat(${presentCols.length}, minmax(150px, 1fr));`
+      : `grid-template-columns: repeat(${presentCols.length}, minmax(0, 1fr));`;
+    const gridStart = html.length; // wrap everything from here (header + day grids) for h-scroll
     if (splitView) {
       html += `<div class="schedule-hour-row schedule-hour-header-row schedule-sticky-header">
         <div></div>
@@ -13429,6 +13442,12 @@ ${notesHtml}
         }
       }
       html += `</div>`;
+    }
+    if (manyCols) {
+      // Wrap the header row + day grids in a horizontal scroll region so wide split views
+      // (many recipe columns) stay readable instead of crushing every column.
+      const gridPart = html.slice(gridStart);
+      html = html.slice(0, gridStart) + `<div class="schedule-hscroll">${gridPart}</div>`;
     }
     out.innerHTML = html;
     updateBakeSheetTabVisibility();

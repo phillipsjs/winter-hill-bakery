@@ -1950,5 +1950,29 @@ allOk &= hvOk;
   allOk &= hlOk;
 }
 
+// --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
+{
+  let scOk = true;
+  const seeds = api.SEED_RECIPES;
+  const mk = (id) => JSON.parse(JSON.stringify(seeds.find(r => r.id === id)));
+  const b1 = mk(SEED.batard), b2 = mk(SEED.boule);
+  b2.ingredients = b2.ingredients.map(i => i.name === 'Water' ? { ...i, pct: 82 } : i); // distinct dough
+  api.__setRecipes([b1, b2, mk(SEED.muffin), mk(SEED.bagel), mk(SEED.focaccia)]);
+  const render = (plan) => {
+    api.__setPlan(plan); seedPlan(plan);
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    return getEl('schedule-output').innerHTML;
+  };
+  const wide = render({ [b1.id]: 6, [b2.id]: 6, [SEED.muffin]: 12, [SEED.bagel]: 10, [SEED.focaccia]: 2 }); // 5 cols
+  scOk &= hv('≥5 columns wrap in a horizontal scroll region', /schedule-hscroll/.test(wide));
+  scOk &= hv('≥5 columns give each a minimum width (minmax(150px, 1fr))', /minmax\(150px, 1fr\)/.test(wide));
+  const narrow = render({ [b1.id]: 6, [SEED.muffin]: 12 }); // 2 cols
+  scOk &= hv('≤4 columns are unchanged (no scroll wrapper, equal 1fr tracks)', !/schedule-hscroll/.test(narrow) && /minmax\(0, 1fr\)/.test(narrow));
+  allOk &= scOk;
+}
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
