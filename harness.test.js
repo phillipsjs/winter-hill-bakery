@@ -1296,7 +1296,12 @@ api.__setMixers([]);
     api.setSplitLoafCols(false); setup();
     let sr = api.__sr();
     hvOk &= hv('split OFF: same-dough loaves stay ONE merged loaf column', (sr.loafColumns || []).length === 0);
-    hvOk &= hv('split toggle button is shown when ≥2 loaf recipes are planned', /schedule-split-toggle/.test(getEl('schedule-output').innerHTML));
+    // The merged multi-recipe loaf column header hosts a "split" control.
+    {
+      const mergedHdr = (getEl('schedule-output').innerHTML.match(/<div class="schedule-col-header">[\s\S]*?<\/div>/g) || [])
+        .find(x => /Batard/.test(x) && /Boule/.test(x));
+      hvOk &= hv('merged loaf column header shows a "split" button', !!mergedHdr && /schedule-colsplit-btn[^>]*>split</.test(mergedHdr));
+    }
 
     api.setSplitLoafCols(true); setup();
     sr = api.__sr();
@@ -1314,6 +1319,8 @@ api.__setMixers([]);
     // Headers: two separate per-recipe loaf headers, not one comma/<br>-joined header.
     const hdrs = (splitHtml.match(/<div class="schedule-col-header">([\s\S]*?)<\/div>/g) || []);
     hvOk &= hv('split ON: separate per-recipe loaf column headers', hdrs.some(h => /Batard/.test(h) && !/Boule/.test(h)) && hdrs.some(h => /Boule/.test(h) && !/Batard/.test(h)));
+    // Each split per-recipe loaf header hosts a "merge" control.
+    hvOk &= hv('split ON: per-recipe loaf headers show a "merge" button', hdrs.filter(h => /schedule-colsplit-btn[^>]*>merge</.test(h)).length === 2);
 
     api.setSplitLoafCols(false);
     boule.ingredients = savedBou; bat.ingredients = savedBat;

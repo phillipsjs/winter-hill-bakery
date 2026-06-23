@@ -451,6 +451,13 @@
     letter-spacing: 0.3px;
     text-transform: uppercase;
   }
+  .schedule-colsplit-btn {
+    display: inline-block; margin-top: 4px; padding: 1px 7px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--surface, #fff);
+    color: var(--accent-dark); font: inherit; font-size: 0.66rem; font-weight: 600;
+    letter-spacing: 0.4px; text-transform: uppercase; cursor: pointer;
+  }
+  .schedule-colsplit-btn:hover { border-color: var(--accent-dark); background: var(--accent-dark); color: #fff; }
   .schedule-hour-cols {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -13071,10 +13078,22 @@ ${notesHtml}
     const colLabelFor = (key) => colLabelMap[key] || key;
     // Header content for a column: when several recipes share it, stack their names (bake-plan
     // order) one per line instead of a comma-joined single line; otherwise the plain label.
+    // Loaf columns also host the split/merge control: a merged multi-recipe column offers
+    // "split"; a split per-recipe column offers "merge" (the toggle is global).
     const colHeaderHtml = (key) => {
       const names = colNamesMap[key];
-      if (names && names.length > 1) return names.map(escapeHtml).join('<br>');
-      return escapeHtml(colLabelFor(key));
+      const label = (names && names.length > 1) ? names.map(escapeHtml).join('<br>') : escapeHtml(colLabelFor(key));
+      let ctrl = '';
+      if (isLoafColKey(key)) {
+        const splitOn = loadSplitLoafCols();
+        const loafColCount = presentCols.filter(isLoafColKey).length;
+        if (!splitOn && names && names.length > 1) {
+          ctrl = `<button type="button" class="schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" title="Show each recipe in its own column">split</button>`;
+        } else if (splitOn && loafColCount > 1) {
+          ctrl = `<button type="button" class="schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" title="Merge these recipes back into one column">merge</button>`;
+        }
+      }
+      return ctrl ? `${label}<br>${ctrl}` : label;
     };
     const splitView = presentCols.length >= 2;
     // Route an event to a column: shared (levain, etc.) spans all columns; side events
@@ -13136,13 +13155,12 @@ ${notesHtml}
     }
 
     let html = '';
-    // Split-by-recipe toggle: only meaningful (and shown) when ≥2 loaf recipes are in the plan.
-    if (hasLoaves && breadColRecs('loaf').length > 1) {
-      const splitOn = loadSplitLoafCols();
+    // Split-by-recipe toggle. In the multi-column (split) view it lives in each loaf column
+    // header (colHeaderHtml). Only when there's no header row to host it — a single-column
+    // view with ≥2 loaf recipes merged — fall back to a top control bar so it stays reachable.
+    if (!splitView && hasLoaves && breadColRecs('loaf').length > 1) {
       html += `<div class="schedule-controls no-print">
-        <button type="button" class="schedule-split-toggle${splitOn ? ' is-on' : ''}" onclick="toggleSplitLoafCols()">
-          ${splitOn ? '◫ Merge loaves into shared columns' : '▥ Split loaves into one column per recipe'}
-        </button>
+        <button type="button" class="schedule-split-toggle" onclick="toggleSplitLoafCols()">▥ Split loaves into one column per recipe</button>
       </div>`;
     }
     if (result.warnings && result.warnings.length) {
