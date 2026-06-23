@@ -123,6 +123,7 @@ const exportsTail = `
   __sr: () => _scheduleResult,
   __setPlan: (p) => { plan = p; },
   __setBannetons: (b) => { userBannetons = b; },
+  __setPans: (p) => { userPans = p; },
   __setPantry: (p) => { pantryItems = p; },
   __setMixers: (m) => { userMixers = m; },
   __setPots: (p) => { userPots = p; },
@@ -130,6 +131,7 @@ const exportsTail = `
   __setContainers: (c) => { userContainers = c; },
   pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
   pickDoughContainer, planBakes, bakeRankMap, moveBakeOrder, renderBakeOrderPlan, bakeOrderGroups,
+  panNamesForRecipesG, panCapacityForRecipesG, panCoversRecipe,
   ratioSignature, sameDough, clusterDoughs,
   loadSplitLoafCols, setSplitLoafCols, toggleSplitLoafCols,
   __recipes: () => recipes,
@@ -1970,6 +1972,28 @@ allOk &= hvOk;
   bnOk &= hv('enough bannetons → no banneton warning', !(api.__sr().warnings || []).some(w => /Not enough bannetons/.test(w.msg || '')));
   els['coldproof-loaf-input'].value = '';
   allOk &= bnOk;
+}
+
+// --- A4: focaccia claims its pan(s) (and the focaccia-only fast path returns equipClaims) ---
+{
+  let fpOk = true;
+  const foc = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.focaccia)));
+  foc.preferredPanIds = ['p1'];
+  api.__setPans([{ id: 'p1', name: 'Sheet pan', quantity: 2, recipeCapacities: { [foc.id]: 1 } }]); // holds 2
+  api.__setOvens([]);
+  api.__setRecipes([foc]);
+  const plan = { [foc.id]: 5 }; // 5 focaccia > 2 pan capacity
+  api.__setPlan(plan); seedPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const sr = api.__sr();
+  const panClaims = (sr.equipClaims || []).filter(c => c.pool === 'pan' && /Focaccia/.test(c.role));
+  fpOk &= hv('focaccia-only fast path returns equipClaims (was dropped)', Array.isArray(sr.equipClaims));
+  fpOk &= hv('focaccia claims its pan with the pan-count and capacity', panClaims.length === 1 && panClaims[0].count === 5 && panClaims[0].capacity === 2);
+  fpOk &= hv('too many focaccia for the pans → over-capacity warning', (sr.warnings || []).some(w => /over capacity/.test(w.msg || '')));
+  fpOk &= hv('focaccia bake also claims its oven (fast path no longer drops claims)', (sr.equipClaims || []).some(c => c.pool === 'oven'));
+  allOk &= fpOk;
 }
 
 // --- B1: cross-deadline-group oven conflicts are detected (and resolvable by assignment) ---

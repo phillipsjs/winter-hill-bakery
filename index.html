@@ -11170,6 +11170,12 @@ ${notesHtml}
           : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`)
           + (focacciaWeightStr ? ` · ${focacciaWeightStr}` : '');
         events.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia' });
+        // Focaccia occupies its pan(s) from shaping (transfer to pans) through the bake.
+        const focacciaPanNames = panNamesForRecipesG(focacciaRecipes);
+        if (focacciaPanNames.length) {
+          addClaim('pan', 'Focaccia pan', focacciaPanNames.join(' + '), totalFocaccia, focacciaShapeStart,
+            (focacciaSlot && focacciaSlot.lastBakeEnd) || focacciaSlot.firstBakeStart, panCapacityForRecipesG(focacciaRecipes));
+        }
         // Oven-on is triggered by the recipe's bake temp + assigned oven's preheat curve.
         const focOven = (focacciaSlot && focacciaSlot.ovenId) ? userOvens.find(o => o.id === focacciaSlot.ovenId) : null;
         const focPreheat = ovenPreheatMin(focOven, focacciaAgg.bakeTempF) ?? SCHED.OVEN_PREHEAT_MIN;
@@ -11187,6 +11193,7 @@ ${notesHtml}
           const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
           const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
           events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
+          addOvenClaim(focacciaSlot.ovenName ? [focacciaSlot.ovenName] : [], 'Focaccia bake', bakeStart, focacciaAgg.bakeMin);
           cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
         }
         events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${focacciaCoolMin} min cool`, process: 'focaccia' });
@@ -11198,7 +11205,8 @@ ${notesHtml}
         warnings.push({ msg: `${lateFocaccia.length} active focaccia step${lateFocaccia.length > 1 ? 's' : ''} fall outside ${quietHoursLabel()} (${fmtLate(lateFocaccia)}). Try a different bake time.`, issue: 'late-night', kind: 'focaccia' });
       }
       events.sort((a, b) => a.time - b.time);
-      return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia, batches: focacciaBatches, mixBatches: 1, events, warnings };
+      allocateContainers();
+      return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia, batches: focacciaBatches, mixBatches: 1, events, warnings, equipClaims };
     }
 
     const build1Pref = (document.getElementById('build1-ratio-input')?.value) || '';
@@ -12077,6 +12085,12 @@ ${notesHtml}
         ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
         : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`;
       events.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia' });
+      // Focaccia occupies its pan(s) from shaping (transfer to pans) through the bake.
+      const focacciaPanNames = panNamesForRecipesG(focacciaRecipes);
+      if (focacciaPanNames.length) {
+        addClaim('pan', 'Focaccia pan', focacciaPanNames.join(' + '), totalFocaccia, focacciaShapeStart,
+          (focacciaSlot && focacciaSlot.lastBakeEnd) || focacciaSlot.firstBakeStart, panCapacityForRecipesG(focacciaRecipes));
+      }
       // Oven-on is triggered by the recipe's bake temp + assigned oven's preheat curve.
       const focOven = (focacciaSlot && focacciaSlot.ovenId) ? userOvens.find(o => o.id === focacciaSlot.ovenId) : null;
       const focPreheat = ovenPreheatMin(focOven, focacciaAgg.bakeTempF) ?? SCHED.OVEN_PREHEAT_MIN;
