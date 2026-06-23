@@ -12855,15 +12855,20 @@ ${notesHtml}
     // When it carries per-column detail (ev.colDetails: { colKey: text }), each column
     // shows its own relevant note (e.g. its loaves/deck for a shared bake) below the
     // spanning instruction; columns with no detail are dimmed.
-    const renderColDetailCells = (cd) => {
+    const renderColDetailCells = (cd, cols) => {
       if (!cd) return '';
-      const cells = presentCols.map(p => {
+      const useCols = cols || presentCols;
+      const style = `grid-template-columns: repeat(${useCols.length}, minmax(0, 1fr));`;
+      const cells = useCols.map(p => {
         const txt = cd[p];
         return `<div class="schedule-shared-col${txt ? '' : ' schedule-shared-col-empty'}">${txt ? escapeHtml(txt) : ''}</div>`;
       }).join('');
-      return `<div class="schedule-shared-cols" style="${colsStyle}">${cells}</div>`;
+      return `<div class="schedule-shared-cols" style="${style}">${cells}</div>`;
     };
-    const renderSharedEvent = (ev, extraStyle) => {
+    // `cols` (default: all columns) scopes the per-column detail cells; a loaf-wide step
+    // that only applies to the loaf columns passes just those so its breakdown — and, via
+    // the wrapper below, its box — don't spill into the muffin/bagel columns.
+    const renderSharedEvent = (ev, extraStyle, cols) => {
       const stage = getEventStage(ev);
       let body;
       if (ev.colDetails) {
@@ -12872,7 +12877,7 @@ ${notesHtml}
         const headline = (ev.detail || '').split('\n')[0];
         body = `<div class="schedule-title">${escapeHtml(ev.title)}</div>
           ${headline ? `<div class="schedule-detail">${escapeHtml(headline)}</div>` : ''}
-          ${renderColDetailCells(ev.colDetails)}`;
+          ${renderColDetailCells(ev.colDetails, cols)}`;
       } else {
         body = renderEventContent(ev);
       }
@@ -12948,6 +12953,18 @@ ${notesHtml}
       if (!ev.process || ev.process === 'shared') return 'shared';
       return ev.columnKey || ev.process;
     };
+    // Loaf-wide prep steps (weigh/mill/autolyse/mix/folds) carry process 'loaf' but no
+    // columnKey, so when loaves split into per-dough columns (loaf#0, loaf#1, …) their
+    // colKey 'loaf' matches no present column and they'd fall to a full-width "shared"
+    // box — visually spilling across the muffin/bagel columns they don't touch. Detect the
+    // loaf columns so such a step can instead span ONLY the loaf columns (always the
+    // leading, contiguous block of presentCols).
+    const isLoafColKey = (k) => k === 'loaf' || /(^|~)loaf(#\d+)?$/.test(k);
+    const loafColKeys = presentCols.filter(isLoafColKey);
+    // A loaf-wide step should be confined to the loaf columns only when those columns are a
+    // proper subset of all columns (i.e. there are also muffin/bagel/etc. columns present).
+    const loafScopedShared = (ev) =>
+      isLoafColKey(colKeyOf(ev)) && loafColKeys.length > 0 && loafColKeys.length < presentCols.length;
 
     const buildInput1El = document.getElementById('build1-ratio-input');
     const buildInput2El = document.getElementById('build2-ratio-input');
@@ -13115,7 +13132,17 @@ ${notesHtml}
               html += `<div class="schedule-hour-label" style="grid-row: ${rowIdx}; grid-column: 1;">${hourFmt.format(bucket.hour)}</div>`;
               let cellHtml = '';
               for (const ev of bucket.shared) {
-                cellHtml += renderSharedEvent(ev);
+                if (loafScopedShared(ev)) {
+                  // Confine a loaf-wide step to the loaf columns: render its box inside the
+                  // column grid spanning only the leading loaf columns, so it no longer
+                  // stretches across the muffin/bagel columns.
+                  cellHtml += `<div class="schedule-hour-cols" style="${colsStyle}">`
+                    + `<div style="grid-column: 1 / span ${loafColKeys.length};">`
+                    + renderSharedEvent(ev, null, loafColKeys)
+                    + `</div></div>`;
+                } else {
+                  cellHtml += renderSharedEvent(ev);
+                }
               }
               if (presentCols.some(p => bucket.byProc[p].length > 0)) {
                 const quarterMap = new Map();

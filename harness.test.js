@@ -1194,6 +1194,11 @@ api.__setMixers([]);
     hvOk &= hv('two distinct loaf doughs split into per-dough columns', loafCols.length === 2);
     hvOk &= hv('loaf Weigh step carries per-loaf-column detail (not full-width "shared")', cdKeys.length > 0);
     hvOk &= hv('loaf Weigh colDetails are keyed to loaf columns only, not muffin', cdKeys.length > 0 && cdKeys.every(k => loafCols.includes(k)) && !cdKeys.some(k => /muffin/.test(k)));
+    // Rendered HTML: the loaf-wide Weigh box must span ONLY the loaf columns (grid-column:
+    // 1 / span <#loaf cols>), not stretch full-width across the muffin column.
+    const outHtml = getEl('schedule-output').innerHTML;
+    const weighSpan = outHtml.match(/grid-column: 1 \/ span (\d+);"><div class="schedule-event schedule-event-shared"[^>]*>(?:(?!schedule-event-shared)[\s\S])*?Weigh ingredients/);
+    hvOk &= hv('loaf Weigh box renders spanning only the loaf columns (not full-width across muffin)', !!weighSpan && Number(weighSpan[1]) === loafCols.length);
     boule.ingredients = savedIngs;
   } else {
     console.log('  [notes] SKIP — boule/batard seeds not present for column-spread test');
