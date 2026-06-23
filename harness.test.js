@@ -98,7 +98,7 @@ function seedPlan(p) { localStorageStub.setItem(PLAN_KEY, JSON.stringify(p)); }
 const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
-  buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet,
+  buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet, getHighlightTitlesForWarning,
   setBakePlanEquip, renderTotals,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
@@ -1928,6 +1928,27 @@ const mixEv = api.__sr().events.find(e => e.process === 'bagel' && /^Mix/.test(e
 hvOk &= hv('schedule hover on a non-shaping step has no Unit weight section', mixEv && !/Unit weight/.test(api.hoverHtmlFor(mixEv, Hh)));
 
 allOk &= hvOk;
+
+// --- Oven-conflict "Show in schedule" highlight covers all bake-title styles ---
+{
+  let hlOk = true;
+  const evs = [
+    { process: 'loaf', title: 'Bake 1 of 3 — bread into oven' },
+    { process: 'muffin', title: 'Bake 1 of 2 — muffins into oven' },
+    { process: 'focaccia', title: 'Bake focaccia' },
+    { process: 'simple', title: 'Bake Test Cookies' },
+    { process: 'enriched', title: 'Bake Brioche Rolls' },
+    { process: 'bagel', title: 'Bake batch 1 of 2 — bagels into oven' },
+    { process: 'simple', title: 'Turn on oven to 350°F' },
+  ];
+  const titlesFor = (kind) => api.getHighlightTitlesForWarning({ issue: 'oven-shifted', kind }, evs);
+  hlOk &= hv('highlight matches loaf "Bake N of M"', titlesFor('loaf').includes('Bake 1 of 3 — bread into oven'));
+  hlOk &= hv('highlight matches focaccia "Bake focaccia"', titlesFor('focaccia').includes('Bake focaccia'));
+  hlOk &= hv('highlight matches side-group simple "Bake <recipe>"', titlesFor('simple').includes('Bake Test Cookies') && !titlesFor('simple').includes('Turn on oven to 350°F'));
+  hlOk &= hv('highlight matches side-group enriched "Bake <recipe>"', titlesFor('enriched').includes('Bake Brioche Rolls'));
+  hlOk &= hv('highlight matches bagel boil/top/bake titles', titlesFor('bagel').includes('Bake batch 1 of 2 — bagels into oven'));
+  allOk &= hlOk;
+}
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
