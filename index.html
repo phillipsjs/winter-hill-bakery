@@ -12395,12 +12395,30 @@ ${notesHtml}
     plan = prepPlan;
     const prepRes = buildSchedule({ ...baseOpts, loafDeadline: rd[sorted[0].id] || baseOpts.loafDeadline });
     const events = prepRes.events.filter(ev => !isLoafBake(ev)); // shared prep, no loaf bakes
+    // The dough goes into the fridge once (shared prep, at the EARLIEST deadline), but each
+    // recipe bakes at its own time — so later portions cold-proof longer. The "Into fridge"
+    // label reflects the earliest bake; track the spread so we can note the longer proof.
+    const firstBakeTimes = [];
     sorted.forEach(r => {
       const bp = {}; bp[r.id] = fullPlan[r.id] || 0;
       plan = bp;
       const br = buildSchedule({ ...baseOpts, loafDeadline: rd[r.id] || baseOpts.loafDeadline });
-      br.events.forEach(ev => { if (isLoafBake(ev)) events.push(ev); }); // this recipe's bake at its deadline
+      let recBake = null;
+      br.events.forEach(ev => {
+        if (isLoafBake(ev)) { events.push(ev); if (getEventStage(ev) === 'bake' && (!recBake || ev.time < recBake)) recBake = ev.time; }
+      });
+      if (recBake) firstBakeTimes.push(recBake);
     });
+    if (firstBakeTimes.length > 1) {
+      const ms = firstBakeTimes.map(t => t.getTime());
+      const spreadHr = (Math.max(...ms) - Math.min(...ms)) / 3600000;
+      if (spreadHr >= 0.5) {
+        const extra = spreadHr < 1 ? 'under an hour' : `~${Math.round(spreadHr)} hr`;
+        events.forEach(ev => {
+          if (/^Into fridge/.test(ev.title)) ev.detail = `${ev.detail} · last batch proofs ${extra} longer (staggered bakes)`;
+        });
+      }
+    }
     return { ...prepRes, events };
   }
 

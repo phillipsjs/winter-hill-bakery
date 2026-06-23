@@ -1950,6 +1950,32 @@ allOk &= hvOk;
   allOk &= hlOk;
 }
 
+// --- Combined staggered bake: the "Into fridge" label notes the longer later-batch proof ---
+{
+  let cuOk = true;
+  const seeds = api.SEED_RECIPES;
+  const batard = JSON.parse(JSON.stringify(seeds.find(r => r.id === SEED.batard)));
+  const boule = JSON.parse(JSON.stringify(seeds.find(r => r.id === SEED.boule)));
+  boule.ingredients = JSON.parse(JSON.stringify(batard.ingredients)); // same dough
+  api.__setRecipes([batard, boule]);
+  const plan = { [batard.id]: 6, [boule.id]: 6 };
+  api.__setPlan(plan); seedPlan(plan);
+  const base = new Date(2030, 0, 5, 8, 0), later = new Date(2030, 0, 5, 10, 0); // 2 hr apart
+  els['deadline-default-input'].value = fmtLocal(base);
+  els['coldproof-loaf-input'].value = '8-12'; // 4 hr window > 2 hr spread → combinable
+  localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify({ [batard.id]: base.toISOString(), [boule.id]: later.toISOString() }));
+  localStorageStub.setItem('whb-combine-doughs-v1', JSON.stringify([api.ratioSignature(batard)]));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const fridge = sr.events.filter(e => /^Into fridge/.test(e.title));
+  cuOk &= hv('same-dough recipes at close deadlines combine into one staggered dough', (sr.warnings || []).some(w => w.issue === 'same-dough-combined'));
+  cuOk &= hv('combined-unit "Into fridge" notes the later batch proofs longer', fridge.length > 0 && fridge.some(e => /staggered bakes/.test(e.detail) && /~2 hr longer/.test(e.detail)));
+  localStorageStub.removeItem('whb-combine-doughs-v1');
+  els['coldproof-loaf-input'].value = '';
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  allOk &= cuOk;
+}
+
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
 {
   let scOk = true;
