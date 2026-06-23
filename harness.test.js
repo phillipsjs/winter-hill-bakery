@@ -1148,6 +1148,30 @@ api.__setMixers([]);
   }
 }
 
+// --- Same-dough loaves don't split columns over sub-0.1% rounding noise ---
+{
+  const recs = api.__recipes();
+  const boule = recs.find(r => r.id === SEED.boule);
+  const bat = recs.find(r => r.id === SEED.batard);
+  if (boule && bat) {
+    const orig = boule.ingredients.map(i => ({ ...i }));
+    const split = () => { api.renderSchedule(); return (api.__sr().loafColumns || []).length > 0; };
+    const setup = () => {
+      seedPlan({ [SEED.batard]: 6, [SEED.boule]: 6 }); api.__setPlan({ [SEED.batard]: 6, [SEED.boule]: 6 });
+      els['deadline-default-input'].value = fmtLocal(tomorrow8);
+      ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input'].forEach(id => { els[id].value = ''; });
+      localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    };
+    boule.ingredients = orig.map(i => i.name === 'Water' ? { ...i, pct: 73.04 } : i); setup();
+    hvOk &= hv('a sub-0.1% rounding difference keeps loaves as ONE dough (no column split)', split() === false);
+    boule.ingredients = orig.map(i => i.name === 'Water' ? { ...i, pct: 76 } : i); setup();
+    hvOk &= hv('a real (≥0.1%) ratio difference still splits into separate dough columns', split() === true);
+    boule.ingredients = orig;
+  } else {
+    console.log('  [notes] SKIP — boule/batard seeds not present for dough-rounding test');
+  }
+}
+
 // --- Loaf-wide prep steps (Weigh) stay in the loaf columns, not spread into muffin ---
 // Repro: two DISTINCT loaf doughs split into per-dough columns while muffins share the levain.
 {

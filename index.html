@@ -7470,8 +7470,12 @@ ${notesHtml}
   }
 
   function ratioSignature(recipe) {
+    // Two recipes count as "the same dough" (one mix/fold, one schedule column) when their
+    // ingredient name + baker's % match. Percentages are rounded to 1 decimal so sub-0.1%
+    // rounding noise — common when one recipe was entered in grams and another in % — doesn't
+    // spuriously split otherwise-identical doughs into separate columns.
     return [...(recipe.ingredients || [])]
-      .map(i => ({ name: (i.name || '').trim().toLowerCase(), pct: Number(i.pct) || 0 }))
+      .map(i => ({ name: (i.name || '').trim().toLowerCase(), pct: Math.round((Number(i.pct) || 0) * 10) / 10 }))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(i => `${i.name}:${i.pct}`)
       .join('|');
