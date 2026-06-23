@@ -273,7 +273,7 @@ allOk &= stageOk;
 // ---- weigh-step assertions: every process emits a weigh-ingredients step ----
 console.log('\nWeigh-step assertions:');
 function hasWeighFor(proc) {
-  return api.__sr().events.some(e => e.process === proc && /^Weigh /.test(e.title));
+  return api.__sr().events.some(e => e.process === proc && /^(Weigh|Gather) /.test(e.title));
 }
 function expectWeigh(plan, proc) {
   seedPlan(plan); api.__setPlan(plan);
@@ -664,7 +664,7 @@ milledLoaf.stages.find(s => s.type === 'weigh').duration.min = 8;
 api.__recipes().push(milledLoaf);
 let me = renderEvents({ 'mill-loaf': 8 });
 millOk &= mk('milled loaf emits a Mill flour step', me.some(e => e.process === 'loaf' && /^Mill flour/.test(e.title)));
-const weighEv = me.find(e => e.process === 'loaf' && /^Weigh /.test(e.title));
+const weighEv = me.find(e => e.process === 'loaf' && /^(Weigh|Gather) /.test(e.title));
 millOk &= mk('loaf weigh duration is stage-driven (8 min)', !!weighEv && /\b8 min/.test(weighEv.detail));
 
 // Drop the milling flag → the Mill flour step disappears (ingredient-controlled).
@@ -978,7 +978,7 @@ localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
 api.renderSchedule();
 const H = api.buildBakeSheetHelpers();
 const evs = api.__sr().events;
-const weigh = evs.find(e => /^Weigh ingredients/.test(e.title));
+const weigh = evs.find(e => /^(Weigh|Gather) ingredients/.test(e.title));
 const hoverWeigh = weigh ? api.hoverHtmlFor(weigh, H) : '';
 hvOk &= hv('hover for "Weigh ingredients" includes the Ingredients section', /Ingredients/.test(hoverWeigh) && /<table/.test(hoverWeigh));
 const bake = evs.find(e => /^Bake /.test(e.title));
@@ -999,14 +999,14 @@ els['deadline-default-input'].value = fmtLocal(tomorrow8);
 localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
 api.renderSchedule();
 const HbWeigh = api.buildBakeSheetHelpers();
-const bWeigh = api.__sr().events.find(e => e.process === 'bagel' && /^Weigh ingredients/.test(e.title));
+const bWeigh = api.__sr().events.find(e => e.process === 'bagel' && /^(Weigh|Gather) ingredients/.test(e.title));
 hvOk &= hv('bagel weigh carries the mixer-load count (30 bagels → 3 loads)', !!bWeigh && bWeigh.mixBatchCount === 3);
 hvOk &= hv('bagel weigh detail notes per-batch weighing', !!bWeigh && /weigh per batch \(3 mixer loads\)/.test(bWeigh.detail));
 hvOk &= hv('bagel weigh ingredient column leads with the per-batch note', !!bWeigh && /Amounts are per batch — split across 3 mixer loads/.test(HbWeigh.renderIngCol(bWeigh)));
 // An unbatched plan (8 bagels → 1 load) gets no per-batch note.
 seedPlan({ [SEED.bagel]: 8 }); api.__setPlan({ [SEED.bagel]: 8 });
 api.renderSchedule();
-const bWeigh1 = api.__sr().events.find(e => e.process === 'bagel' && /^Weigh ingredients/.test(e.title));
+const bWeigh1 = api.__sr().events.find(e => e.process === 'bagel' && /^(Weigh|Gather) ingredients/.test(e.title));
 hvOk &= hv('unbatched bagel weigh has no per-batch note', !!bWeigh1 && bWeigh1.mixBatchCount === undefined && !/weigh per batch/.test(bWeigh1.detail));
 // Loaves split across proofing containers: the weigh step shows per-batch amounts + note,
 // but keeps the proofing containers OUT of its Equipment column (weighing uses a scale).
@@ -1017,7 +1017,7 @@ api.__setContainers([
 seedPlan({ [SEED.batard]: 8 }); api.__setPlan({ [SEED.batard]: 8 });
 api.renderSchedule();
 const HlWeigh = api.buildBakeSheetHelpers();
-const loafWeighEv = api.__sr().events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+const loafWeighEv = api.__sr().events.find(e => e.process === 'loaf' && /^(Weigh|Gather) ingredients/.test(e.title));
 hvOk &= hv('loaf weigh carries the per-container batch split (>1 container)', !!loafWeighEv && Array.isArray(loafWeighEv.mixBatchContents) && loafWeighEv.mixBatchContents.length > 1);
 hvOk &= hv('loaf weigh ingredient column shows per-batch amounts + note', !!loafWeighEv && /Amounts are per batch — split across \d+ containers/.test(HlWeigh.renderIngCol(loafWeighEv)));
 hvOk &= hv('loaf weigh keeps proofing containers out of its Equipment column', !!loafWeighEv && !/Batch \d/.test(HlWeigh.getEventEquipment(loafWeighEv)));
@@ -1092,7 +1092,7 @@ api.__setMixers([]);
     const weighRecipeIds = () => {
       api.renderSchedule();
       const H = api.buildBakeSheetHelpers();
-      const ev = api.__sr().events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+      const ev = api.__sr().events.find(e => e.process === 'loaf' && /^(Weigh|Gather) ingredients/.test(e.title));
       const ings = ev ? H.getEventIngredients(ev) : null;
       return ings && ings.type === 'byRecipe' ? ings.recipes.map(r => r.id) : [];
     };
@@ -1257,7 +1257,7 @@ api.__setMixers([]);
     api.renderSchedule();
     const sr = api.__sr();
     const loafCols = (sr.loafColumns || []).map(c => c.key);
-    const weigh = sr.events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+    const weigh = sr.events.find(e => e.process === 'loaf' && /^(Weigh|Gather) ingredients/.test(e.title));
     const cdKeys = weigh && weigh.colDetails ? Object.keys(weigh.colDetails) : [];
     hvOk &= hv('two distinct loaf doughs split into per-dough columns', loafCols.length === 2);
     hvOk &= hv('loaf Weigh step carries per-loaf-column detail (not full-width "shared")', cdKeys.length > 0);
@@ -1265,7 +1265,7 @@ api.__setMixers([]);
     // Rendered HTML: the loaf-wide Weigh box must span ONLY the loaf columns (grid-column:
     // 1 / span <#loaf cols>), not stretch full-width across the muffin column.
     const outHtml = getEl('schedule-output').innerHTML;
-    const weighSpan = outHtml.match(/grid-column: 1 \/ span (\d+);"><div class="schedule-event schedule-event-shared"[^>]*>(?:(?!schedule-event-shared)[\s\S])*?Weigh ingredients/);
+    const weighSpan = outHtml.match(/grid-column: 1 \/ span (\d+);"><div class="schedule-event schedule-event-shared"[^>]*>(?:(?!schedule-event-shared)[\s\S])*?(?:Weigh|Gather) ingredients/);
     hvOk &= hv('loaf Weigh box renders spanning only the loaf columns (not full-width across muffin)', !!weighSpan && Number(weighSpan[1]) === loafCols.length);
     boule.ingredients = savedIngs;
   } else {
@@ -1311,11 +1311,11 @@ api.__setMixers([]);
     hvOk &= hv('split ON: loaf columns are in bake-plan order (batard rank 0 before boule rank 1)',
       cols[0] === `loaf::${SEED.batard}` && cols[1] === `loaf::${SEED.boule}`);
     // Whole-dough step (Weigh) has no per-recipe key → spans ALL loaf columns, not the muffin.
-    const weigh = sr.events.find(e => e.process === 'loaf' && /^Weigh ingredients/.test(e.title));
+    const weigh = sr.events.find(e => e.process === 'loaf' && /^(Weigh|Gather) ingredients/.test(e.title));
     hvOk &= hv('split ON: the shared Weigh step has no columnKey/colDetails (whole-dough → spans loaf cols)',
       weigh && !weigh.columnKey && !weigh.colDetails);
     const splitHtml = getEl('schedule-output').innerHTML;
-    const wSpan = splitHtml.match(/grid-column: 1 \/ span (\d+);"><div class="schedule-event schedule-event-shared"[^>]*>(?:(?!schedule-event-shared)[\s\S])*?Weigh ingredients/);
+    const wSpan = splitHtml.match(/grid-column: 1 \/ span (\d+);"><div class="schedule-event schedule-event-shared"[^>]*>(?:(?!schedule-event-shared)[\s\S])*?(?:Weigh|Gather) ingredients/);
     hvOk &= hv('split ON: Weigh box spans both loaf columns (span 2), not the muffin', !!wSpan && Number(wSpan[1]) === 2);
     // Headers: two separate per-recipe loaf headers, not one comma/<br>-joined header.
     const hdrs = (splitHtml.match(/<div class="schedule-col-header">([\s\S]*?)<\/div>/g) || []);
