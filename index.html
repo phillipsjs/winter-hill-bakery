@@ -10878,6 +10878,18 @@ ${notesHtml}
       }
       equipClaims.push(claim);
     };
+    // An oven bakes one load (one temp) at a time, so each bake claims its oven(s) for the
+    // bake window at capacity 1. Within a run the oven sequencer already keeps same-oven bakes
+    // from overlapping; these claims exist to catch CROSS-run collisions (deadline groups /
+    // staggered combined bakes), which each assign ovens assuming full availability.
+    const addOvenClaim = (names, role, start, durMin) => {
+      if (!(durMin > 0)) return;
+      let list = (names || []).filter(Boolean);
+      if (!list.length) list = singleOvenName ? [singleOvenName] : [];
+      if (!list.length) { const sl = ovenDeckSlots(); if (sl.length) list = [sl[0].ovenName]; }
+      const end = addMinutes(start, durMin);
+      [...new Set(list)].forEach(nm => addClaim('oven', role, nm, 1, start, end, 1));
+    };
     // Time-aware container allocator: reserve fixed claims, then move each reassignable
     // claim onto its current container if a free instance exists in its window, else onto
     // the smallest eligible alternative that's free, else leave it (detection then warns).
@@ -11748,6 +11760,7 @@ ${notesHtml}
         detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${fmtTemp(loafAgg.bakeTempF)}${planLines}`,
         process: 'loaf', colDetails: bakeColDetails, equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
       });
+      addOvenClaim(loafSlot && loafSlot.ovenName ? [loafSlot.ovenName] : [], 'Loaf bake', bakeStart, loafAgg.bakeMin);
       // Dedicated "loaves out" step at the moment this batch leaves the oven. The
       // reheat before the next batch (folded into the bake step before) lives here.
       // The final batch's "out" step is the cooling step below (which folds the
@@ -11779,6 +11792,7 @@ ${notesHtml}
           detail: `${SCHED.OVEN_LOAD_MIN} min load · ${muffinAgg.bakeMin} min bake · ${fmtTemp(muffinAgg.bakeTempF)}${reheatSuffix}${planLines}`,
           process: 'muffin', equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
         });
+        addOvenClaim(muffinSlot && muffinSlot.ovenName ? [muffinSlot.ovenName] : [], 'Muffin bake', bakeStart, muffinAgg.bakeMin);
         muffinCumOffset += muffinAgg.bakeMin + (b < muffinBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
     }
@@ -11817,6 +11831,7 @@ ${notesHtml}
           detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake · ${fmtTemp(bagelAgg.bakeTempF)}${bagelOvenTag}`,
           process: 'bagel', equip: bagelOvenName ? [bagelOvenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: bagelOvenTag,
         });
+        addOvenClaim(bagelOvenName ? [bagelOvenName] : [], 'Bagel bake', bakeStart, bagelAgg.bakeMin);
       }
     }
 
@@ -12077,6 +12092,7 @@ ${notesHtml}
         const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
         const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
         events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
+        addOvenClaim(focacciaSlot.ovenName ? [focacciaSlot.ovenName] : [], 'Focaccia bake', bakeStart, focacciaAgg.bakeMin);
         cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
       events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${focacciaCoolMin} min cool`, process: 'focaccia' });
@@ -12234,6 +12250,7 @@ ${notesHtml}
           cursor = start;
         }
         events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${j.bakeMin} min · ${fmtTemp(j.temp)}${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+        addOvenClaim(ovenEquip, `${r.name} bake`, bakeStart, j.bakeMin);
         cum += j.bakeMin;
       });
       // Group-level finish: cool, optional glaze, package-ready.
@@ -12399,6 +12416,7 @@ ${notesHtml}
     // recipe bakes at its own time — so later portions cold-proof longer. The "Into fridge"
     // label reflects the earliest bake; track the spread so we can note the longer proof.
     const firstBakeTimes = [];
+    const bakeOvenClaims = []; // each portion bakes at its own time → keep its oven claims
     sorted.forEach(r => {
       const bp = {}; bp[r.id] = fullPlan[r.id] || 0;
       plan = bp;
@@ -12407,6 +12425,7 @@ ${notesHtml}
       br.events.forEach(ev => {
         if (isLoafBake(ev)) { events.push(ev); if (getEventStage(ev) === 'bake' && (!recBake || ev.time < recBake)) recBake = ev.time; }
       });
+      (br.equipClaims || []).forEach(c => { if (c.pool === 'oven') bakeOvenClaims.push(c); });
       if (recBake) firstBakeTimes.push(recBake);
     });
     if (firstBakeTimes.length > 1) {
@@ -12419,7 +12438,7 @@ ${notesHtml}
         });
       }
     }
-    return { ...prepRes, events };
+    return { ...prepRes, events, equipClaims: [...(prepRes.equipClaims || []), ...bakeOvenClaims] };
   }
 
   // Post-pass: insert a "Top <label>" step just before the first bake of any bread process
@@ -12624,6 +12643,8 @@ ${notesHtml}
           msg = `⚠ Not enough bannetons — ${peak} loaves cold-proofing at once but you have ${capacity}, ${when}.`;
         } else if (pool === 'pan') {
           msg = `⚠ Pan “${name}” over capacity — ${peak} items on it at once but it holds ${capacity}, ${when}.`;
+        } else if (pool === 'oven') {
+          msg = `⚠ Oven “${name}” double-booked — ${peak} bakes need it at once${rolesStr}, ${when}. Stagger a deadline or use another oven.`;
         } else {
           msg = `⚠ Container “${name}” is double-booked — ${peak} needed at the same time${rolesStr}, but you have ${capacity}, ${when}.`;
         }

@@ -1950,6 +1950,40 @@ allOk &= hvOk;
   allOk &= hlOk;
 }
 
+// --- B1: cross-deadline-group oven conflicts are detected (and resolvable by assignment) ---
+{
+  let ovOk = true;
+  const seeds = api.SEED_RECIPES;
+  const batard = JSON.parse(JSON.stringify(seeds.find(r => r.id === SEED.batard)));
+  const boule = JSON.parse(JSON.stringify(seeds.find(r => r.id === SEED.boule)));
+  boule.ingredients = boule.ingredients.map(i => i.name === 'Water' ? { ...i, pct: 90 } : i); // distinct dough → separate groups
+  api.__setOvens([]); // single default oven
+  api.__setRecipes([batard, boule]);
+  const plan = { [batard.id]: 6, [boule.id]: 6 };
+  api.__setPlan(plan); seedPlan(plan);
+  const base = new Date(2030, 0, 6, 8, 0), close = new Date(2030, 0, 6, 8, 30); // bakes overlap on one oven
+  const ovenWarns = () => (api.__sr().warnings || []).filter(w => /double-booked/.test(w.msg || '')).length;
+  const renderWith = (deadlines) => {
+    els['deadline-default-input'].value = fmtLocal(base);
+    if (deadlines) localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify(deadlines));
+    else localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+  };
+  renderWith({ [batard.id]: base.toISOString(), [boule.id]: close.toISOString() });
+  ovOk &= hv('bakes emit oven claims', (api.__sr().equipClaims || []).some(c => c.pool === 'oven'));
+  ovOk &= hv('two loaf deadline groups colliding on one oven → "double-booked" warning', ovenWarns() === 1);
+  renderWith(null); // single deadline → one run, oven sequencer keeps bakes apart
+  ovOk &= hv('single-deadline plan emits no oven conflict (within-run sequenced)', ovenWarns() === 0);
+  // Resolve: a second oven assigned to the later group clears it.
+  api.__setOvens([{ id: 'o1', name: 'Oven A', decks: 3 }, { id: 'o2', name: 'Oven B', decks: 3 }]);
+  boule.preferredOvenId = 'o2';
+  renderWith({ [batard.id]: base.toISOString(), [boule.id]: close.toISOString() });
+  ovOk &= hv('assigning the colliding group to a second oven clears the conflict', ovenWarns() === 0);
+  api.__setOvens([]);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  allOk &= ovOk;
+}
+
 // --- Combined staggered bake: the "Into fridge" label notes the longer later-batch proof ---
 {
   let cuOk = true;
