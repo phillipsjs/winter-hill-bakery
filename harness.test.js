@@ -1301,6 +1301,7 @@ api.__setMixers([]);
       const mergedHdr = (getEl('schedule-output').innerHTML.match(/<div class="schedule-col-header">[\s\S]*?<\/div>/g) || [])
         .find(x => /Batard/.test(x) && /Boule/.test(x));
       hvOk &= hv('merged loaf column header shows a split icon button', !!mergedHdr && /schedule-colsplit-btn[^>]*><svg/.test(mergedHdr) && !/>split</.test(mergedHdr));
+      hvOk &= hv('split button is far-left (before the column names)', !!mergedHdr && mergedHdr.indexOf('schedule-colsplit-btn') < mergedHdr.indexOf('schedule-col-names'));
     }
 
     api.setSplitLoafCols(true); setup();
@@ -1319,12 +1320,14 @@ api.__setMixers([]);
     // Headers: two separate per-recipe loaf headers, not one comma/<br>-joined header.
     const hdrs = (splitHtml.match(/<div class="schedule-col-header">([\s\S]*?)<\/div>/g) || []);
     hvOk &= hv('split ON: separate per-recipe loaf column headers', hdrs.some(h => /Batard/.test(h) && !/Boule/.test(h)) && hdrs.some(h => /Boule/.test(h) && !/Batard/.test(h)));
-    // A single "merge" overlay sits centered over (between) the loaf columns — not one per header.
+    // A single "merge" control sits far-left in the FIRST loaf column header (before its name).
     {
       const mergeAll = (splitHtml.match(/schedule-colmerge-btn/g) || []).length;
-      const overlay = splitHtml.match(/<button[^>]*schedule-colmerge-btn[^>]*style="grid-column: 1 \/ span (\d+);"[^>]*><svg[\s\S]*?<\/svg><\/button>/);
-      hvOk &= hv('split ON: exactly one merge icon overlay, spanning the loaf columns', mergeAll === 1 && !!overlay && Number(overlay[1]) === 2);
-      hvOk &= hv('split ON: per-recipe headers carry no inline split/merge button', !hdrs.some(h => /schedule-colsplit-btn|schedule-colmerge-btn/.test(h)));
+      const firstLoafHdr = hdrs.find(h => /Batard/.test(h)); // batard is bakeRank 0 → first loaf col
+      const otherHdrs = hdrs.filter(h => h !== firstLoafHdr);
+      hvOk &= hv('split ON: exactly one merge icon button, on the first loaf header', mergeAll === 1 && !!firstLoafHdr && /schedule-colmerge-btn[^>]*><svg/.test(firstLoafHdr));
+      hvOk &= hv('split ON: merge button is far-left (before the column name)', !!firstLoafHdr && firstLoafHdr.indexOf('schedule-colmerge-btn') < firstLoafHdr.indexOf('schedule-col-names'));
+      hvOk &= hv('split ON: other loaf/muffin headers carry no split/merge button', !otherHdrs.some(h => /schedule-col-iconbtn/.test(h)));
     }
 
     api.setSplitLoafCols(false);

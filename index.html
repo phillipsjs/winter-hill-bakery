@@ -463,29 +463,19 @@
     text-transform: uppercase;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
+    justify-content: flex-start;
+    gap: 7px;
   }
   .schedule-col-names { min-width: 0; }
-  /* The header grid is the positioning context for the single "merge" overlay. */
-  .schedule-header-cols { position: relative; }
-  /* Icon split/merge controls, integrated into the column header. */
+  /* Far-left icon split/merge controls, vertically centered in the column header. */
   .schedule-col-iconbtn {
     flex: none; display: inline-flex; align-items: center; justify-content: center;
     width: 22px; height: 22px; padding: 0; border-radius: 6px;
     border: 1px solid transparent; background: transparent; color: var(--accent-dark);
-    cursor: pointer; opacity: 0.6; transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+    cursor: pointer; opacity: 0.65; transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
   }
   .schedule-col-iconbtn:hover { opacity: 1; background: var(--accent-dark); color: #fff; }
-  .schedule-col-header:hover .schedule-colsplit-btn { opacity: 1; }
-  /* The merge control floats centered over (between) the loaf columns, vertically centered. */
-  .schedule-colmerge-btn {
-    grid-row: 1; justify-self: center; align-self: center; z-index: 2;
-    width: 24px; height: 24px; border-radius: 50%; opacity: 1;
-    border: 1px solid var(--border); background: var(--surface, #fff);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  }
-  .schedule-colmerge-btn:hover { background: var(--accent-dark); color: #fff; border-color: var(--accent-dark); }
+  .schedule-col-header:hover .schedule-col-iconbtn { opacity: 1; }
   .schedule-hour-cols {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -13126,10 +13116,18 @@ ${notesHtml}
       const names = colNamesMap[key];
       const label = (names && names.length > 1) ? names.map(escapeHtml).join('<br>') : escapeHtml(colLabelFor(key));
       let ctrl = '';
-      if (isLoafColKey(key) && !loadSplitLoafCols() && names && names.length > 1) {
-        ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" title="Split into one column per recipe" aria-label="Split into one column per recipe">${SPLIT_COLS_ICON}</button>`;
+      if (isLoafColKey(key)) {
+        const splitOn = loadSplitLoafCols();
+        const loafColCount = presentCols.filter(isLoafColKey).length;
+        if (!splitOn && names && names.length > 1) {
+          // Far-left split control on the merged multi-recipe loaf column header.
+          ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colsplit-btn no-print" onclick="toggleSplitLoafCols()" title="Split into one column per recipe" aria-label="Split into one column per recipe">${SPLIT_COLS_ICON}</button>`;
+        } else if (splitOn && loafColCount > 1 && key === presentCols.find(isLoafColKey)) {
+          // One far-left merge control on the FIRST loaf column header.
+          ctrl = `<button type="button" class="schedule-col-iconbtn schedule-colmerge-btn no-print" onclick="toggleSplitLoafCols()" title="Merge these recipes back into one column" aria-label="Merge recipes back into one column">${MERGE_COLS_ICON}</button>`;
+        }
       }
-      return `<span class="schedule-col-names">${label}</span>${ctrl}`;
+      return `${ctrl}<span class="schedule-col-names">${label}</span>`;
     };
     const splitView = presentCols.length >= 2;
     // Route an event to a column: shared (levain, etc.) spans all columns; side events
@@ -13265,19 +13263,11 @@ ${notesHtml}
     // and collapses the empty sibling columns, making an in-column step look full-width.
     const colsStyle = `grid-template-columns: repeat(${presentCols.length}, minmax(0, 1fr));`;
     if (splitView) {
-      // In split mode, a single "merge" control sits centered over the loaf columns (i.e.
-      // between them), vertically centered in the header — rendered as one overlay grid item
-      // spanning the loaf columns rather than one button per column.
-      const loafHdrCount = presentCols.filter(isLoafColKey).length;
-      const mergeOverlay = (loadSplitLoafCols() && loafHdrCount > 1)
-        ? `<button type="button" class="schedule-col-iconbtn schedule-colmerge-btn no-print" style="grid-column: 1 / span ${loafHdrCount};" onclick="toggleSplitLoafCols()" title="Merge these recipes back into one column" aria-label="Merge recipes back into one column">${MERGE_COLS_ICON}</button>`
-        : '';
       html += `<div class="schedule-hour-row schedule-hour-header-row schedule-sticky-header">
         <div></div>
         <div class="schedule-hour-content">
           <div class="schedule-hour-cols schedule-header-cols" style="${colsStyle}">
             ${presentCols.map(p => `<div class="schedule-col-header">${colHeaderHtml(p)}</div>`).join('')}
-            ${mergeOverlay}
           </div>
         </div>
       </div>`;
