@@ -470,9 +470,9 @@
   /* Far-left icon split/merge controls, vertically centered in the column header. */
   .schedule-col-iconbtn {
     flex: none; display: inline-flex; align-items: center; justify-content: center;
-    width: 22px; height: 22px; padding: 0; border-radius: 6px;
+    width: 28px; height: 28px; padding: 0; border-radius: 6px;
     border: 1px solid transparent; background: transparent; color: var(--accent-dark);
-    cursor: pointer; opacity: 0.65; transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+    cursor: pointer; opacity: 0.7; transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
   }
   .schedule-col-iconbtn:hover { opacity: 1; background: var(--accent-dark); color: #fff; }
   .schedule-col-header:hover .schedule-col-iconbtn { opacity: 1; }
@@ -12292,8 +12292,8 @@ ${notesHtml}
   }
   // Column split/merge glyphs: two center bars (the two columns) with full arrows — pointing
   // OUTWARD to split apart (← | | →), INWARD to merge together (→ | | ←).
-  const SPLIT_COLS_ICON = `<svg viewBox="0 0 20 16" width="15" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v10"/><path d="M11 3v10"/><path d="M6 8H2"/><path d="M4 5 2 8l2 3"/><path d="M14 8h4"/><path d="M16 5l2 3-2 3"/></svg>`;
-  const MERGE_COLS_ICON = `<svg viewBox="0 0 20 16" width="15" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v10"/><path d="M11 3v10"/><path d="M2 8h4"/><path d="M4 5l2 3-2 3"/><path d="M18 8h-4"/><path d="M16 5l-2 3 2 3"/></svg>`;
+  const SPLIT_COLS_ICON = `<svg viewBox="0 0 20 16" width="19" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v10"/><path d="M11 3v10"/><path d="M6 8H2"/><path d="M4 5 2 8l2 3"/><path d="M14 8h4"/><path d="M16 5l2 3-2 3"/></svg>`;
+  const MERGE_COLS_ICON = `<svg viewBox="0 0 20 16" width="19" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v10"/><path d="M11 3v10"/><path d="M2 8h4"/><path d="M4 5l2 3-2 3"/><path d="M18 8h-4"/><path d="M16 5l-2 3 2 3"/></svg>`;
 
   const COMBINE_DOUGHS_KEY = 'whb-combine-doughs-v1';
   function loadCombineDoughs() {
