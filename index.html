@@ -11667,7 +11667,8 @@ ${notesHtml}
           process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
         });
         // Each loaf occupies one banneton while it cold-proofs in the fridge.
-        addClaim('banneton', 'Loaf cold proof', '(bannetons)', c.totalLoaves || 0, fridgeTime, bakeStart);
+        // (containerInfo stores the per-container loaf count as `loaves`, not `totalLoaves`.)
+        addClaim('banneton', 'Loaf cold proof', '(bannetons)', c.loaves || 0, fridgeTime, bakeStart);
       }
     }
     const loafColdProofRange = containerColdProofMs.length > 0

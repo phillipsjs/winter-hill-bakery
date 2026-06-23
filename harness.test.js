@@ -1950,6 +1950,28 @@ allOk &= hvOk;
   allOk &= hlOk;
 }
 
+// --- Banneton claims are emitted (latent bug: used c.totalLoaves, which is undefined) ---
+{
+  let bnOk = true;
+  api.__setBannetons([{ id: 'b1', name: 'Banneton', quantity: 8 }]);
+  api.__setContainers([{ id: 'c1', name: 'Tub', maxDoughGrams: 20000, quantity: 2, processTag: 'any' }]);
+  api.__setOvens([]);
+  const plan = { [SEED.batard]: 12 };
+  api.__setPlan(plan); seedPlan(plan);
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  els['coldproof-loaf-input'].value = '8-12';
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const bannetonClaims = (api.__sr().equipClaims || []).filter(c => c.pool === 'banneton');
+  bnOk &= hv('cold-proofing loaves emit banneton claims with a real count', bannetonClaims.length > 0 && bannetonClaims.every(c => c.count > 0));
+  bnOk &= hv('too few bannetons for the cold-proofing loaves → warning', (api.__sr().warnings || []).some(w => /Not enough bannetons/.test(w.msg || '')));
+  api.__setBannetons([{ id: 'b1', name: 'Banneton', quantity: 24 }]);
+  api.renderSchedule();
+  bnOk &= hv('enough bannetons → no banneton warning', !(api.__sr().warnings || []).some(w => /Not enough bannetons/.test(w.msg || '')));
+  els['coldproof-loaf-input'].value = '';
+  allOk &= bnOk;
+}
+
 // --- B1: cross-deadline-group oven conflicts are detected (and resolvable by assignment) ---
 {
   let ovOk = true;
