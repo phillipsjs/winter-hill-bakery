@@ -130,6 +130,7 @@ const exportsTail = `
   __setContainers: (c) => { userContainers = c; },
   pickLevainContainer, getLevainContainerPref, setLevainContainerPref, loadLevainContainerPrefs,
   pickDoughContainer, planBakes, bakeRankMap, moveBakeOrder, renderBakeOrderPlan, bakeOrderGroups,
+  ratioSignature,
   __recipes: () => recipes,
 };`;
 
@@ -1166,6 +1167,22 @@ api.__setMixers([]);
     hvOk &= hv('a sub-0.1% rounding difference keeps loaves as ONE dough (no column split)', split() === false);
     boule.ingredients = orig.map(i => i.name === 'Water' ? { ...i, pct: 76 } : i); setup();
     hvOk &= hv('a real (≥0.1%) ratio difference still splits into separate dough columns', split() === true);
+    boule.ingredients = orig;
+
+    // Same dough, but the batard carries a sesame TOPPING (applied per-unit after shaping):
+    // the dough is identical, so they must stay ONE column / one bulk ferment — toppings and
+    // process aids (dusting flour) are excluded from the dough signature.
+    const savedBatIngs = bat.ingredients.map(i => ({ ...i }));
+    const savedBatStages = bat.stages ? JSON.parse(JSON.stringify(bat.stages)) : bat.stages;
+    boule.ingredients = orig;
+    bat.ingredients = orig.map(i => ({ ...i })).concat([{ name: 'Sesame seeds', pct: 4 }]);
+    bat.stages = (savedBatStages ? JSON.parse(JSON.stringify(savedBatStages)) : [])
+      .concat([{ type: 'topping', label: 'Top with sesame', ings: ['Sesame seeds'], duration: { totalMin: 2 } }]);
+    setup();
+    hvOk &= hv('same dough + a topping on one loaf stays ONE column (topping excluded from dough signature)', split() === false);
+    hvOk &= hv('ratioSignature ignores toppings (boule == sesame-batard dough)', api.ratioSignature(boule) === api.ratioSignature(bat));
+    bat.ingredients = savedBatIngs;
+    bat.stages = savedBatStages;
     boule.ingredients = orig;
   } else {
     console.log('  [notes] SKIP — boule/batard seeds not present for dough-rounding test');

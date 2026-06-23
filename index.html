@@ -7471,10 +7471,15 @@ ${notesHtml}
 
   function ratioSignature(recipe) {
     // Two recipes count as "the same dough" (one mix/fold, one schedule column) when their
-    // ingredient name + baker's % match. Percentages are rounded to 1 decimal so sub-0.1%
-    // rounding noise — common when one recipe was entered in grams and another in % — doesn't
-    // spuriously split otherwise-identical doughs into separate columns.
+    // DOUGH ingredient name + baker's % match. Only dough-role ingredients are compared —
+    // toppings (applied per-unit after shaping) and process aids (dusting flour, boil-bath
+    // salt/lye) don't change the dough you mix & bulk-ferment, so e.g. a plain boule and a
+    // sesame-topped batard of the identical dough share one column / one bulk ferment instead
+    // of splitting. Percentages are rounded to 1 decimal so sub-0.1% rounding noise — common
+    // when one recipe was entered in grams and another in % — doesn't spuriously split them.
+    const tn = toppingIngredientNames(recipe);
     return [...(recipe.ingredients || [])]
+      .filter(i => ingredientWeightRole(recipe, i, tn) === 'dough')
       .map(i => ({ name: (i.name || '').trim().toLowerCase(), pct: Math.round((Number(i.pct) || 0) * 10) / 10 }))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(i => `${i.name}:${i.pct}`)
