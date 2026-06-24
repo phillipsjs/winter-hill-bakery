@@ -7892,7 +7892,16 @@ ${notesHtml}
     // Group by dough with a tolerance (sameDough) rather than an exact signature, so a few
     // hundredths of a percent of ratio drift — e.g. from re-rounding grams when one recipe's
     // overall weight changed — doesn't split otherwise-identical doughs into separate columns.
+    // A same-dough cluster still SUB-SPLITS by proofing: doughs that cold-proof or bulk for
+    // different times need their own tub/column (else they'd share one tub at the longest
+    // setting). Recipes with no proofing override resolve to the same key and stay together.
+    const proofKey = (r) => `${r.coldProofHr == null ? '' : r.coldProofHr}|${r.bulkMin == null ? '' : r.bulkMin}`;
     const groups = clusterDoughs(active.map(a => a.recipe))
+      .flatMap(recs => {
+        const byProof = new Map();
+        recs.forEach(r => { const k = proofKey(r); if (!byProof.has(k)) byProof.set(k, []); byProof.get(k).push(r); });
+        return [...byProof.values()];
+      })
       .map(recs => recs.map(r => active.find(a => a.recipe === r)));
     // Eligible user containers for loaf proofing, smallest first
     const eligible = (userCont || [])
@@ -8569,8 +8578,10 @@ ${notesHtml}
     ['sourdough-loaf', 'Loaves'], ['sourdough-muffin', 'Muffins'], ['bagel', 'Bagels'],
     ['focaccia', 'Focaccia'], ['simple', 'Simple bakes'], ['enriched', 'Enriched'],
   ];
-  const PROOF_AGG_WARM = new Set(['sourdough-loaf', 'sourdough-muffin', 'bagel', 'focaccia']); // warm bulk uses max() within a bake
-  const PROOF_AGG_COLD = new Set(['sourdough-loaf', 'sourdough-muffin', 'bagel']); // cold proof shared within a bake (loaves split only across deadlines)
+  // Loaves are fully per-recipe now (distinct doughs + same-dough proofing split); only the
+  // single-slot engines still share one window per type within a bake.
+  const PROOF_AGG_WARM = new Set(['sourdough-muffin', 'bagel']); // warm bulk uses max() within a bake
+  const PROOF_AGG_COLD = new Set(['sourdough-muffin', 'bagel']); // cold proof shared within a bake
   const COLD_BUCKET = { 'sourdough-loaf': 'loaf', 'sourdough-muffin': 'muffin', 'bagel': 'bagel' };
   const COLD_PROOF_OPTIONS = (() => {
     const opts = [['', 'Auto (fit deadline)'], ['0', 'None (bake after shape)']];
@@ -11436,16 +11447,6 @@ ${notesHtml}
         }
         for (const c of group.containers) {
           containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves, containerName: c.containerName, colKey });
-        }
-        // Same dough (one tub), different proofing → can't honor both; we use the longest. Tell
-        // the baker so they can split the dough (change a ratio) to proof them independently.
-        const grpRecipes = [...new Set((group.items || []).map(it => it.recipe))];
-        if (grpRecipes.length > 1) {
-          const cpVals = new Set(grpRecipes.map(r => (r.coldProofHr == null || r.coldProofHr === '') ? 'auto' : String(r.coldProofHr)));
-          const bkVals = new Set(grpRecipes.map(r => (r.bulkMin == null || r.bulkMin === '') ? 'def' : String(r.bulkMin)));
-          if (cpVals.size > 1 || bkVals.size > 1) {
-            warnings.push({ msg: `${grpRecipes.map(r => r.name).join(' & ')} share a dough but ask for different ${cpVals.size > 1 ? 'cold proofs' : 'bulk times'} — they're made as one dough at the longest setting. Change a ratio (or split the dough) to proof them separately.`, issue: 'same-dough-proof', kind: 'loaf', type: 'info' });
-          }
         }
       });
       if (splitLoaf) {
