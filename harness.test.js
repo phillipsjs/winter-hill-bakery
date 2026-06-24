@@ -2293,6 +2293,24 @@ allOk &= hvOk;
   prOk &= pr('different deadlines → per-recipe warm bulk (4 and 8 hr)', diffB.has('4') && diffB.has('8'));
   localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
   delete batard.coldProofHr; delete boule.coldProofHr; delete batard.bulkMin; delete boule.bulkMin; delete batard.stages;
+
+  // Per-dough prep: DISTINCT doughs at the SAME deadline with different cold proofs get
+  // independent fridge-in + independent prep timelines, one shared bake, no oven double-book.
+  const origBouleIng = JSON.parse(JSON.stringify(boule.ingredients));
+  boule.ingredients = boule.ingredients.map(i => i.name === 'Water' ? { ...i, pct: 90 } : i); // make boule a distinct dough
+  batard.coldProofHr = '8'; boule.coldProofHr = '24';
+  api.__setPlan({ [batard.id]: 6, [boule.id]: 6 }); seedPlan({ [batard.id]: 6, [boule.id]: 6 });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const dsr = api.__sr();
+  const dCold = new Set(dsr.events.filter(e => /Into fridge/.test(e.title)).map(e => (String(e.detail || '').match(/(\d+) hr cold proof/) || [])[1]).filter(Boolean));
+  prOk &= pr('distinct doughs, same deadline → per-recipe cold proof (8 and 24)', dCold.has('8') && dCold.has('24'));
+  prOk &= pr('distinct doughs, same deadline → no oven double-book', (dsr.warnings || []).filter(w => /double-booked/.test(w.msg || '')).length === 0);
+  // Each dough has its own autolyse (per-container prep), at different times.
+  const autTimes = new Set(dsr.events.filter(e => /^Start autolyse/.test(e.title)).map(e => new Date(e.time).getTime()));
+  prOk &= pr('distinct doughs → independent prep timelines (per-dough autolyse)', autTimes.size === 2);
+  boule.ingredients = origBouleIng; // restore shared dough
+  delete batard.coldProofHr; delete boule.coldProofHr;
   allOk &= prOk;
 }
 

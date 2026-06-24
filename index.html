@@ -8699,13 +8699,16 @@ ${notesHtml}
       rs.forEach(r => { const d = dl[r.id] || def || '_'; (byDl[d] = byDl[d] || []).push(r); });
       cohorts = Object.values(byDl);
     }
-    const differs = (valOf) => cohorts.some(g => g.length > 1 && new Set(g.map(valOf)).size > 1);
+    // For loaves, distinct doughs at one deadline now proof independently (per-dough timelines),
+    // so only flag when SAME-dough recipes differ (those still share one tub → longest wins).
+    const subgroupsOf = (cohort) => splitsByDeadline ? clusterDoughs(cohort) : [cohort];
+    const differs = (valOf) => cohorts.some(g => subgroupsOf(g).some(sg => sg.length > 1 && new Set(sg.map(valOf)).size > 1));
     const parts = [];
     if (PROOF_AGG_WARM.has(type) && differs(r => num(r.bulkMin, tmpl.bulkMin || 0))) parts.push('warm bulk');
     if (PROOF_AGG_COLD.has(type) && differs(r => (r.coldProofHr == null || r.coldProofHr === '') ? 'auto' : String(r.coldProofHr))) parts.push('cold proof');
     if (!parts.length) return '';
-    const tail = splitsByDeadline ? ' Give them different deadlines to proof independently.' : '';
-    return `These ${label.toLowerCase()} bake together so they share one ${parts.join(' and ')} window — the schedule uses the longest.${tail}`;
+    const tail = splitsByDeadline ? ' They share a dough — change a ratio or split it to proof them separately.' : '';
+    return `These ${label.toLowerCase()} share one ${parts.join(' and ')} window — the schedule uses the longest.${tail}`;
   }
 
   function formatGrams(g) {
@@ -11385,6 +11388,9 @@ ${notesHtml}
     let loafColAttrFor = (contents, fallbackColKey) => ({ columnKey: fallbackColKey });
     const loafRecipeColKey = new Map(); // recipe name -> loaf column key (for shared-step breakdowns)
     let shapePhaseStart = null, lastFoldTime = null, firstFoldTime = null, mixTime = null, autolyseStart = null;
+    // Per-dough proofing: when distinct doughs at one deadline want different cold proofs/bulk,
+    // each container gets its own backward prep timeline (see below). Stays null/false otherwise.
+    let proofingDivergent = false, ctTimeline = null;
 
     const PRESHAPE_RATIO = SCHED.PRESHAPE_MIN_PER_LOAF /
       (SCHED.PRESHAPE_MIN_PER_LOAF + SCHED.FINAL_SHAPE_MIN_PER_LOAF);
@@ -11430,6 +11436,16 @@ ${notesHtml}
         }
         for (const c of group.containers) {
           containerInfo.push({ loaves: c.totalLoaves, dough: c.totalDough, contents: c.loaves, containerName: c.containerName, colKey });
+        }
+        // Same dough (one tub), different proofing → can't honor both; we use the longest. Tell
+        // the baker so they can split the dough (change a ratio) to proof them independently.
+        const grpRecipes = [...new Set((group.items || []).map(it => it.recipe))];
+        if (grpRecipes.length > 1) {
+          const cpVals = new Set(grpRecipes.map(r => (r.coldProofHr == null || r.coldProofHr === '') ? 'auto' : String(r.coldProofHr)));
+          const bkVals = new Set(grpRecipes.map(r => (r.bulkMin == null || r.bulkMin === '') ? 'def' : String(r.bulkMin)));
+          if (cpVals.size > 1 || bkVals.size > 1) {
+            warnings.push({ msg: `${grpRecipes.map(r => r.name).join(' & ')} share a dough but ask for different ${cpVals.size > 1 ? 'cold proofs' : 'bulk times'} — they're made as one dough at the longest setting. Change a ratio (or split the dough) to proof them separately.`, issue: 'same-dough-proof', kind: 'loaf', type: 'info' });
+          }
         }
       });
       if (splitLoaf) {
@@ -11528,10 +11544,65 @@ ${notesHtml}
       firstFoldTime = addMinutes(lastFoldTime, -(loafAgg.foldsCount - 1) * loafAgg.foldIntervalMin);
       mixTime = addMinutes(firstFoldTime, -(loafAgg.foldIntervalMin + (containerInfo.length - 1) * SCHED.SALT_LEVAIN_MIX_MIN));
       autolyseStart = addMinutes(mixTime, -(loafAgg.autolyseMin + (containerInfo.length - 1) * SCHED.AUTOLYSE_ACTIVE_MIN));
+
+      // --- Per-dough proofing (full per-container prep timeline) ---
+      // When distinct doughs (containers) at this one deadline resolve to DIFFERENT cold proofs
+      // or bulk times, give each its own timeline backward from the SHARED bake instead of one
+      // aggregated window. Gated by proofingDivergent — when every container matches (the common
+      // case, incl. all-auto), the legacy shared anchors/events below run unchanged.
+      const recipeByName = new Map(loafRecipes.map(r => [r.name, r]));
+      const shapeDurOf = (s) => s ? (s.preshapeMin + s.benchRest + s.finalShapeMin) : 0;
+      const coldHrForContainer = (c) => {
+        const ex = (c.contents || []).map(x => {
+          const r = recipeByName.get(x.recipe);
+          if (!r || r.coldProofHr == null || r.coldProofHr === '') return null;
+          const w = parseColdProofWindow(String(r.coldProofHr));
+          return w ? w.min : null;
+        }).filter(v => v != null);
+        return ex.length ? Math.max(...ex) : loafColdProofHours; // auto → the group's window
+      };
+      const bulkMinForContainer = (c) => fermentScale(maxOr((c.contents || []).map(x => {
+        const s = loafSpecByName.get(x.recipe); return s ? s.bulkMin : null;
+      }).filter(v => v != null), SCHED.BULK_AFTER_FOLDS_MIN));
+      const capHr = Number.isFinite(loafColdProofMaxHr) ? loafColdProofMaxHr : Infinity;
+      ctTimeline = containerInfo.map((c, i) => {
+        const bakeStartT = loafBakeStartTimes[containerFirstBakeIdx[i]] || firstBakeStart;
+        const coldHr = Math.min(coldHrForContainer(c), capHr);
+        return { i, bakeStartT, coldHr, fridgeIn: addHours(bakeStartT, -coldHr), shapeDur: shapeDurOf(containerShape[i]), bulk: bulkMinForContainer(c) };
+      });
+      // Scope to the clean case: distinct doughs (own columns), one container each — so each
+      // container renders in its own column with no duplicate/colliding prep events. A dough
+      // spanning multiple containers, or same-dough-different-proof, falls back to the aggregate
+      // (longest) window (flagged in the Proofing card); supporting it needs column-splitting.
+      const oneContainerPerDough = new Set(containerInfo.map(c => c.colKey)).size === containerInfo.length;
+      proofingDivergent = loafColdProofHours > 0 && multiDough && oneContainerPerDough && containerInfo.length > 1 &&
+        (new Set(ctTimeline.map(x => x.coldHr)).size > 1 || new Set(ctTimeline.map(x => x.bulk)).size > 1);
+      if (proofingDivergent) {
+        // Backward sweep (latest fridge-in first) so shaping never overlaps (one baker); a dough
+        // pushed earlier proofs LONGER than its target — kept within the window where it can.
+        const ord = ctTimeline.slice().sort((a, b) => b.fridgeIn - a.fridgeIn);
+        let latestEnd = Infinity;
+        ord.forEach(x => {
+          const endMs = Math.min(x.fridgeIn.getTime(), latestEnd);
+          x.shapeEnd = new Date(endMs);
+          x.shapeStart = addMinutes(x.shapeEnd, -x.shapeDur);
+          x.realizedColdMs = x.bakeStartT - x.shapeEnd.getTime();
+          latestEnd = x.shapeStart.getTime();
+        });
+        ctTimeline.forEach(x => {
+          x.lastFold = addMinutes(x.shapeStart, -x.bulk);
+          x.firstFold = addMinutes(x.lastFold, -(loafAgg.foldsCount - 1) * loafAgg.foldIntervalMin);
+          x.mix = addMinutes(x.firstFold, -loafAgg.foldIntervalMin);
+          x.autolyse = addMinutes(x.mix, -loafAgg.autolyseMin);
+        });
+      }
     }
     const numContainers = containerInfo.length;
-    // Each loaf proofing container is tied up from mix until shaping begins.
-    if (mixTime && shapePhaseStart) {
+    // Each loaf proofing container is tied up from mix until shaping begins. Divergent: each
+    // dough's tub is claimed for its own mix→shape window; uniform: the shared window.
+    if (proofingDivergent && ctTimeline) {
+      containerInfo.forEach((c, ci) => { const t = ctTimeline[ci]; addClaim('container', 'Loaf bulk ferment', c.containerName, 1, t.mix, t.shapeStart); });
+    } else if (mixTime && shapePhaseStart) {
       containerInfo.forEach(c => addClaim('container', 'Loaf bulk ferment', c.containerName, 1, mixTime, shapePhaseStart));
     }
     // Per-container batch breakdown for the bake sheet, so batched mixing steps can
@@ -11674,7 +11745,11 @@ ${notesHtml}
     // Build 2 with the rest or needs its own levain. A process shares if its
     // mix time is within Build 2's ripe window of the reference mix — the loaf
     // mix when there are loaves, otherwise the earliest secondary mix.
-    const loafMix = totalLoaves > 0 ? mixTime : null;
+    // Levain is one shared Build 2; in divergent mode anchor it to the EARLIEST dough's mix so
+    // every dough has ripe levain when it mixes.
+    const loafMix = totalLoaves > 0
+      ? ((proofingDivergent && ctTimeline && ctTimeline.length) ? ctTimeline.reduce((m, x) => (x.mix < m ? x.mix : m), ctTimeline[0].mix) : mixTime)
+      : null;
     const allMixes = [loafMix, muffinMixStart, bagelMixStart].filter(Boolean);
     let earliestMix = allMixes[0] || null;
     for (const m of allMixes) if (m < earliestMix) earliestMix = m;
@@ -11920,6 +11995,11 @@ ${notesHtml}
     // When split, the per-column cells carry the container list, so keep it out of the
     // shared detail line (which becomes the headline).
     const sharedContainerStr = (loafColumns.length > 1) ? '' : containerBulkStr;
+    // Mill + Gather happen once up front; in divergent mode they must precede the EARLIEST
+    // dough's autolyse (long-cold-proof doughs start earlier), so anchor to that.
+    const prepAnchorT = (proofingDivergent && ctTimeline && ctTimeline.length)
+      ? ctTimeline.reduce((m, x) => (x.autolyse < m ? x.autolyse : m), ctTimeline[0].autolyse)
+      : autolyseStart;
     if (specialtyFlourNames.size > 0) {
       // Milling only applies to the doughs that actually use a milled flour, so when
       // loaves are split into per-dough columns, attribute the step to those column(s):
@@ -11941,7 +12021,7 @@ ${notesHtml}
       const involvedCols = Object.keys(millByCol);
       const loafMillMin = millMinFor(loafRecipes);
       const millEvent = {
-        time: addMinutes(autolyseStart, -loafMillMin),
+        time: addMinutes(prepAnchorT, -loafMillMin),
         title: 'Mill flour',
         detail: `${loafMillMin} min active · ${[...specialtyFlourNames].join(' + ')}`,
         process: 'loaf',
@@ -11958,8 +12038,8 @@ ${notesHtml}
     // in time for the mill step (or the autolyse if there's nothing to mill).
     const weighDuration = weighMinFor(loafRecipes);
     const weighEndTime = specialtyFlourNames.size > 0
-      ? addMinutes(autolyseStart, -millMinFor(loafRecipes))
-      : autolyseStart;
+      ? addMinutes(prepAnchorT, -millMinFor(loafRecipes))
+      : prepAnchorT;
     events.push({
       time: addMinutes(weighEndTime, -weighDuration),
       title: 'Gather ingredients',
@@ -11974,6 +12054,7 @@ ${notesHtml}
       mixBatchContents: loafBatchContents,
     });
     const autolyseRestMin = Math.max(0, loafAgg.autolyseMin - SCHED.AUTOLYSE_ACTIVE_MIN);
+    if (!proofingDivergent) {
     events.push({
       time: autolyseStart,
       title: 'Start autolyse — flour + water only',
@@ -12015,6 +12096,46 @@ ${notesHtml}
         title: 'Bulk ferment',
         detail: `${loafBulkHrLabel} hr warm bulk ferment until ready to shape` + sharedContainerStr,
         process: 'loaf', stage: 'proof', colDetails: prepColDetails, equipStrip: sharedContainerStr,
+      });
+    }
+    } else {
+      // Per-dough prep: each container (its own dough/column) gets its own autolyse→mix→folds→
+      // bulk, anchored to its own shape start — so different cold proofs/bulks stay independent.
+      containerInfo.forEach((c, ci) => {
+        const t = ctTimeline[ci];
+        const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+        const cLabel = c.containerName
+          ? (numContainers > 1 ? `${c.containerName} ${ci + 1} of ${numContainers}` : c.containerName)
+          : `container ${ci + 1} of ${numContainers}`;
+        const sfx = ` (${cLabel}: ${contentsLabel})`;
+        const attr = loafColAttrFor(c.contents, c.colKey);
+        events.push({
+          time: t.autolyse, title: `Start autolyse — flour + water only${sfx}`,
+          detail: `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`,
+          process: 'loaf', ...attr, equipStripTitle: sfx,
+        });
+        events.push({
+          time: t.mix, title: `Mix in salt + ripe levain${sfx}`,
+          detail: `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${loafAgg.foldIntervalMin} min rest before fold 1`,
+          process: 'loaf', ...attr, equipStripTitle: sfx,
+        });
+        for (let k = 0; k < loafAgg.foldsCount; k++) {
+          const isLast = k === loafAgg.foldsCount - 1;
+          events.push({
+            time: addMinutes(t.firstFold, k * loafAgg.foldIntervalMin),
+            title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}${sfx}`,
+            detail: isLast ? `${SCHED.FOLD_ACTIVE_MIN} min active · last fold, then bulk ferment` : `${SCHED.FOLD_ACTIVE_MIN} min active · next fold in ${loafAgg.foldIntervalMin} min`,
+            process: 'loaf', ...attr, equipStripTitle: sfx,
+          });
+        }
+        if (t.bulk > 0) {
+          const hrLabel = (t.bulk / 60).toFixed(t.bulk % 60 === 0 ? 0 : 1);
+          events.push({
+            time: t.lastFold, timeEnd: t.shapeStart, title: `Bulk ferment${sfx}`,
+            detail: `${hrLabel} hr warm bulk ferment until ready to shape`,
+            process: 'loaf', stage: 'proof', ...attr, equipStripTitle: sfx,
+          });
+        }
       });
     }
     } // end if (totalLoaves > 0) loaf prep events
@@ -12062,7 +12183,9 @@ ${notesHtml}
     for (let i = 0; i < containerInfo.length; i++) {
       const c = containerInfo[i];
       const shape = containerShape[i];
-      const preshapeStartT = cursorTime;
+      // Divergent: each dough shapes backward from its own fridge-in (per-recipe cold proof);
+      // uniform: containers shape back-to-back from the shared shapePhaseStart cursor.
+      const preshapeStartT = proofingDivergent ? ctTimeline[i].shapeStart : cursorTime;
       const benchRestStartT = addMinutes(preshapeStartT, shape.preshapeMin);
       const finalShapeStartT = addMinutes(benchRestStartT, shape.benchRest);
       const containerEndT = addMinutes(finalShapeStartT, shape.finalShapeMin);
