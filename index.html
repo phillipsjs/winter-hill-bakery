@@ -291,6 +291,10 @@
   }
   .totals h2 { margin-top: 0; }
   .totals table td.num { font-weight: 600; }
+  .overview-group-title { font-size: 1.25rem; margin: 0 0 4px; }
+  .overview-item { padding: 12px 0; border-top: 1px solid #94b496; }
+  .overview-item:first-of-type { border-top: none; padding-top: 8px; }
+  .overview-item:last-child { padding-bottom: 0; }
   .pill {
     display: inline-block;
     background: #e3ebe3;
@@ -1043,123 +1047,131 @@
       <p class="muted" style="margin:0;font-size:0.88rem">Here's everything this bake requires. Check that you have all the ingredients on hand and the equipment you'll need before you start.</p>
     </div>
 
-    <div class="card totals" id="totals-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Ingredient totals</h2>
-          <span id="totals-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <div id="totals-output" style="margin-top:8px"></div>
-      </details>
+    <div class="card totals overview-group" id="bake-overview-group" style="display:none">
+      <h2 class="overview-group-title">Bake Overview</h2>
+
+      <div class="overview-item" id="totals-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Ingredient totals</h2>
+            <span id="totals-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <div id="totals-output" style="margin-top:8px"></div>
+        </details>
+      </div>
+
+      <div class="overview-item" id="levain-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Levain build plan</h2>
+            <span id="levain-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
+          <div id="levain-output"></div>
+        </details>
+      </div>
+
+      <div class="overview-item" id="proofing-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Proofing</h2>
+            <span id="proofing-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Warm and cold proof per recipe. Cold-proof windows auto-fit the deadline unless you set one.</p>
+          <div id="proofing-output"></div>
+        </details>
+      </div>
+
+      <div class="overview-item" id="bake-order-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Bake Order Preferences</h2>
+            <span id="bake-order-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Every recipe in your plan, grouped by the deadline it shares. Order the recipes within a deadline to choose which bakes first — the earliest-listed leads its bake (decks still fill, so leftovers may share a deck).</p>
+          <div id="bake-order-output" style="margin-top:8px"></div>
+        </details>
+      </div>
     </div>
 
-    <div class="card totals" id="levain-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Levain build plan</h2>
-          <span id="levain-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Built in two refreshes — ratios reflect the current schedule's choices.</p>
-        <div id="levain-output"></div>
-      </details>
-    </div>
+    <div class="card totals overview-group" id="equipment-overview-group" style="display:none">
+      <h2 class="overview-group-title">Equipment Overview</h2>
 
-    <div class="card totals" id="proofing-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Proofing</h2>
-          <span id="proofing-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Warm and cold proof per recipe. Cold-proof windows auto-fit the deadline unless you set one.</p>
-        <div id="proofing-output"></div>
-      </details>
-    </div>
+      <div class="overview-item" id="container-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2 id="container-card-title">Containers</h2>
+            <span id="container-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Vessels for levain builds, proofing sourdough, and chilling cookie/scone dough. Recipes share a container only if their ingredient ratios are identical. Add your containers in the Kitchen tab to get accurate assignments.</p>
+          <div id="container-output"></div>
+        </details>
+      </div>
 
-    <div class="card totals" id="container-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2 id="container-card-title">Containers</h2>
-          <span id="container-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Vessels for levain builds, proofing sourdough, and chilling cookie/scone dough. Recipes share a container only if their ingredient ratios are identical. Add your containers in the Kitchen tab to get accurate assignments.</p>
-        <div id="container-output"></div>
-      </details>
-    </div>
+      <div class="overview-item" id="mixer-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Mixers</h2>
+            <span id="mixer-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Recipes that use a mixer, with how many mix batches each needs. Set a recipe's mixer and per-batch capacity in the recipe editor.</p>
+          <div id="mixer-output" style="margin-top:8px"></div>
+        </details>
+      </div>
 
-    <div class="card totals" id="banneton-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Bannetons</h2>
-          <span id="banneton-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Each sourdough loaf needs one banneton for cold proofing. Add your bannetons in the Kitchen tab to check availability.</p>
-        <div id="banneton-output" style="margin-top:8px"></div>
-      </details>
-    </div>
+      <div class="overview-item" id="oven-overview-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Oven overview</h2>
+            <span id="oven-overview-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">How this bake maps to your ovens. Set a preferred oven per recipe in the editor; recipes without one are scheduled into any free oven.</p>
+          <div id="oven-overview-output" style="margin-top:8px"></div>
+        </details>
+      </div>
 
-    <div class="card totals" id="pan-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Pans</h2>
-          <span id="pan-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Focaccia and muffin recipes need pans. Add your pans in the Kitchen tab to check availability.</p>
-        <div id="pan-output" style="margin-top:8px"></div>
-      </details>
-    </div>
+      <div class="overview-item" id="banneton-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Bannetons</h2>
+            <span id="banneton-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Each sourdough loaf needs one banneton for cold proofing. Add your bannetons in the Kitchen tab to check availability.</p>
+          <div id="banneton-output" style="margin-top:8px"></div>
+        </details>
+      </div>
 
-    <div class="card totals" id="mixer-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Mixers</h2>
-          <span id="mixer-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Recipes that use a mixer, with how many mix batches each needs. Set a recipe's mixer and per-batch capacity in the recipe editor.</p>
-        <div id="mixer-output" style="margin-top:8px"></div>
-      </details>
-    </div>
+      <div class="overview-item" id="pan-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Pans</h2>
+            <span id="pan-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Focaccia and muffin recipes need pans. Add your pans in the Kitchen tab to check availability.</p>
+          <div id="pan-output" style="margin-top:8px"></div>
+        </details>
+      </div>
 
-    <div class="card totals" id="oven-overview-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Oven overview</h2>
-          <span id="oven-overview-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">How this bake maps to your ovens. Set a preferred oven per recipe in the editor; recipes without one are scheduled into any free oven.</p>
-        <div id="oven-overview-output" style="margin-top:8px"></div>
-      </details>
-    </div>
-
-    <div class="card totals" id="bake-order-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Bake Order Preferences</h2>
-          <span id="bake-order-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Every recipe in your plan, grouped by the deadline it shares. Order the recipes within a deadline to choose which bakes first — the earliest-listed leads its bake (decks still fill, so leftovers may share a deck).</p>
-        <div id="bake-order-output" style="margin-top:8px"></div>
-      </details>
-    </div>
-
-    <div class="card totals" id="pot-overview-card" style="display:none">
-      <details class="plan-details">
-        <summary>
-          <span class="plan-card-toggle">▶</span>
-          <h2>Boiling</h2>
-          <span id="pot-overview-summary" class="muted" style="font-size:0.85rem"></span>
-        </summary>
-        <p class="muted" style="margin:8px 0 0">Recipes with a boiling step (e.g. bagels) and the pot they boil in. Switch the pot here or on the recipe's Boil step.</p>
-        <div id="pot-overview-output" style="margin-top:8px"></div>
-      </details>
+      <div class="overview-item" id="pot-overview-card" style="display:none">
+        <details class="plan-details">
+          <summary>
+            <span class="plan-card-toggle">▶</span>
+            <h2>Boiling</h2>
+            <span id="pot-overview-summary" class="muted" style="font-size:0.85rem"></span>
+          </summary>
+          <p class="muted" style="margin:8px 0 0">Recipes with a boiling step (e.g. bagels) and the pot they boil in. Switch the pot here or on the recipe's Boil step.</p>
+          <div id="pot-overview-output" style="margin-top:8px"></div>
+        </details>
+      </div>
     </div>
 
     <div id="plan-schedule-cta" style="display:none;margin-top:8px">
@@ -7309,6 +7321,8 @@ ${notesHtml}
     if (recipes.length === 0) {
       list.innerHTML = '<div class="empty">No recipes yet. Add some in the Recipes tab.</div>';
       document.getElementById('totals-card').style.display = 'none';
+      const bog = document.getElementById('bake-overview-group'); if (bog) bog.style.display = 'none';
+      const eog = document.getElementById('equipment-overview-group'); if (eog) eog.style.display = 'none';
       return;
     }
 
@@ -7662,6 +7676,7 @@ ${notesHtml}
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
+      updateOverviewGroups();
       if (intro) intro.style.display = 'none';
       if (cta) cta.style.display = 'none';
       return;
@@ -7758,6 +7773,24 @@ ${notesHtml}
     renderOvenOverview();
     renderBakeOrderPlan();
     renderPotPlan();
+    updateOverviewGroups();
+  }
+
+  // Each Bake-Plan overview card (Bake / Equipment) wraps several per-section
+  // cards that show/hide themselves by content. Hide a wrapper when all of its
+  // sections are hidden so no empty green box lingers.
+  function updateOverviewGroups() {
+    [['bake-overview-group', ['totals-card', 'levain-card', 'proofing-card', 'bake-order-card']],
+     ['equipment-overview-group', ['container-card', 'mixer-card', 'oven-overview-card', 'banneton-card', 'pan-card', 'pot-overview-card']]
+    ].forEach(([groupId, ids]) => {
+      const group = document.getElementById(groupId);
+      if (!group) return;
+      const anyVisible = ids.some(id => {
+        const el = document.getElementById(id);
+        return el && el.style.display !== 'none';
+      });
+      group.style.display = anyVisible ? '' : 'none';
+    });
   }
 
   // Bake Plan "Oven overview" card: shows what's actually baking in each oven,
