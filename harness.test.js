@@ -99,7 +99,7 @@ const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
   buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet, getHighlightTitlesForWarning, showTab,
-  setBakePlanEquip, renderTotals,
+  setBakePlanEquip, renderTotals, renderProofingPlan, setBakePlanProof,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
@@ -2220,6 +2220,58 @@ allOk &= hvOk;
   els['coldproof-loaf-input'].value = '';
   localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
   allOk &= cuOk;
+}
+
+// --- Per-recipe Proofing card + cold-proof un-collapse (Part B) ---
+{
+  let prOk = true;
+  const pr = (label, cond) => { console.log(`  [proofing] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; };
+  const recs = api.__recipes();
+  const batard = recs.find(r => r.id === SEED.batard);
+  const boule = recs.find(r => r.id === SEED.boule);
+  delete batard.coldProofHr; delete boule.coldProofHr; delete batard.bulkMin; delete boule.bulkMin;
+
+  // Card visibility + content
+  api.__setPlan({}); seedPlan({});
+  api.renderProofingPlan();
+  prOk &= pr('empty plan hides the proofing card', getEl('proofing-card').style.display === 'none');
+
+  api.__setPlan({ [batard.id]: 6 }); seedPlan({ [batard.id]: 6 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderProofingPlan();
+  const cardHtml = getEl('proofing-output').innerHTML;
+  prOk &= pr('non-empty plan shows the proofing card', getEl('proofing-card').style.display !== 'none');
+  prOk &= pr('card lists the recipe with warm-bulk + cold-proof inputs', /Batard/.test(cardHtml) && /data-field="bulkMin"/.test(cardHtml) && /data-field="coldProofHr"/.test(cardHtml));
+
+  els['deadline-default-input'].value = '';
+  api.renderProofingPlan();
+  const gated = getEl('proofing-output').innerHTML;
+  prOk &= pr('no deadline → gated message, warm still editable', /Set a deadline/.test(gated) && /data-field="bulkMin"/.test(gated));
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+
+  // Setter consistency: writes the flat field + rebuilds the stage, round-trips.
+  batard.stages = api.stagesFromRecipe(batard); // a recipe with a stage list (as after editor/migration)
+  api.setBakePlanProof(batard.id, 'bulkMin', '300');
+  const b2 = api.__recipes().find(r => r.id === batard.id);
+  const bulkStage = (b2.stages || []).find(s => s.type === 'bulk');
+  prOk &= pr('setter writes bulkMin override', b2.bulkMin === '300');
+  prOk &= pr('setter rebuilds the bulk stage to match', !!bulkStage && Number(bulkStage.duration.min) === 300);
+  prOk &= pr('flat field round-trips through stages', Number(api.paramsFromStages(api.stagesFromRecipe(b2), 'sourdough-loaf').bulkMin) === 300);
+  api.setBakePlanProof(batard.id, 'bulkMin', '');
+  prOk &= pr('clearing removes the override', !api.__recipes().find(r => r.id === batard.id).bulkMin);
+
+  // Part B: two loaves, one deadline, different cold proof → two distinct cold-proof spans.
+  const fridgeHrs = () => { api.renderSchedule(); return new Set(api.__sr().events.filter(e => /Into fridge/.test(e.title)).map(e => (String(e.detail || '').match(/(\d+) hr cold proof/) || [])[1]).filter(Boolean)); };
+  api.__setPlan({ [batard.id]: 6, [boule.id]: 6 }); seedPlan({ [batard.id]: 6, [boule.id]: 6 });
+  delete batard.coldProofHr; delete boule.coldProofHr;
+  prOk &= pr('both on auto → one shared cold-proof window', fridgeHrs().size === 1);
+  batard.coldProofHr = '8'; boule.coldProofHr = '24';
+  const cps = fridgeHrs();
+  prOk &= pr('different coldProofHr → two distinct cold-proof spans (per-recipe)', cps.has('8') && cps.has('24'));
+  delete batard.coldProofHr; delete boule.coldProofHr; delete batard.bulkMin; delete batard.stages;
+  allOk &= prOk;
 }
 
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---

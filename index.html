@@ -1054,6 +1054,18 @@
       </details>
     </div>
 
+    <div class="card totals" id="proofing-card" style="display:none">
+      <details class="plan-details">
+        <summary>
+          <span class="plan-card-toggle">▶</span>
+          <h2>Proofing</h2>
+          <span id="proofing-summary" class="muted" style="font-size:0.85rem"></span>
+        </summary>
+        <p class="muted" style="margin:8px 0 0">Warm and cold proof per recipe. Cold-proof windows auto-fit the deadline unless you set one.</p>
+        <div id="proofing-output"></div>
+      </details>
+    </div>
+
     <div class="card totals" id="container-card" style="display:none">
       <details class="plan-details">
         <summary>
@@ -7451,7 +7463,7 @@ ${notesHtml}
       levainCard.style.display = 'none';
       // Hide every plan equipment card so none lingers with stale content (e.g. the Boiling
       // card persisting after the last boiling recipe is removed).
-      ['container-card', 'banneton-card', 'pan-card', 'mixer-card', 'oven-overview-card', 'bake-order-card', 'pot-overview-card'].forEach(id => {
+      ['proofing-card', 'container-card', 'banneton-card', 'pan-card', 'mixer-card', 'oven-overview-card', 'bake-order-card', 'pot-overview-card'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
       });
@@ -7543,6 +7555,7 @@ ${notesHtml}
     card.style.display = '';
 
     renderLevainPlan(aggregate, levainByProcess);
+    renderProofingPlan();
     renderDoughContainerPlan();
     renderBannetonPlan();
     renderPanPlan();
@@ -8544,6 +8557,148 @@ ${notesHtml}
     const levainSummaryEl = document.getElementById('levain-summary');
     if (levainSummaryEl) levainSummaryEl.textContent = `${formatGrams(levainTotal)} needed`;
     levainCard.style.display = '';
+  }
+
+  // ---- Proofing card: per-recipe warm + cold proof, editable from the Bake Plan ----
+  // Proofing is moving from per-process to per-recipe control. This card surfaces each in-plan
+  // recipe's warm (bulk / final warm proof) and cold (cold-proof window / chill) lengths and lets
+  // the baker adjust them by writing the recipe's own fields. Simple/enriched are already honored
+  // per recipe; loaf cold proof is too (split by deadline+window). Muffin/bagel/focaccia still
+  // share one window per type — flagged with an inline note.
+  const PROOF_PROC_ORDER = [
+    ['sourdough-loaf', 'Loaves'], ['sourdough-muffin', 'Muffins'], ['bagel', 'Bagels'],
+    ['focaccia', 'Focaccia'], ['simple', 'Simple bakes'], ['enriched', 'Enriched'],
+  ];
+  const PROOF_AGG_WARM = new Set(['sourdough-loaf', 'sourdough-muffin', 'bagel', 'focaccia']); // warm bulk uses max() across the type
+  const PROOF_AGG_COLD = new Set(['sourdough-muffin', 'bagel']); // cold proof shared; loaf is per-recipe (Part B)
+  const COLD_BUCKET = { 'sourdough-loaf': 'loaf', 'sourdough-muffin': 'muffin', 'bagel': 'bagel' };
+  const COLD_PROOF_OPTIONS = (() => {
+    const opts = [['', 'Auto (fit deadline)'], ['0', 'None (bake after shape)']];
+    for (let lo = 2; lo <= 44; lo += 2) opts.push([`${lo}-${lo + 4}`, `${lo}–${lo + 4} hr`]);
+    return opts;
+  })();
+
+  function onBakePlanProofChange(el) { setBakePlanProof(el.dataset.recipe, el.dataset.field, el.value); }
+  // Normalize + write one per-recipe proofing field, keep the stage list consistent (mirroring
+  // the recipe editor), then persist + re-render. '' clears the override (back to the default/auto).
+  function setBakePlanProof(recipeId, field, rawValue) {
+    const r = recipes.find(x => x.id === recipeId);
+    if (!r) return;
+    const isNum = field === 'bulkMin' || field === 'warmupMin' || field === 'finalProofWarmMin';
+    let v = (rawValue == null ? '' : String(rawValue)).trim();
+    if (isNum) {
+      const n = Number(v);
+      v = (v !== '' && Number.isFinite(n) && n >= 0) ? String(Math.round(n)) : '';
+    } else if (v !== '' && v !== '0') {
+      // string range fields (coldProofHr / chillWindow / finalProofColdWindow): canonicalize.
+      const rng = parseHrRange(v);
+      v = rng ? (rng.minHr === rng.maxHr ? String(rng.minHr) : `${rng.minHr}-${rng.maxHr}`) : '';
+    }
+    if (v === '') delete r[field]; else r[field] = v;
+    if (Array.isArray(r.stages) && r.stages.length) r.stages = stagesFromRecipe(r); // keep stages ↔ flat fields in sync
+    saveRecipes();
+    renderSchedule();
+    renderTotals();
+    rerenderBakeSheetIfVisible();
+  }
+  function bakePlanProofSelect(recipeId, field, current, options, disabled) {
+    return `<select class="settings-select bp-proof-input" onchange="onBakePlanProofChange(this)" data-recipe="${escapeAttr(recipeId)}" data-field="${field}"${disabled ? ' disabled' : ''}>`
+      + options.map(([v, l]) => `<option value="${escapeAttr(v)}"${(current || '') === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')
+      + `</select>`;
+  }
+  function bakePlanProofInput(recipeId, field, value, placeholder, type) {
+    const t = type === 'text' ? 'text' : 'number';
+    const extra = t === 'number' ? ' min="0" step="5"' : '';
+    return `<input type="${t}"${extra} class="settings-select bp-proof-input" style="width:78px" value="${value == null || value === '' ? '' : escapeAttr(String(value))}" placeholder="${escapeAttr(placeholder || '')}" onchange="onBakePlanProofChange(this)" data-recipe="${escapeAttr(recipeId)}" data-field="${field}" />`;
+  }
+
+  function renderProofingPlan() {
+    const card = document.getElementById('proofing-card');
+    const out = document.getElementById('proofing-output');
+    if (!card || !out) return;
+    const inPlan = recipes.filter(r => (plan[r.id] || 0) > 0 && getProcessType(r) !== 'levain');
+    if (!inPlan.length) { card.style.display = 'none'; return; }
+
+    const di = deriveScheduleInputs();
+    const haveDeadline = di && di.status === 'ok';
+    const factor = proofTempFactor();
+    const tempScaled = Math.abs(factor - 1) > 1e-6;
+    const fmtHr = (min) => `${Math.round((min / 60) * 10) / 10} hr`;
+    // Derived/auto cold-proof window label for a loaf/muffin/bagel bucket (needs a deadline).
+    const autoColdLabel = (bucket) => {
+      if (!haveDeadline) return null;
+      const lo = di[bucket + 'ColdProofHours'], hi = di[bucket + 'ColdProofMaxHr'];
+      if (lo == null) return null;
+      if (!lo && !hi) return 'none';
+      return (hi != null && hi !== lo) ? `${lo}–${hi} hr` : `${lo} hr`;
+    };
+    // Warm cell: the recipe's bulk (loaf/muffin/bagel/focaccia) or final warm proof (enriched).
+    const warmCell = (r, type) => {
+      const tmpl = PROCESS_TEMPLATES[type];
+      if (type === 'simple') return `<td class="num muted">—</td>`;
+      if (type === 'enriched') {
+        if (r.finalProofMode === 'cold') return `<td class="num muted">cold final proof</td>`;
+        const stored = (r.finalProofWarmMin == null || r.finalProofWarmMin === '') ? '' : r.finalProofWarmMin;
+        const eff = stored === '' ? (tmpl.finalProofWarmMin || 60) : Number(stored);
+        const hint = tempScaled ? ` <span class="muted" style="font-size:0.76rem">≈${fmtHr(fermentScale(eff))} @ ${fmtTemp(getProofingTempF())}</span>` : '';
+        return `<td class="num">${bakePlanProofInput(r.id, 'finalProofWarmMin', stored, String(tmpl.finalProofWarmMin || 60))} min${hint}</td>`;
+      }
+      // loaf / muffin / bagel / focaccia warm bulk
+      const stored = (r.bulkMin == null || r.bulkMin === '') ? '' : r.bulkMin;
+      const eff = stored === '' ? (tmpl.bulkMin || 0) : Number(stored);
+      const hint = tempScaled ? ` <span class="muted" style="font-size:0.76rem">≈${fmtHr(fermentScale(eff))} @ ${fmtTemp(getProofingTempF())}</span>` : '';
+      return `<td class="num">${bakePlanProofInput(r.id, 'bulkMin', stored, String(tmpl.bulkMin || 0))} min${hint}</td>`;
+    };
+    // Cold cell: cold-proof window (loaf/muffin/bagel), chill (simple), cold final proof (enriched), none (focaccia).
+    const coldCell = (r, type) => {
+      if (type === 'focaccia') return `<td class="num muted">none · warm pan rise</td>`;
+      if (type === 'simple') return `<td class="num">${bakePlanProofInput(r.id, 'chillWindow', r.chillWindow || '', '8-12', 'text')}</td>`;
+      if (type === 'enriched') {
+        if (r.finalProofMode !== 'cold') return `<td class="num muted">warm final proof</td>`;
+        return `<td class="num">${bakePlanProofInput(r.id, 'finalProofColdWindow', r.finalProofColdWindow || '', '8-12', 'text')}</td>`;
+      }
+      // loaf / muffin / bagel cold-proof window <select>; first option shows the auto window.
+      const bucket = COLD_BUCKET[type];
+      const auto = autoColdLabel(bucket);
+      const opts = COLD_PROOF_OPTIONS.map(([v, l]) => v === '' && auto ? [v, `Auto · ${auto}`] : [v, l]);
+      return `<td class="num">${bakePlanProofSelect(r.id, 'coldProofHr', r.coldProofHr || '', opts, !haveDeadline)}</td>`;
+    };
+
+    const byType = {};
+    inPlan.forEach(r => { const t = getProcessType(r); (byType[t] = byType[t] || []).push(r); });
+    let html = '';
+    if (!haveDeadline) html += `<p class="muted" style="margin:8px 0 6px">Set a deadline (Schedule tab) to fit and adjust cold-proof windows. Warm proof is editable now.</p>`;
+    PROOF_PROC_ORDER.forEach(([type, label]) => {
+      const rs = byType[type];
+      if (!rs || !rs.length) return;
+      html += `<h2 style="font-size:1rem;margin:14px 0 4px;color:var(--accent-dark)">${escapeHtml(label)}</h2>`;
+      html += `<table class="ingredients"><thead><tr><th>Recipe</th><th class="num">Warm proof</th><th class="num">Cold proof</th></tr></thead><tbody>`;
+      rs.forEach(r => { html += `<tr><td>${escapeHtml(r.name)}</td>${warmCell(r, type)}${coldCell(r, type)}</tr>`; });
+      html += `</tbody></table>`;
+      const note = proofAggNote(type, rs, label);
+      if (note) html += `<p class="muted" style="font-size:0.8rem;margin:4px 0 0">${escapeHtml(note)}</p>`;
+    });
+    out.innerHTML = html;
+    const sum = document.getElementById('proofing-summary');
+    if (sum) sum.textContent = `${inPlan.length} recipe${inPlan.length === 1 ? '' : 's'}`;
+    card.style.display = '';
+  }
+  // Honest note where the engine still shares one window across a process type.
+  function proofAggNote(type, rs, label) {
+    if (rs.length < 2) return '';
+    const tmpl = PROCESS_TEMPLATES[type];
+    const num = (raw, d) => (raw != null && raw !== '' && Number.isFinite(Number(raw))) ? Number(raw) : d;
+    const parts = [];
+    if (PROOF_AGG_WARM.has(type)) {
+      const vals = new Set(rs.map(r => num(r.bulkMin, tmpl.bulkMin || 0)));
+      if (vals.size > 1) parts.push('warm bulk');
+    }
+    if (PROOF_AGG_COLD.has(type)) {
+      const vals = new Set(rs.map(r => (r.coldProofHr == null || r.coldProofHr === '') ? 'auto' : String(r.coldProofHr)));
+      if (vals.size > 1) parts.push('cold proof');
+    }
+    if (!parts.length) return '';
+    return `These ${label.toLowerCase()} share one ${parts.join(' and ')} window — the schedule uses the longest. (Per-recipe support coming.)`;
   }
 
   function formatGrams(g) {
@@ -12732,7 +12887,8 @@ ${notesHtml}
       else if (carryNonLoaf) prepPlan[r.id] = c;
     });
     plan = prepPlan;
-    const prepRes = buildSchedule({ ...baseOpts, loafDeadline: rd[sorted[0].id] || baseOpts.loafDeadline });
+    const cw = unit.window ? { loafColdProofHours: unit.window.min, loafColdProofMaxHr: unit.window.max } : {};
+    const prepRes = buildSchedule({ ...baseOpts, ...cw, loafDeadline: rd[sorted[0].id] || baseOpts.loafDeadline });
     const events = prepRes.events.filter(ev => !isLoafBake(ev)); // shared prep, no loaf bakes
     // The dough goes into the fridge once (shared prep, at the EARLIEST deadline), but each
     // recipe bakes at its own time — so later portions cold-proof longer. The "Into fridge"
@@ -12742,7 +12898,7 @@ ${notesHtml}
     sorted.forEach(r => {
       const bp = {}; bp[r.id] = fullPlan[r.id] || 0;
       plan = bp;
-      const br = buildSchedule({ ...baseOpts, loafDeadline: rd[r.id] || baseOpts.loafDeadline });
+      const br = buildSchedule({ ...baseOpts, ...cw, loafDeadline: rd[r.id] || baseOpts.loafDeadline });
       let recBake = null;
       br.events.forEach(ev => {
         if (isLoafBake(ev)) { events.push(ev); if (getEventStage(ev) === 'bake' && (!recBake || ev.time < recBake)) recBake = ev.time; }
@@ -12787,31 +12943,48 @@ ${notesHtml}
   function buildScheduleAcrossLoafGroups(baseOpts) {
     const rd = baseOpts.recipeDeadlines || {};
     const dlMs = (r) => { const d = rd[r.id] || baseOpts.loafDeadline; return d ? new Date(d).getTime() : null; };
+    // Per-recipe cold proof: a loaf with its own coldProofHr gets its own cold-proof window;
+    // loaves left on "auto" use the global/derived window. Loaves are grouped by (deadline,
+    // window) and each group runs an independent buildSchedule with its own window, so distinct
+    // cold proofs no longer collapse to one max() across the type.
+    const globalWindow = { min: Number(baseOpts.loafColdProofHours) || 0, max: Number.isFinite(Number(baseOpts.loafColdProofMaxHr)) ? Number(baseOpts.loafColdProofMaxHr) : (Number(baseOpts.loafColdProofHours) || 0) };
+    const loafColdWindowFor = (r) => {
+      const raw = r.coldProofHr;
+      if (raw != null && raw !== '') { const w = parseColdProofWindow(String(raw)); if (w) return { min: w.min, max: w.max }; }
+      return globalWindow;
+    };
+    const coldKeyOf = (r) => { const w = loafColdWindowFor(r); return `${w.min}-${w.max}`; };
     const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf' && (plan[r.id] || 0) > 0);
     const groupsMap = new Map();
     loafRecipes.forEach(r => {
-      const key = dlMs(r);
-      if (!groupsMap.has(key)) groupsMap.set(key, { ms: key, recipes: [] });
+      const key = dlMs(r) + '|' + coldKeyOf(r);
+      if (!groupsMap.has(key)) groupsMap.set(key, { ms: dlMs(r), coldKey: coldKeyOf(r), window: loafColdWindowFor(r), recipes: [] });
       groupsMap.get(key).recipes.push(r);
     });
     const groups = [...groupsMap.values()].sort((a, b) => (a.ms || 0) - (b.ms || 0));
-    if (groups.length <= 1) { const r = buildSchedule(baseOpts); insertToppingSteps(r.events); return r; }
+    if (groups.length <= 1) {
+      // Single group: still honor a shared explicit window (e.g. all loaves set to "20-24").
+      const w = groups.length ? groups[0].window : null;
+      const r = buildSchedule(w ? { ...baseOpts, loafColdProofHours: w.min, loafColdProofMaxHr: w.max } : baseOpts);
+      insertToppingSteps(r.events); return r;
+    }
 
     const windowWidthHr = Math.max(0, (Number(baseOpts.loafColdProofMaxHr) || 0) - (Number(baseOpts.loafColdProofHours) || 0));
     const combineSigs = loadCombineDoughs();
     // Units start one-per-deadline-group; merge groups that share a combine-flagged dough
     // signature (within the cold-proof window) into a single combined staggered unit.
-    let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, combined: false }));
+    let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, coldKey: g.coldKey, window: g.window, combined: false }));
     if (combineSigs.size && windowWidthHr > 0) {
       let changed = true;
       while (changed) {
         changed = false;
         for (let i = 0; i < units.length && !changed; i++) {
           for (let j = i + 1; j < units.length; j++) {
+            if (units[i].coldKey !== units[j].coldKey) continue; // only combine the same cold-proof window
             const flaggedI = new Set(units[i].recipes.map(ratioSignature).filter(s => combineSigs.has(s)));
             if (!flaggedI.size || !units[j].recipes.some(r => flaggedI.has(ratioSignature(r)))) continue;
             if (Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 > windowWidthHr) continue;
-            units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), combined: true };
+            units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), coldKey: units[i].coldKey, window: units[i].window, combined: true };
             units.splice(j, 1); changed = true; break;
           }
         }
@@ -12835,7 +13008,7 @@ ${notesHtml}
             else if (carryNonLoaf) partPlan[r.id] = c;
           });
           plan = partPlan; // partition the module-level plan for this call (restored in finally)
-          results.push({ res: buildSchedule({ ...baseOpts, loafDeadline: rd[u.recipes[0].id] || baseOpts.loafDeadline }), gi: ui, group: u });
+          results.push({ res: buildSchedule({ ...baseOpts, loafDeadline: rd[u.recipes[0].id] || baseOpts.loafDeadline, loafColdProofHours: u.window.min, loafColdProofMaxHr: u.window.max }), gi: ui, group: u });
         }
       });
     } finally {
@@ -12850,6 +13023,7 @@ ${notesHtml}
       for (let j = i + 1; j < groups.length; j++) {
         const sharedSig = groups[i].recipes.map(ratioSignature).find(s => groups[j].recipes.some(r => ratioSignature(r) === s));
         if (!sharedSig || warnedSigs.has(sharedSig)) continue;
+        if ((groups[i].ms || 0) === (groups[j].ms || 0)) continue; // split only by cold-proof window (same deadline), not a deadline conflict
         const diffHr = Math.abs((groups[i].ms || 0) - (groups[j].ms || 0)) / 3600000;
         if (diffHr >= warnThresholdHr || !Number.isFinite(diffHr)) continue;
         warnedSigs.add(sharedSig);
