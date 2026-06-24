@@ -10831,17 +10831,8 @@ ${notesHtml}
     // Bread (loaf/muffin/bagel/focaccia) still schedules one shared timeline per process,
     // so recipes of the same type with different deadlines all bake to the EARLIEST. Flag
     // that until per-deadline bread splitting lands (simple/enriched already split).
-    const deadlineSpread = (recs, procDeadline) => new Set(recs.map(r => {
-      const d = opts.recipeDeadlines && opts.recipeDeadlines[r.id];
-      return d ? new Date(d).getTime() : (procDeadline ? new Date(procDeadline).getTime() : 'none');
-    })).size;
-    // Muffins + bagels now split by deadline (their own bake unit per deadline). Only focaccia
-    // still collapses to the earliest until Phase 2 lands for it.
-    [['focaccia', focacciaRecipes, focacciaDeadline]].forEach(([label, recs, pd]) => {
-      if (recs.length > 1 && deadlineSpread(recs, pd) > 1) {
-        warnings.push({ msg: `Your ${label} have different deadlines, but bread of one type still bakes on a single shared timeline — they'll all be scheduled to the earliest deadline for now. (Per-deadline splitting for bread is in progress.)`, issue: 'bread-deadline-merge', kind: label, type: 'info' });
-      }
-    });
+    // (Every bread type — loaf, muffin, bagel, focaccia — now splits by deadline into its own
+    // bake unit, so the old "bread-deadline-merge" single-timeline warning is gone.)
     if (totalLoaves === 0 && totalMuffins === 0 && totalBagels === 0 && totalFocaccia === 0 && totalSimple === 0 && totalEnriched === 0)
       return { totalLoaves: 0, totalMuffins: 0, totalBagels: 0, totalFocaccia: 0, totalSimple: 0, totalEnriched: 0, batches: 0, events: [], warnings };
 
@@ -10921,28 +10912,28 @@ ${notesHtml}
     // multiple recipes resolve to DIFFERENT warm bulk, each gets its own mix→folds→bulk timeline
     // (per-recipe), all converging on the shared shape; otherwise one shared timeline (identical
     // to before). Used by both the focaccia-only fast path and the mixed path.
-    const focacciaPrepEvents = (shapeStart) => {
-      const recs = focacciaRecipes;
+    const focacciaPrepEvents = (shapeStart, recs = focacciaRecipes, agg = focacciaAgg, milling = millingFloursFocaccia, columnKey = undefined) => {
+      const foldInterval = agg.foldIntervalMin;
       const bulkOf = (r) => fermentScale(getRecipeSpec(r).bulkMin || PROCESS_TEMPLATES.focaccia.bulkMin);
       const divergent = recs.length > 1 && new Set(recs.map(bulkOf)).size > 1;
-      const foldGap = (focacciaAgg.foldsCount - 1) * FOCACCIA_FOLD_INTERVAL_MIN;
-      const preMix = FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin;
-      const lines = (divergent ? recs.map(r => ({ r, bulk: bulkOf(r) })) : [{ r: null, bulk: focacciaAgg.bulkMin }])
+      const foldGap = (agg.foldsCount - 1) * foldInterval;
+      const preMix = foldInterval + agg.autolyseMin;
+      const lines = (divergent ? recs.map(r => ({ r, bulk: bulkOf(r) })) : [{ r: null, bulk: agg.bulkMin }])
         .map(L => { const lastFold = addMinutes(shapeStart, -L.bulk); const firstFold = addMinutes(lastFold, -foldGap); return { ...L, firstFold, mix: addMinutes(firstFold, -preMix) }; });
       const earliestMix = lines.reduce((m, L) => (L.mix < m ? L.mix : m), lines[0].mix);
       const focWeighDur = weighMinFor(recs);
-      const focMills = millingFloursFocaccia.size > 0;
+      const focMills = milling.size > 0;
       const focMillMin = millMinFor(recs);
       const focWeighEnd = focMills ? addMinutes(earliestMix, -focMillMin) : earliestMix;
       const evs = [];
-      evs.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Gather ingredients', detail: recs.length > 1 ? `${focWeighDur} min active · ${recs.length} recipes` : `${focWeighDur} min active`, process: 'focaccia' });
-      if (focMills) evs.push({ time: addMinutes(earliestMix, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...millingFloursFocaccia].join(' + ')}`, process: 'focaccia' });
+      evs.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Gather ingredients', detail: recs.length > 1 ? `${focWeighDur} min active · ${recs.length} recipes` : `${focWeighDur} min active`, process: 'focaccia', columnKey });
+      if (focMills) evs.push({ time: addMinutes(earliestMix, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...milling].join(' + ')}`, process: 'focaccia', columnKey });
       lines.forEach(L => {
         const sfx = L.r ? ` — ${L.r.name}` : '';
-        evs.push({ time: L.mix, title: `Mix focaccia dough${sfx}`, detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${preMix - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia' });
-        for (let k = 0; k < focacciaAgg.foldsCount; k++) {
-          const isLast = k === focacciaAgg.foldsCount - 1;
-          evs.push({ time: addMinutes(L.firstFold, k * FOCACCIA_FOLD_INTERVAL_MIN), title: `Stretch & fold ${k + 1} of ${focacciaAgg.foldsCount}${isLast ? ' (last)' : ''} — focaccia${sfx}`, detail: isLast ? `5 min active · then ${L.bulk} min bulk ferment` : `5 min active · next fold in ${FOCACCIA_FOLD_INTERVAL_MIN} min`, process: 'focaccia' });
+        evs.push({ time: L.mix, title: `Mix focaccia dough${sfx}`, detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${preMix - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia', columnKey });
+        for (let k = 0; k < agg.foldsCount; k++) {
+          const isLast = k === agg.foldsCount - 1;
+          evs.push({ time: addMinutes(L.firstFold, k * foldInterval), title: `Stretch & fold ${k + 1} of ${agg.foldsCount}${isLast ? ' (last)' : ''} — focaccia${sfx}`, detail: isLast ? `5 min active · then ${L.bulk} min bulk ferment` : `5 min active · next fold in ${foldInterval} min`, process: 'focaccia', columnKey });
         }
       });
       return evs;
@@ -11275,43 +11266,53 @@ ${notesHtml}
     }
     const bagelSlot = bagelGroups.length === 1 ? bagelGroups[0].slot : null;
 
-    // Focaccia bake slot: commercial yeast, shorter cool time than sourdough.
-    let focacciaSlot = null;
-    if (totalFocaccia > 0 && focacciaDeadline) {
-      const D = new Date(focacciaDeadline);
-      const preset = focacciaBakeTime ? BAKE_TIME_PRESETS[focacciaBakeTime] : null;
-      let focFirstBakeStart, focLastBakeEnd, focPackageReady;
-      if (preset) {
-        const day = new Date(D);
-        day.setHours(0, 0, 0, 0);
-        const tryDay = d => {
-          const t = new Date(d);
-          t.setHours(Math.floor(preset.mid), Math.round((preset.mid % 1) * 60), 0, 0);
-          return t;
+    // Focaccia bake group(s): commercial yeast, shorter cool, no levain. Split by deadline
+    // like muffins/bagels; a single deadline → one group keyed 'focaccia' (byte-identical),
+    // multiple → 'focaccia#0', '#1'. The slot folds the old inline math into computeBakeSlot
+    // (same slack / bake-late warnings via kindLabel 'Focaccia').
+    const focacciaGroups = [];
+    if (totalFocaccia > 0) {
+      const byDl = new Map();
+      focacciaRecipes.forEach(r => {
+        const d = (opts.recipeDeadlines && opts.recipeDeadlines[r.id]) ? new Date(opts.recipeDeadlines[r.id]) : (focacciaDeadline ? new Date(focacciaDeadline) : null);
+        const k = d ? d.getTime() : 'none';
+        if (!byDl.has(k)) byDl.set(k, { deadline: d, recipes: [] });
+        byDl.get(k).recipes.push(r);
+      });
+      const buckets = [...byDl.values()].sort((a, b) => (a.deadline ? a.deadline.getTime() : 0) - (b.deadline ? b.deadline.getTime() : 0));
+      buckets.forEach((bk, i) => {
+        if (!bk.deadline) return;
+        const recs = bk.recipes;
+        const specs = recs.map(getRecipeSpec);
+        const total = recs.reduce((s, r) => s + (plan[r.id] || 0), 0);
+        const agg = {
+          bakeMin:         maxOr(specs.map(s => s.bakeMin),         PROCESS_TEMPLATES.focaccia.bakeMin),
+          ovenCapacity:    Math.min(...(specs.length ? specs.map(s => s.ovenCapacity) : [PROCESS_TEMPLATES.focaccia.ovenCapacity])),
+          warmupMin:       fermentScale(maxOr(specs.map(s => s.warmupMin),       PROCESS_TEMPLATES.focaccia.warmupMin)),
+          bulkMin:         fermentScale(maxOr(specs.map(s => s.bulkMin),         PROCESS_TEMPLATES.focaccia.bulkMin)),
+          foldsCount:      maxOr(specs.map(s => s.foldsCount),      PROCESS_TEMPLATES.focaccia.foldsCount),
+          foldIntervalMin: maxOr(specs.map(s => s.foldIntervalMin).filter(v => Number.isFinite(Number(v))), PROCESS_TEMPLATES.focaccia.foldIntervalMin),
+          shapeMinPerUnit: maxOr(specs.map(s => s.shapeMinPerUnit), PROCESS_TEMPLATES.focaccia.shapeMinPerUnit),
+          autolyseMin:     maxOr(specs.map(s => s.autolyseMin),     PROCESS_TEMPLATES.focaccia.autolyseMin),
+          bakeTempF:       maxOr(recs.map(r => recipeBakeTempF(r, PROCESS_TEMPLATES.focaccia.bakeTempF)), PROCESS_TEMPLATES.focaccia.bakeTempF),
         };
-        let attempt = tryDay(day);
-        let coolEnd = addMinutes(attempt, focacciaBakeTotalMin + focacciaCoolMin);
-        if (coolEnd > D) {
-          day.setDate(day.getDate() - 1);
-          attempt = tryDay(day);
-          coolEnd = addMinutes(attempt, focacciaBakeTotalMin + focacciaCoolMin);
-        }
-        focFirstBakeStart = attempt;
-        focLastBakeEnd = addMinutes(focFirstBakeStart, focacciaBakeTotalMin);
-        focPackageReady = addMinutes(focLastBakeEnd, focacciaCoolMin);
-        const slackHr = (D - focPackageReady) / (1000 * 60 * 60);
-        if (slackHr > 0.1) warnings.push({ msg: `Focaccia will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind: 'focaccia' });
-      } else {
-        focLastBakeEnd = addMinutes(D, -focacciaCoolMin);
-        focFirstBakeStart = addMinutes(focLastBakeEnd, -focacciaBakeTotalMin);
-        focPackageReady = D;
-      }
-      const focBakeHour = focFirstBakeStart.getHours();
-      if (isLateNightHour(focBakeHour)) {
-        warnings.push({ msg: `Focaccia bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind: 'focaccia' });
-      }
-      focacciaSlot = { firstBakeStart: focFirstBakeStart, lastBakeEnd: focLastBakeEnd, packageReady: focPackageReady };
+        const batches = total > 0 ? Math.ceil(total / agg.ovenCapacity) : 0;
+        const bakeTotalMin = batches > 0 ? batches * agg.bakeMin + Math.max(0, batches - 1) * SCHED.REHEAT_MIN : 0;
+        const coolMin = processCoolMin(recs, FOCACCIA_COOL_MIN);
+        const totalShapeMin = recs.reduce((s, r) => s + (plan[r.id] || 0) * getRecipeSpec(r).shapeMinPerUnit, 0);
+        const key = buckets.length === 1 ? 'focaccia' : `focaccia#${i}`;
+        const g = {
+          key, process: 'focaccia', procType: 'focaccia', deadline: bk.deadline,
+          recipes: recs, recipeIds: recs.map(r => r.id), total,
+          label: recs.map(r => r.name).join(', '),
+          agg, batches, bakeTotalMin, coolMin, totalShapeMin,
+          millingFlours: millingFloursForRecipes(recs),
+        };
+        g.slot = computeBakeSlot(bk.deadline, focacciaBakeTime, bakeTotalMin, 'Focaccia', key, coolMin);
+        focacciaGroups.push(g);
+      });
     }
+    const focacciaSlot = focacciaGroups.length === 1 ? focacciaGroups[0].slot : null;
 
     // Simple & enriched bake slots. postBakeMin covers cooling (+ glaze for enriched).
     const computeSideSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind) => {
@@ -11431,9 +11432,9 @@ ${notesHtml}
         PROC_RECIPES[g.key]  = g.recipes;
         PROC_PROCESS[g.key]  = g.process;
       });
-      // Each bagel/muffin deadline group is likewise its own bake "kind" (e.g. 'bagel#i').
+      // Each muffin/bagel/focaccia deadline group is likewise its own bake "kind".
       const bakeGroupByKey = {};
-      [...muffinGroups, ...bagelGroups].forEach(g => {
+      [...muffinGroups, ...bagelGroups, ...focacciaGroups].forEach(g => {
         bakeGroupByKey[g.key] = g;
         PROC_DEADLINE[g.key] = g.deadline;
         PROC_LABEL[g.key]    = g.label;
@@ -11462,7 +11463,7 @@ ${notesHtml}
         loafSlot     ? { s: loafSlot,     kind: 'loaf'     } : null,
         ...muffinGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
         ...bagelGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
-        focacciaSlot ? { s: focacciaSlot, kind: 'focaccia' } : null,
+        ...focacciaGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
         ...sideGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
       ].filter(Boolean);
       slots.forEach(it => {
@@ -11983,53 +11984,60 @@ ${notesHtml}
     // the earlier-anchored levain; per-group levain is a future refinement).
     const bagelMixStart = bagelGroups.reduce((m, g) => (g.mixStart && (!m || g.mixStart < m) ? g.mixStart : m), null);
 
+    // Emit one focaccia deadline group's events (prep → shape → pan → oven-on → bake → cool)
+    // into `evs`, stamped with the group's columnKey. Used by both the focaccia-only fast
+    // path and the mixed path; addPackageReady is true only for the fast path (the mixed
+    // path emits package-ready via the shared readyEntries collapse).
+    const focacciaGroupEvents = (g, evs, addPackageReady) => {
+      if (!g.slot) return;
+      const slot = g.slot, agg = g.agg, ck = g.key, recs = g.recipes, total = g.total;
+      const focacciaPanRiseStart = addMinutes(slot.firstBakeStart, -agg.warmupMin);
+      const focacciaShapeStart = addMinutes(focacciaPanRiseStart, -g.totalShapeMin);
+      evs.push(...focacciaPrepEvents(focacciaShapeStart, recs, agg, g.millingFlours, ck));
+      const focacciaWeightStr = perUnitDoughDetail(recs, 'pan');
+      const focacciaShapeDetail = (recs.length === 1
+        ? `${getRecipeSpec(recs[0]).shapeMinPerUnit} min × ${total} pan${total === 1 ? '' : 's'} = ${g.totalShapeMin} min · oil pan, stretch dough to fit, dimple`
+        : recs.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${g.totalShapeMin} min`)
+        + (focacciaWeightStr ? ` · ${focacciaWeightStr}` : '');
+      evs.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia', columnKey: ck });
+      const focacciaPanNames = panNamesForRecipesG(recs);
+      if (focacciaPanNames.length) {
+        addClaim('pan', 'Focaccia pan', focacciaPanNames.join(' + '), total, focacciaShapeStart,
+          slot.lastBakeEnd || slot.firstBakeStart, panCapacityForRecipesG(recs));
+      }
+      const focOven = slot.ovenId ? userOvens.find(o => o.id === slot.ovenId) : null;
+      const focPreheat = ovenPreheatMin(focOven, agg.bakeTempF) ?? SCHED.OVEN_PREHEAT_MIN;
+      const focOvenOnTime = addMinutes(slot.firstBakeStart, -focPreheat);
+      const focOvenTag = slot.ovenName ? ` · ${slot.ovenName}` : '';
+      if (focOvenOnTime < focacciaPanRiseStart) {
+        evs.push({ time: focOvenOnTime, title: `Turn on oven to ${fmtTemp(agg.bakeTempF)}`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', columnKey: ck, stage: 'bake' });
+        evs.push({ time: focacciaPanRiseStart, title: 'Pan rise', detail: `${agg.warmupMin} min room-temp pan rise`, process: 'focaccia', columnKey: ck });
+      } else {
+        evs.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${fmtTemp(agg.bakeTempF)}`, detail: `${agg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia', columnKey: ck });
+      }
+      let cumFocMin = 0;
+      for (let b = 0; b < g.batches; b++) {
+        const bakeStart = addMinutes(slot.firstBakeStart, cumFocMin);
+        const countThis = Math.min(agg.ovenCapacity, total - b * agg.ovenCapacity);
+        evs.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, agg.bakeMin), title: g.batches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${g.batches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${agg.bakeMin} min · ${fmtTemp(agg.bakeTempF)}${focOvenTag}`, process: 'focaccia', columnKey: ck, equip: slot.ovenName ? [slot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
+        addOvenClaim(slot.ovenName ? [slot.ovenName] : [], 'Focaccia bake', bakeStart, agg.bakeMin);
+        cumFocMin += agg.bakeMin + (b < g.batches - 1 ? SCHED.REHEAT_MIN : 0);
+      }
+      evs.push({ time: slot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${g.coolMin} min cool`, process: 'focaccia', columnKey: ck });
+      if (addPackageReady) evs.push({ time: slot.packageReady, title: 'Package & ready for sale', detail: '', process: 'focaccia', columnKey: ck });
+    };
+
     const hasSourdoughProcess = totalLoaves > 0 || totalMuffins > 0 || totalBagels > 0;
 
     // Focaccia-only path: commercial yeast, no levain computation needed. Only taken
     // when focaccia is the sole process — if simple/enriched are also present we fall
     // through to the main path so they share the oven-assignment layer.
-    if (!hasSourdoughProcess && totalFocaccia > 0 && totalSimple === 0 && totalEnriched === 0) {
+    // Fast path only when focaccia is the sole process AND it's a single deadline group. With
+    // multiple focaccia deadlines we fall through to the main path so the oven-assignment layer
+    // deconflicts the per-group slots.
+    if (!hasSourdoughProcess && totalFocaccia > 0 && totalSimple === 0 && totalEnriched === 0 && focacciaGroups.length === 1) {
       const events = [];
-      if (focacciaSlot) {
-        const focacciaPanRiseStart = addMinutes(focacciaSlot.firstBakeStart, -focacciaAgg.warmupMin);
-        const totalFocacciaShapeMin = focacciaRecipes.reduce((s, r) => s + plan[r.id] * getRecipeSpec(r).shapeMinPerUnit, 0);
-        const focacciaShapeStart = addMinutes(focacciaPanRiseStart, -totalFocacciaShapeMin);
-        events.push(...focacciaPrepEvents(focacciaShapeStart));
-        const focacciaWeightStr = perUnitDoughDetail(focacciaRecipes, 'pan');
-        const focacciaShapeDetail = (focacciaRecipes.length === 1
-          ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
-          : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`)
-          + (focacciaWeightStr ? ` · ${focacciaWeightStr}` : '');
-        events.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia' });
-        // Focaccia occupies its pan(s) from shaping (transfer to pans) through the bake.
-        const focacciaPanNames = panNamesForRecipesG(focacciaRecipes);
-        if (focacciaPanNames.length) {
-          addClaim('pan', 'Focaccia pan', focacciaPanNames.join(' + '), totalFocaccia, focacciaShapeStart,
-            (focacciaSlot && focacciaSlot.lastBakeEnd) || focacciaSlot.firstBakeStart, panCapacityForRecipesG(focacciaRecipes));
-        }
-        // Oven-on is triggered by the recipe's bake temp + assigned oven's preheat curve.
-        const focOven = (focacciaSlot && focacciaSlot.ovenId) ? userOvens.find(o => o.id === focacciaSlot.ovenId) : null;
-        const focPreheat = ovenPreheatMin(focOven, focacciaAgg.bakeTempF) ?? SCHED.OVEN_PREHEAT_MIN;
-        const focOvenOnTime = addMinutes(focacciaSlot.firstBakeStart, -focPreheat);
-        const focOvenTag = focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '';
-        if (focOvenOnTime < focacciaPanRiseStart) {
-          // Preheat outlasts the pan rise — start the oven before the dough goes to rise.
-          events.push({ time: focOvenOnTime, title: `Turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
-          events.push({ time: focacciaPanRiseStart, title: 'Pan rise', detail: `${focacciaAgg.warmupMin} min room-temp pan rise`, process: 'focaccia' });
-        } else {
-          events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
-        }
-        let cumFocMin = 0;
-        for (let b = 0; b < focacciaBatches; b++) {
-          const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
-          const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
-          addOvenClaim(focacciaSlot.ovenName ? [focacciaSlot.ovenName] : [], 'Focaccia bake', bakeStart, focacciaAgg.bakeMin);
-          cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
-        }
-        events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${focacciaCoolMin} min cool`, process: 'focaccia' });
-        events.push({ time: focacciaSlot.packageReady, title: 'Package & ready for sale', detail: '', process: 'focaccia' });
-      }
+      focacciaGroups.forEach(g => focacciaGroupEvents(g, events, true));
       const lateFocaccia = lateNightActiveSteps(events, 'focaccia');
       if (lateFocaccia.length > 0) {
         const fmtLate = (steps) => [...new Set(steps.map(e => e.title.replace(/\s+\d+ of \d+.*$/, '')))].slice(0, 4).join(', ');
@@ -13061,50 +13069,15 @@ ${notesHtml}
       const bagelCoolDetail = `${fmtCoolHr(g.slot.packageReady - g.slot.lastBakeEnd)} cool`;
       events.push({ time: g.slot.lastBakeEnd, title: 'Last bagels out — start cooling', detail: bagelCoolDetail, process: 'bagel', columnKey: g.key });
     });
-    // --- Focaccia events (mixed plan with sourdough) ---
-    if (totalFocaccia > 0 && focacciaSlot) {
-      const focacciaPanRiseStart = addMinutes(focacciaSlot.firstBakeStart, -focacciaAgg.warmupMin);
-      const totalFocacciaShapeMin = focacciaRecipes.reduce((s, r) => s + plan[r.id] * getRecipeSpec(r).shapeMinPerUnit, 0);
-      const focacciaShapeStart = addMinutes(focacciaPanRiseStart, -totalFocacciaShapeMin);
-      events.push(...focacciaPrepEvents(focacciaShapeStart));
-      const focacciaShapeDetail = focacciaRecipes.length === 1
-        ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
-        : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`;
-      events.push({ time: focacciaShapeStart, title: 'Shape focaccia — transfer to pans', detail: focacciaShapeDetail, process: 'focaccia' });
-      // Focaccia occupies its pan(s) from shaping (transfer to pans) through the bake.
-      const focacciaPanNames = panNamesForRecipesG(focacciaRecipes);
-      if (focacciaPanNames.length) {
-        addClaim('pan', 'Focaccia pan', focacciaPanNames.join(' + '), totalFocaccia, focacciaShapeStart,
-          (focacciaSlot && focacciaSlot.lastBakeEnd) || focacciaSlot.firstBakeStart, panCapacityForRecipesG(focacciaRecipes));
-      }
-      // Oven-on is triggered by the recipe's bake temp + assigned oven's preheat curve.
-      const focOven = (focacciaSlot && focacciaSlot.ovenId) ? userOvens.find(o => o.id === focacciaSlot.ovenId) : null;
-      const focPreheat = ovenPreheatMin(focOven, focacciaAgg.bakeTempF) ?? SCHED.OVEN_PREHEAT_MIN;
-      const focOvenOnTime = addMinutes(focacciaSlot.firstBakeStart, -focPreheat);
-      const focOvenTag = focacciaSlot.ovenName ? ` · ${focacciaSlot.ovenName}` : '';
-      if (focOvenOnTime < focacciaPanRiseStart) {
-        events.push({ time: focOvenOnTime, title: `Turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `~${focPreheat} min preheat${focOvenTag}`, process: 'focaccia', stage: 'bake' });
-        events.push({ time: focacciaPanRiseStart, title: 'Pan rise', detail: `${focacciaAgg.warmupMin} min room-temp pan rise`, process: 'focaccia' });
-      } else {
-        events.push({ time: focacciaPanRiseStart, title: `Pan rise — turn on oven to ${fmtTemp(focacciaAgg.bakeTempF)}`, detail: `${focacciaAgg.warmupMin} min room-temp pan rise · ~${focPreheat} min preheat runs concurrently`, process: 'focaccia' });
-      }
-      let cumFocMin = 0;
-      for (let b = 0; b < focacciaBatches; b++) {
-        const bakeStart = addMinutes(focacciaSlot.firstBakeStart, cumFocMin);
-        const countThis = Math.min(focacciaAgg.ovenCapacity, totalFocaccia - b * focacciaAgg.ovenCapacity);
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, focacciaAgg.bakeMin), title: focacciaBatches === 1 ? 'Bake focaccia' : `Bake focaccia batch ${b + 1} of ${focacciaBatches}`, detail: `${countThis} pan${countThis === 1 ? '' : 's'} · ${focacciaAgg.bakeMin} min · ${fmtTemp(focacciaAgg.bakeTempF)}${focOvenTag}`, process: 'focaccia', equip: focacciaSlot.ovenName ? [focacciaSlot.ovenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: focOvenTag });
-        addOvenClaim(focacciaSlot.ovenName ? [focacciaSlot.ovenName] : [], 'Focaccia bake', bakeStart, focacciaAgg.bakeMin);
-        cumFocMin += focacciaAgg.bakeMin + (b < focacciaBatches - 1 ? SCHED.REHEAT_MIN : 0);
-      }
-      events.push({ time: focacciaSlot.lastBakeEnd, title: 'Last focaccia out — start cooling', detail: `${focacciaCoolMin} min cool`, process: 'focaccia' });
-    }
+    // --- Focaccia events (mixed plan with sourdough), per deadline group ---
+    focacciaGroups.forEach(g => focacciaGroupEvents(g, events, false));
     // Package-ready: collapse to one combined event when every present process
     // finishes within a minute of the others; otherwise per-process events.
     const readyEntries = [];
     if (totalLoaves > 0) readyEntries.push({ time: packageReady, label: 'Loaves', process: 'loaf' });
-    if (muffinSlot) readyEntries.push({ time: muffinSlot.packageReady, label: 'Muffins', process: 'muffin' });
-    if (bagelSlot) readyEntries.push({ time: bagelSlot.packageReady, label: 'Bagels', process: 'bagel' });
-    if (focacciaSlot) readyEntries.push({ time: focacciaSlot.packageReady, label: 'Focaccia', process: 'focaccia' });
+    muffinGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Muffins', process: 'muffin', columnKey: g.key }); });
+    bagelGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Bagels', process: 'bagel', columnKey: g.key }); });
+    focacciaGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Focaccia', process: 'focaccia', columnKey: g.key }); });
     // Shared "ready for sale" summary for the sourdough/focaccia processes. Simple and
     // enriched emit their own ready events, so this is skipped when only those are planned.
     if (readyEntries.length > 0) {
@@ -13113,7 +13086,7 @@ ${notesHtml}
         events.push({ time: readyEntries[0].time, title: 'Package & ready for sale', detail: '', process: 'shared' });
       } else {
         for (const e of readyEntries) {
-          events.push({ time: e.time, title: `${e.label} ready for sale`, detail: '', process: e.process });
+          events.push({ time: e.time, title: `${e.label} ready for sale`, detail: '', process: e.process, columnKey: e.columnKey });
         }
       }
     }
@@ -13166,6 +13139,9 @@ ${notesHtml}
       : [];
     const muffinColumns = muffinGroups.length > 1
       ? muffinGroups.map(g => ({ key: g.key, process: 'muffin', label: groupColLabel(g), recipeIds: g.recipeIds, total: g.total }))
+      : [];
+    const focacciaColumns = focacciaGroups.length > 1
+      ? focacciaGroups.map(g => ({ key: g.key, process: 'focaccia', label: groupColLabel(g), recipeIds: g.recipeIds, total: g.total }))
       : [];
 
     // --- Generic stage-walking emitter for the simple/other family. Each side group is
@@ -13288,7 +13264,7 @@ ${notesHtml}
       { s: loafSlot, process: 'loaf' },
       ...muffinGroups.map(g => ({ s: g.slot, process: 'muffin', columnKey: g.key })),
       ...bagelGroups.map(g => ({ s: g.slot, process: 'bagel', columnKey: g.key })),
-      { s: focacciaSlot, process: 'focaccia' },
+      ...focacciaGroups.map(g => ({ s: g.slot, process: 'focaccia', columnKey: g.key })),
       ...sideGroups.map(g => ({ s: g.slot, process: g.process, columnKey: g.key })),
     ].forEach(({ s, process, columnKey }) => {
       if (s && s.tempChangeBefore && s.firstBakeStart) {
@@ -13322,7 +13298,7 @@ ${notesHtml}
     // When muffins/bagels split across deadline groups there is no bare 'muffin'/'bagel'
     // column, so any shared event of that process (e.g. levain builds) carries no group
     // columnKey — route it to the first group's column.
-    [muffinGroups, bagelGroups].forEach(groups => {
+    [muffinGroups, bagelGroups, focacciaGroups].forEach(groups => {
       if (groups.length <= 1) return;
       const proc = groups[0].process, firstKey = groups[0].key;
       const groupKeys = new Set(groups.map(g => g.key));
@@ -13331,7 +13307,7 @@ ${notesHtml}
     events.sort((a, b) => a.time - b.time);
     return {
       totalLoaves, totalMuffins, totalBagels, totalFocaccia, totalSimple, totalEnriched, batches, events, warnings,
-      sideColumns, bagelColumns, muffinColumns, loafColumns,
+      sideColumns, bagelColumns, muffinColumns, focacciaColumns, loafColumns,
       build1Opt, build2Opt,
       muffinBuild1Opt, muffinBuild2Opt,
       useSeparateLevains,
@@ -14244,7 +14220,12 @@ ${notesHtml}
       if (bagelCols.length > 1) bagelCols.forEach(c => columns.push({ key: c.key, label: c.label }));
       else columns.push({ key: 'bagel', label: breadColLabel('bagel'), names: breadColNames('bagel') });
     }
-    if (hasFocacciaResult) columns.push({ key: 'focaccia', label: breadColLabel('focaccia'), names: breadColNames('focaccia') });
+    // Focaccia: one column per deadline group when split (result.focacciaColumns), else bare.
+    const focacciaCols = result.focacciaColumns || [];
+    if (hasFocacciaResult) {
+      if (focacciaCols.length > 1) focacciaCols.forEach(c => columns.push({ key: c.key, label: c.label }));
+      else columns.push({ key: 'focaccia', label: breadColLabel('focaccia'), names: breadColNames('focaccia') });
+    }
     (result.sideColumns || []).forEach(c => columns.push({ key: c.key, label: c.label }));
     const presentCols = columns.map(c => c.key);
     const colLabelMap = {};

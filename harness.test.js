@@ -2531,6 +2531,42 @@ const BAKE_INSTANCES_KEY = 'whb-bake-instances-v1';
   allOk &= mdOk;
 }
 
+// --- Focaccia deadline-splitting (Phase 2): two focaccia deadlines schedule independently ---
+{
+  let fdOk = true;
+  const savedRecs = api.__recipes();
+  const f1 = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.focaccia)));
+  const f2 = JSON.parse(JSON.stringify(f1)); f2.id = 'foc2'; f2.name = 'Rosemary Focaccia';
+  const plus6 = new Date(tomorrow8.getTime() + 6 * 3600000);
+  const render = (recs, plan, deadlines) => {
+    api.__setRecipes(recs);
+    api.__setPlan(plan); seedPlan(plan);
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    if (deadlines) localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify(deadlines));
+    else localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    return api.__sr();
+  };
+  // Focaccia-only, same deadline → one bare column.
+  let sr = render([f1, f2], { [f1.id]: 3, [f2.id]: 3 }, null);
+  fdOk &= hv('same-deadline focaccia → no split columns', (sr.focacciaColumns || []).length === 0);
+  // Focaccia-only, different deadlines → falls through main path, two deconflicted groups.
+  sr = render([f1, f2], { [f1.id]: 3, [f2.id]: 3 }, { foc2: fmtLocal(plus6) });
+  const keys = [...new Set(sr.events.filter(e => e.process === 'focaccia').map(e => e.columnKey))];
+  fdOk &= hv('two focaccia deadlines → two columns focaccia#0/#1', (sr.focacciaColumns || []).length === 2 && keys.includes('focaccia#0') && keys.includes('focaccia#1'));
+  fdOk &= hv('two focaccia deadlines → two distinct bake times', new Set(sr.events.filter(e => /Bake focaccia/.test(e.title)).map(e => +e.time)).size === 2);
+  fdOk &= hv('two focaccia deadlines → no oven double-book', !sr.warnings.some(w => /double-book/i.test(w.msg || '')));
+  fdOk &= hv('two focaccia deadlines → no orphan events', !sr.events.some(e => e.process === 'focaccia' && !e.columnKey));
+  fdOk &= hv('no bread-deadline-merge warning remains anywhere', !sr.warnings.some(w => w.issue === 'bread-deadline-merge'));
+  // Mixed with a loaf → focaccia still splits alongside the loaf.
+  const batard = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.batard)));
+  sr = render([batard, f1, f2], { [batard.id]: 6, [f1.id]: 3, [f2.id]: 3 }, { foc2: fmtLocal(plus6) });
+  fdOk &= hv('loaf + two focaccia deadlines → two focaccia columns', (sr.focacciaColumns || []).length === 2);
+  api.__setRecipes(savedRecs);
+  allOk &= fdOk;
+}
+
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
 {
   let scOk = true;
