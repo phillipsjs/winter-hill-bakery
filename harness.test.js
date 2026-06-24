@@ -2500,6 +2500,37 @@ const BAKE_INSTANCES_KEY = 'whb-bake-instances-v1';
   allOk &= bdOk;
 }
 
+// --- Muffin deadline-splitting (Phase 2): two muffin deadlines schedule independently ---
+{
+  let mdOk = true;
+  const savedRecs = api.__recipes();
+  const m1 = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.muffin)));
+  const m2 = JSON.parse(JSON.stringify(m1)); m2.id = 'muffin2'; m2.name = 'Bran Muffin';
+  const plus5 = new Date(tomorrow8.getTime() + 5 * 3600000);
+  const render = (deadlines) => {
+    api.__setRecipes([m1, m2]);
+    api.__setPlan({ [m1.id]: 12, [m2.id]: 12 }); seedPlan({ [m1.id]: 12, [m2.id]: 12 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    if (deadlines) localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify(deadlines));
+    else localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    return api.__sr();
+  };
+  let sr = render(null);
+  mdOk &= hv('same-deadline muffins → no split columns', (sr.muffinColumns || []).length === 0);
+  sr = render({ muffin2: fmtLocal(plus5) });
+  const keys = [...new Set(sr.events.filter(e => e.process === 'muffin').map(e => e.columnKey))];
+  mdOk &= hv('two muffin deadlines → two columns muffin#0/muffin#1', (sr.muffinColumns || []).length === 2 && keys.includes('muffin#0') && keys.includes('muffin#1'));
+  mdOk &= hv('two muffin deadlines → two distinct bake times', new Set(sr.events.filter(e => /muffins into oven/.test(e.title)).map(e => +e.time)).size === 2);
+  mdOk &= hv('two muffin deadlines → a preheat per group', sr.events.filter(e => /Turn on oven \(muffins\)/.test(e.title)).length === 2);
+  mdOk &= hv('two muffin deadlines → no oven double-book', !sr.warnings.some(w => /double-book/i.test(w.msg || '')));
+  mdOk &= hv('two muffin deadlines → no bread-deadline-merge warning', !sr.warnings.some(w => w.issue === 'bread-deadline-merge'));
+  mdOk &= hv('two muffin deadlines → shared levain routed (no orphan)', !sr.events.some(e => e.process === 'muffin' && !e.columnKey));
+  api.__setRecipes(savedRecs);
+  allOk &= mdOk;
+}
+
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
 {
   let scOk = true;
