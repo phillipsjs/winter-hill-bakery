@@ -2279,8 +2279,20 @@ allOk &= hvOk;
   localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify({ [batard.id]: tomorrow8.toISOString(), [boule.id]: t8b.toISOString() }));
   const diff = fridgeHrs();
   prOk &= pr('different deadlines → per-recipe cold proof (8 and 24), no double-book', diff.has('8') && diff.has('24') && ovenDoubleBooks() === 0);
+
+  // Warm bulk is likewise per-recipe ACROSS deadlines (rides the deadline-split), and shared
+  // (longest) same-deadline — same structure as cold proof, no extra engine work.
+  delete batard.coldProofHr; delete boule.coldProofHr;
+  const bulkHrs = () => { api.renderSchedule(); return new Set(api.__sr().events.filter(e => e.title === 'Bulk ferment').map(e => (String(e.detail || '').match(/(\d+) hr warm bulk/) || [])[1]).filter(Boolean)); };
+  batard.bulkMin = '240'; boule.bulkMin = '480'; // 4 hr vs 8 hr
   localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
-  delete batard.coldProofHr; delete boule.coldProofHr; delete batard.bulkMin; delete batard.stages;
+  const sameB = bulkHrs();
+  prOk &= pr('same deadline → one warm-bulk window (longest)', sameB.has('8') && !sameB.has('4'));
+  localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify({ [batard.id]: tomorrow8.toISOString(), [boule.id]: t8b.toISOString() }));
+  const diffB = bulkHrs();
+  prOk &= pr('different deadlines → per-recipe warm bulk (4 and 8 hr)', diffB.has('4') && diffB.has('8'));
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  delete batard.coldProofHr; delete boule.coldProofHr; delete batard.bulkMin; delete boule.bulkMin; delete batard.stages;
   allOk &= prOk;
 }
 
