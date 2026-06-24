@@ -829,7 +829,8 @@
   .bakesheet-day { margin-bottom: 28px; }
   .bakesheet-day-header { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px;
     padding: 5px 0; border-bottom: 2px solid var(--border); color: var(--accent-dark); }
-  .bakesheet-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  .bakesheet-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; table-layout: fixed; }
+  .bakesheet-table td { word-break: break-word; overflow-wrap: anywhere; }
   .bakesheet-table th { text-align: left; padding: 5px 8px; background: var(--bg);
     border-bottom: 2px solid var(--border); font-size: 0.78rem; color: var(--muted); }
   .bakesheet-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -857,7 +858,7 @@
   @media print {
     .bs-recipe-tag { background: #eef2f7 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   }
-  .bs-ings { width: 240px; }
+  .bs-ings { width: 200px; }
   .bs-ings table { font-size: 0.78rem; margin: 0; }
   .bs-ings table td { padding: 1px 4px; border: none; }
   .bs-ing-temp { color: #2f6f86; font-weight: 600; white-space: nowrap; }
@@ -866,7 +867,7 @@
   .bs-ings .bs-batch-note { font-size: 0.72rem; font-weight: 600; font-style: italic;
     color: var(--muted); margin: 0 0 2px; }
   .bs-ings .bs-batch-gap { height: 6px; }
-  .bs-container { width: 150px; font-size: 0.78rem; color: var(--muted); white-space: pre-line; vertical-align: top; }
+  .bs-container { width: 116px; font-size: 0.78rem; color: var(--muted); white-space: pre-line; vertical-align: top; }
   .bs-equip-edit { margin-top: 5px; display: flex; flex-direction: column; gap: 2px; white-space: normal; }
   .bs-equip-row { display: flex; align-items: baseline; gap: 4px; font-size: 0.74rem; }
   .bs-equip-lbl { color: var(--muted); min-width: 58px; font-size: 0.7rem; text-transform: lowercase; }
@@ -880,6 +881,7 @@
     background-color: transparent;
     color: var(--accent-dark);
     font-size: 0.76rem;
+    max-width: 100%;
     padding: 1px 16px 1px 4px;
     border-radius: 5px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%2394a3b8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -15236,8 +15238,8 @@ ${notesHtml}
             <thead><tr>
               <th style="width:110px">Time</th>
               <th>Step</th>
-              <th style="width:150px">Equipment</th>
-              <th style="width:220px">Ingredients</th>
+              <th style="width:116px">Equipment</th>
+              <th style="width:200px">Ingredients</th>
               <th style="width:24px"></th>
             </tr></thead>
             <tbody>${rowsHtml}</tbody>
