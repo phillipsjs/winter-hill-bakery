@@ -253,6 +253,8 @@
   .bake-recipe { padding: 10px 0; border-bottom: 1px dashed var(--border); }
   .bake-recipe:last-child { border-bottom: none; }
   .bake-recipe-head .meta { font-size: 0.8rem; color: var(--muted); margin-left: 8px; }
+  .bake-recipe-compact { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .bake-recipe-compact .bake-recipe-head { margin: 0; }
   .bake-batch-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0; }
   .bake-batch-label { font-size: 0.78rem; color: var(--muted); min-width: 54px; }
   .bake-batch-row input[type="number"] { width: 72px; }
@@ -7356,9 +7358,9 @@ ${notesHtml}
         const unit = r.unit || 'loaf';
         const unitPlural = pluralize(unit);
         const block = document.createElement('div');
-        block.className = 'bake-recipe';
+        block.className = 'bake-recipe bake-recipe-compact';
         block.innerHTML = `<div class="bake-recipe-head"><strong>${escapeHtml(r.name)}</strong><span class="meta">${unitWeightMeta(r, unit)}</span></div>
-          <div class="bake-batch-row">
+          <div class="bake-batch-row" style="padding:0">
             <input type="number" min="0" step="1" value="${count > 0 ? count : ''}" onchange="setPlanCount('${r.id}', this.value)" aria-label="count" />
             <span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>
           </div>`;
@@ -7381,13 +7383,11 @@ ${notesHtml}
       dlHint.textContent = 'When everything needs to be packaged and ready. Applies to every recipe unless you give one its own deadline below.';
       list.appendChild(dlHint);
 
-      // Collapsed card: per-recipe deadline overrides + extra batches. Opens by
-      // default only if the baker already set any override / extra batch.
-      const hasOverrides = planned.some(r => rd[r.id] || (instMap[r.id] || []).length > 0);
+      // Collapsed card: per-recipe deadline overrides + extra batches. Stays
+      // collapsed by default — most bakes use the one default deadline.
       const det = document.createElement('details');
       det.className = 'plan-recipe-deadlines';
       det.style.cssText = 'margin-top:16px';
-      if (hasOverrides) det.open = true;
       let detHtml = `<summary class="schedule-section-summary">Recipe-specific deadlines & extra batches <span class="muted" style="font-weight:400;font-size:0.85rem">(optional)</span></summary>`;
       detHtml += '<div style="margin-top:10px">';
       planned.forEach(r => {
