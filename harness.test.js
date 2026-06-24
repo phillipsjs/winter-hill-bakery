@@ -112,6 +112,7 @@ const exportsTail = `
   stageVesselSelectHtml,
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange, saveRecipe, revertEdit,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove, toggleStageExpand, stageDurationSummary,
+  toggleStageIng, stageIngPanelInner, refreshOpenStageIngPanels,
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
   annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
@@ -456,6 +457,28 @@ api.SEED_RECIPES.filter(r => api.getProcessType(r) !== 'levain').forEach(r => {
     const st = api.__editorStages();
     if (!Array.isArray(st) || !st.length) throw new Error('empty editor stages');
   });
+});
+allOk &= editorOk;
+
+// Stage ingredient tagging: toggling on/off mutates the stage's `ings`, and the
+// panel/refresh helpers don't throw under the DOM stub.
+console.log('\nStage ingredient tagging:');
+editorOk &= smoke('toggleStageIng adds/removes from stage.ings', () => {
+  api.stageEditorReset(); api.stageEditorAdd();
+  const st = api.__editorStages();
+  if (!st.length) throw new Error('no stages');
+  api.toggleStageIng(0, 'Bread flour', true);
+  if (!(st[0].ings || []).includes('Bread flour')) throw new Error('tag not added');
+  api.toggleStageIng(0, 'Water', true);
+  if ((st[0].ings || []).length !== 2) throw new Error('second tag not added');
+  api.toggleStageIng(0, 'Bread flour', false);
+  if ((st[0].ings || []).includes('Bread flour')) throw new Error('tag not removed');
+  api.toggleStageIng(0, 'Water', false);
+  if ('ings' in st[0]) throw new Error('empty ings should be deleted');
+});
+editorOk &= smoke('stageIngPanelInner / refreshOpenStageIngPanels do not throw', () => {
+  api.stageIngPanelInner(0);
+  api.refreshOpenStageIngPanels();
 });
 allOk &= editorOk;
 

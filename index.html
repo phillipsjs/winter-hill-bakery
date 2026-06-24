@@ -8967,7 +8967,7 @@ ${notesHtml}
               <button type="button" class="stage-note-btn tiny${(s.note || '').trim() ? '' : ' secondary'}" onclick="editStageNote(${i})" title="${(s.note || '').trim() ? escapeAttr(s.note) : 'Add a note shown whenever this recipe is used'}">${(s.note || '').trim() ? '📝 note' : '+ note'}</button>
             </div>
             ${(s.note || '').trim() ? `<span class="stage-note-text">📝 ${escapeHtml(s.note)}</span>` : ''}
-            ${(s.ings || []).length ? `<span class="stage-ing-text">🧂 ${escapeHtml(s.ings.join(', '))}</span>` : ''}
+            ${(s.ings || []).length ? `<span class="stage-ing-text" id="stage-ing-text-${i}">🧂 ${escapeHtml(s.ings.join(', '))}</span>` : ''}
             <div class="stage-ing-panel" id="stage-ing-panel-${i}" style="display:none"></div>
             ${substepsForStage(s) ? `<div class="stage-sub-panel" id="stage-sub-panel-${i}" style="display:none"></div>` : ''}
           </div>
@@ -9159,6 +9159,15 @@ ${notesHtml}
     if (panel.style.display === 'none') { panel.innerHTML = stageIngPanelInner(i); panel.style.display = 'flex'; }
     else panel.style.display = 'none';
   }
+  // After ingredients change (add / rename / remove), re-render any OPEN stage ingredient
+  // panels so newly-added ingredients become taggable without having to reopen the panel.
+  function refreshOpenStageIngPanels() {
+    document.querySelectorAll('.stage-ing-panel').forEach(panel => {
+      if (panel.style.display === 'none') return;
+      const m = /stage-ing-panel-(\d+)/.exec(panel.id || '');
+      if (m) panel.innerHTML = stageIngPanelInner(Number(m[1]));
+    });
+  }
   function toggleStageIng(i, name, checked) {
     const s = _editorStages[i]; if (!s) return;
     let ings = Array.isArray(s.ings) ? s.ings.slice() : [];
@@ -9170,6 +9179,21 @@ ${notesHtml}
     if (btn) {
       btn.textContent = `🧂 ${ings.length ? ings.length + ' ing' : 'ingredients'}`;
       btn.classList.toggle('secondary', ings.length === 0);
+    }
+    // Keep the inline "🧂 a, b, c" summary in sync live (it's only rendered on full
+    // re-render, which would close the panel). Insert it before the panel when needed.
+    let txt = document.getElementById(`stage-ing-text-${i}`);
+    if (ings.length) {
+      if (!txt) {
+        txt = document.createElement('span');
+        txt.className = 'stage-ing-text';
+        txt.id = `stage-ing-text-${i}`;
+        const panel = document.getElementById(`stage-ing-panel-${i}`);
+        if (panel) panel.parentNode.insertBefore(txt, panel);
+      }
+      if (txt) txt.textContent = `🧂 ${ings.join(', ')}`;
+    } else if (txt) {
+      txt.remove();
     }
   }
   function stageEditorSetLabel(i, v) { if (_editorStages[i]) _editorStages[i].label = v; }
@@ -9487,6 +9511,7 @@ ${notesHtml}
     updateRowFlourUI(row); // auto-detect a flour role for the tag dropdown when untagged
     updateRowWaterUI(row); // reveal the water-temperature field for water rows
     updateFlourSummary();
+    refreshOpenStageIngPanels(); // surface the new ingredient in any open stage tag panel
   }
 
   // Options for an ingredient's kitchen-ingredient link. Linking by pantry id keeps the
@@ -14316,6 +14341,7 @@ ${notesHtml}
       if (linkId) { pantrySel.value = linkId; pantrySel.dataset.prevValue = linkId; updateRecipeEditorCostDisplay(); }
     }
     updateFlourSummary();
+    refreshOpenStageIngPanels(); // a (re)named ingredient should appear in open stage tag panels
   }
 
   function removeIngredientRow(button) {
@@ -14324,6 +14350,7 @@ ${notesHtml}
     row.remove();
     if (wasFlour) rebalanceAnchors();
     updateFlourSummary();
+    refreshOpenStageIngPanels(); // drop the removed ingredient from open stage tag panels
   }
 
   // Read the editor's ingredient rows as {name, amount, flourType, processAid, role, isLiquid}.
