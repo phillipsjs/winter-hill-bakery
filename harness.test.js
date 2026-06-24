@@ -2314,6 +2314,32 @@ allOk &= hvOk;
   allOk &= prOk;
 }
 
+// --- Focaccia warm bulk is per-recipe (each recipe its own mix→folds→bulk timeline) ---
+{
+  let fbOk = true;
+  const f1 = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === 'seed-focaccia')));
+  const f2 = JSON.parse(JSON.stringify(f1)); f2.id = 'foc2'; f2.name = 'Rosemary Focaccia';
+  const savedRecs = api.__recipes();
+  // Uniform bulk → one shared timeline (no divergence).
+  api.__setRecipes([f1, f2]);
+  api.__setPlan({ [f1.id]: 2, [f2.id]: 2 }); seedPlan({ [f1.id]: 2, [f2.id]: 2 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  const mixCount = () => api.__sr().events.filter(e => /^Mix focaccia/.test(e.title)).length;
+  fbOk &= hv('uniform focaccia bulk → one shared mix event', mixCount() === 1);
+  // Different bulk → per-recipe mix events + per-recipe bulk in the last-fold detail.
+  f1.bulkMin = '60'; f2.bulkMin = '180';
+  api.renderSchedule();
+  const fsr = api.__sr();
+  const bulks = new Set(fsr.events.filter(e => /\(last\)/.test(e.title) && /focaccia/.test(e.title)).map(e => (String(e.detail || '').match(/(\d+) min bulk/) || [])[1]).filter(Boolean));
+  fbOk &= hv('different focaccia bulk → per-recipe mix events (one per recipe)', mixCount() === 2);
+  fbOk &= hv('different focaccia bulk → per-recipe bulk durations (60 and 180)', bulks.has('60') && bulks.has('180'));
+  api.__setRecipes(savedRecs);
+  allOk &= fbOk;
+}
+
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
 {
   let scOk = true;

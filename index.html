@@ -10776,6 +10776,36 @@ ${notesHtml}
     const FOCACCIA_FOLD_INTERVAL_MIN = focacciaAgg ? focacciaAgg.foldIntervalMin : 15;
     const FOCACCIA_MIX_ACTIVE_MIN = 10;
     const FOCACCIA_COOL_MIN = 20;
+    // Focaccia prep events (Gather/Mill/Mix/folds) backward from the shared shape phase. When
+    // multiple recipes resolve to DIFFERENT warm bulk, each gets its own mix→folds→bulk timeline
+    // (per-recipe), all converging on the shared shape; otherwise one shared timeline (identical
+    // to before). Used by both the focaccia-only fast path and the mixed path.
+    const focacciaPrepEvents = (shapeStart) => {
+      const recs = focacciaRecipes;
+      const bulkOf = (r) => fermentScale(getRecipeSpec(r).bulkMin || PROCESS_TEMPLATES.focaccia.bulkMin);
+      const divergent = recs.length > 1 && new Set(recs.map(bulkOf)).size > 1;
+      const foldGap = (focacciaAgg.foldsCount - 1) * FOCACCIA_FOLD_INTERVAL_MIN;
+      const preMix = FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin;
+      const lines = (divergent ? recs.map(r => ({ r, bulk: bulkOf(r) })) : [{ r: null, bulk: focacciaAgg.bulkMin }])
+        .map(L => { const lastFold = addMinutes(shapeStart, -L.bulk); const firstFold = addMinutes(lastFold, -foldGap); return { ...L, firstFold, mix: addMinutes(firstFold, -preMix) }; });
+      const earliestMix = lines.reduce((m, L) => (L.mix < m ? L.mix : m), lines[0].mix);
+      const focWeighDur = weighMinFor(recs);
+      const focMills = millingFloursFocaccia.size > 0;
+      const focMillMin = millMinFor(recs);
+      const focWeighEnd = focMills ? addMinutes(earliestMix, -focMillMin) : earliestMix;
+      const evs = [];
+      evs.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Gather ingredients', detail: recs.length > 1 ? `${focWeighDur} min active · ${recs.length} recipes` : `${focWeighDur} min active`, process: 'focaccia' });
+      if (focMills) evs.push({ time: addMinutes(earliestMix, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...millingFloursFocaccia].join(' + ')}`, process: 'focaccia' });
+      lines.forEach(L => {
+        const sfx = L.r ? ` — ${L.r.name}` : '';
+        evs.push({ time: L.mix, title: `Mix focaccia dough${sfx}`, detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${preMix - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia' });
+        for (let k = 0; k < focacciaAgg.foldsCount; k++) {
+          const isLast = k === focacciaAgg.foldsCount - 1;
+          evs.push({ time: addMinutes(L.firstFold, k * FOCACCIA_FOLD_INTERVAL_MIN), title: `Stretch & fold ${k + 1} of ${focacciaAgg.foldsCount}${isLast ? ' (last)' : ''} — focaccia${sfx}`, detail: isLast ? `5 min active · then ${L.bulk} min bulk ferment` : `5 min active · next fold in ${FOCACCIA_FOLD_INTERVAL_MIN} min`, process: 'focaccia' });
+        }
+      });
+      return evs;
+    };
     // Per-process cooling comes from each recipe's editable cool stage (the longest cool
     // among recipes baking together gates package-ready). Falls back to the old defaults
     // (1 hr bread / 20 min focaccia) so recipes without a cool stage are unchanged.
@@ -11681,20 +11711,7 @@ ${notesHtml}
         const focacciaPanRiseStart = addMinutes(focacciaSlot.firstBakeStart, -focacciaAgg.warmupMin);
         const totalFocacciaShapeMin = focacciaRecipes.reduce((s, r) => s + plan[r.id] * getRecipeSpec(r).shapeMinPerUnit, 0);
         const focacciaShapeStart = addMinutes(focacciaPanRiseStart, -totalFocacciaShapeMin);
-        const focacciaLastFoldTime = addMinutes(focacciaShapeStart, -focacciaAgg.bulkMin);
-        const focacciaFirstFoldTime = addMinutes(focacciaLastFoldTime, -(focacciaAgg.foldsCount - 1) * FOCACCIA_FOLD_INTERVAL_MIN);
-        const focacciaMixTime = addMinutes(focacciaFirstFoldTime, -(FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin));
-        const focWeighDur = weighMinFor(focacciaRecipes);
-        const focMills = millingFloursFocaccia.size > 0;
-        const focMillMin = millMinFor(focacciaRecipes);
-        const focWeighEnd = focMills ? addMinutes(focacciaMixTime, -focMillMin) : focacciaMixTime;
-        events.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Gather ingredients', detail: focacciaRecipes.length > 1 ? `${focWeighDur} min active · ${focacciaRecipes.length} recipes` : `${focWeighDur} min active`, process: 'focaccia' });
-        if (focMills) events.push({ time: addMinutes(focacciaMixTime, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...millingFloursFocaccia].join(' + ')}`, process: 'focaccia' });
-        events.push({ time: focacciaMixTime, title: 'Mix focaccia dough', detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia' });
-        for (let k = 0; k < focacciaAgg.foldsCount; k++) {
-          const isLast = k === focacciaAgg.foldsCount - 1;
-          events.push({ time: addMinutes(focacciaFirstFoldTime, k * FOCACCIA_FOLD_INTERVAL_MIN), title: `Stretch & fold ${k + 1} of ${focacciaAgg.foldsCount}${isLast ? ' (last)' : ''} — focaccia`, detail: isLast ? `5 min active · then ${focacciaAgg.bulkMin} min bulk ferment` : `5 min active · next fold in ${FOCACCIA_FOLD_INTERVAL_MIN} min`, process: 'focaccia' });
-        }
+        events.push(...focacciaPrepEvents(focacciaShapeStart));
         const focacciaWeightStr = perUnitDoughDetail(focacciaRecipes, 'pan');
         const focacciaShapeDetail = (focacciaRecipes.length === 1
           ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
@@ -12660,20 +12677,7 @@ ${notesHtml}
       const focacciaPanRiseStart = addMinutes(focacciaSlot.firstBakeStart, -focacciaAgg.warmupMin);
       const totalFocacciaShapeMin = focacciaRecipes.reduce((s, r) => s + plan[r.id] * getRecipeSpec(r).shapeMinPerUnit, 0);
       const focacciaShapeStart = addMinutes(focacciaPanRiseStart, -totalFocacciaShapeMin);
-      const focacciaLastFoldTime = addMinutes(focacciaShapeStart, -focacciaAgg.bulkMin);
-      const focacciaFirstFoldTime = addMinutes(focacciaLastFoldTime, -(focacciaAgg.foldsCount - 1) * FOCACCIA_FOLD_INTERVAL_MIN);
-      const focacciaMixTime = addMinutes(focacciaFirstFoldTime, -(FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin));
-      const focWeighDur = weighMinFor(focacciaRecipes);
-      const focMills = millingFloursFocaccia.size > 0;
-      const focMillMin = millMinFor(focacciaRecipes);
-      const focWeighEnd = focMills ? addMinutes(focacciaMixTime, -focMillMin) : focacciaMixTime;
-      events.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Gather ingredients', detail: focacciaRecipes.length > 1 ? `${focWeighDur} min active · ${focacciaRecipes.length} recipes` : `${focWeighDur} min active`, process: 'focaccia' });
-      if (focMills) events.push({ time: addMinutes(focacciaMixTime, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...millingFloursFocaccia].join(' + ')}`, process: 'focaccia' });
-      events.push({ time: focacciaMixTime, title: 'Mix focaccia dough', detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${FOCACCIA_FOLD_INTERVAL_MIN + focacciaAgg.autolyseMin - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia' });
-      for (let k = 0; k < focacciaAgg.foldsCount; k++) {
-        const isLast = k === focacciaAgg.foldsCount - 1;
-        events.push({ time: addMinutes(focacciaFirstFoldTime, k * FOCACCIA_FOLD_INTERVAL_MIN), title: `Stretch & fold ${k + 1} of ${focacciaAgg.foldsCount}${isLast ? ' (last)' : ''} — focaccia`, detail: isLast ? `5 min active · then ${focacciaAgg.bulkMin} min bulk ferment` : `5 min active · next fold in ${FOCACCIA_FOLD_INTERVAL_MIN} min`, process: 'focaccia' });
-      }
+      events.push(...focacciaPrepEvents(focacciaShapeStart));
       const focacciaShapeDetail = focacciaRecipes.length === 1
         ? `${getRecipeSpec(focacciaRecipes[0]).shapeMinPerUnit} min × ${totalFocaccia} pan${totalFocaccia === 1 ? '' : 's'} = ${totalFocacciaShapeMin} min · oil pan, stretch dough to fit, dimple`
         : focacciaRecipes.map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`).join(' + ') + ` = ${totalFocacciaShapeMin} min`;
