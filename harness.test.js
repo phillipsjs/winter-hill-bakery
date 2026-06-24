@@ -2340,6 +2340,72 @@ allOk &= hvOk;
   allOk &= fbOk;
 }
 
+// --- Muffin proofing is per-recipe (distinct cold proof → independent timelines) ---
+{
+  let mpOk = true;
+  const savedRecs = api.__recipes();
+  const m1 = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.muffin)));
+  const m2 = JSON.parse(JSON.stringify(m1)); m2.id = 'muffin2'; m2.name = 'Spelt Muffin';
+  const renderM = () => {
+    api.__setRecipes([m1, m2]);
+    api.__setPlan({ [m1.id]: 12, [m2.id]: 12 }); seedPlan({ [m1.id]: 12, [m2.id]: 12 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    return api.__sr();
+  };
+  // Uniform (no overrides) → shared timeline, no per-recipe suffixes.
+  let sr = renderM();
+  const muffinSuffixed = (s) => s.events.filter(e => e.process === 'muffin' && /^Mix muffin dough — /.test(e.title));
+  mpOk &= hv('uniform muffins → one shared Mix (no per-recipe suffix)',
+    muffinSuffixed(sr).length === 0 && sr.events.some(e => e.title === 'Mix muffin dough'));
+  // Distinct cold proof → per-recipe timelines: two suffixed mixes + two distinct fridge-in times.
+  m1.coldProofHr = '8'; m2.coldProofHr = '24';
+  sr = renderM();
+  const fridgeM = sr.events.filter(e => e.process === 'muffin' && /Muffins into fridge/.test(e.title));
+  mpOk &= hv('distinct muffin cold proof → per-recipe suffixed mixes (2)', muffinSuffixed(sr).length === 2);
+  mpOk &= hv('distinct muffin cold proof → two distinct into-fridge times',
+    fridgeM.length === 2 && new Set(fridgeM.map(e => String(e.time))).size === 2);
+  const speltFridge = fridgeM.find(e => / Spelt /.test(e.title + ' '));
+  mpOk &= hv('distinct muffin cold proof → 24 hr proof goes in earliest',
+    !!speltFridge && Math.min(...fridgeM.map(e => +e.time)) === +speltFridge.time);
+  api.__setRecipes(savedRecs);
+  allOk &= mpOk;
+}
+
+// --- Bagel proofing is per-recipe (distinct warm bulk → independent timelines) ---
+{
+  let bpOk = true;
+  const savedRecs = api.__recipes();
+  const g1 = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.bagel)));
+  const g2 = JSON.parse(JSON.stringify(g1)); g2.id = 'bagel2'; g2.name = 'Rye Bagel';
+  const renderB = () => {
+    api.__setRecipes([g1, g2]);
+    api.__setPlan({ [g1.id]: 10, [g2.id]: 10 }); seedPlan({ [g1.id]: 10, [g2.id]: 10 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    return api.__sr();
+  };
+  let sr = renderB();
+  const bagelSuffixed = (s) => s.events.filter(e => e.process === 'bagel' && /^Mix bagel dough — /.test(e.title));
+  bpOk &= hv('uniform bagels → one shared Mix (no per-recipe suffix)',
+    bagelSuffixed(sr).length === 0 && sr.events.some(e => e.title === 'Mix bagel dough'));
+  // Distinct warm bulk → per-recipe mixes at distinct times + per-recipe bulk durations.
+  g1.bulkMin = 60; g2.bulkMin = 240;
+  sr = renderB();
+  const mixesB = bagelSuffixed(sr);
+  bpOk &= hv('distinct bagel bulk → per-recipe suffixed mixes (2)', mixesB.length === 2);
+  bpOk &= hv('distinct bagel bulk → distinct mix times', new Set(mixesB.map(e => String(e.time))).size === 2);
+  const bagelBulks = new Set(sr.events.filter(e => /^Bagel dough bulk ferment — /.test(e.title))
+    .map(e => (String(e.detail).match(/([\d.]+) hr bulk/) || [])[1]).filter(Boolean));
+  bpOk &= hv('distinct bagel bulk → durations 1 hr and 4 hr', bagelBulks.has('1') && bagelBulks.has('4'));
+  api.__setRecipes(savedRecs);
+  allOk &= bpOk;
+}
+
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
 {
   let scOk = true;
