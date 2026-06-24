@@ -7331,43 +7331,75 @@ ${notesHtml}
     if (planned.length > 0) {
       const rd = loadRecipeDeadlines();
       const instMap = loadBakeInstances();
-      const batchRowHtml = (o) => `
-        <div class="bake-batch-row">
-          ${o.label ? `<span class="bake-batch-label">${o.label}</span>` : ''}
-          <input type="number" min="0" step="1" value="${o.countVal}" onchange="${o.countHandler}" aria-label="count" />
-          <span class="bake-batch-unit">${escapeHtml(o.unitPlural)}</span>
-          <input type="datetime-local" value="${o.dlVal || ''}" onchange="${o.dlHandler}" aria-label="deadline" title="Deadline for this batch (blank = default)" />
-          ${o.removeHandler ? `<button class="bake-batch-remove" onclick="${o.removeHandler}" title="Remove this batch" aria-label="Remove this batch">✕</button>` : ''}
-        </div>`;
+
+      // Main rows: counts only. Deadlines (and extra batches) move to the
+      // collapsed "recipe-specific deadlines" card below so the common case is
+      // just "how many of each, all due at the one default deadline".
       const countSection = document.createElement('div');
       countSection.style.marginTop = '16px';
       planned.forEach(r => {
         const count = plan[r.id] || 0;
         const unit = r.unit || 'loaf';
         const unitPlural = pluralize(unit);
-        const insts = instMap[r.id] || [];
-        const multi = insts.length > 0;
         const block = document.createElement('div');
         block.className = 'bake-recipe';
-        let html = `<div class="bake-recipe-head"><strong>${escapeHtml(r.name)}</strong><span class="meta">${unitWeightMeta(r, unit)}</span></div>`;
-        html += batchRowHtml({
-          label: multi ? 'Batch 1' : '', unitPlural,
-          countVal: count > 0 ? count : '', countHandler: `setPlanCount('${r.id}', this.value)`,
-          dlVal: rd[r.id] || '', dlHandler: `setPlanDeadline('${r.id}', this.value)`,
-        });
-        insts.forEach((inst, k) => {
-          html += batchRowHtml({
-            label: `Batch ${k + 2}`, unitPlural,
-            countVal: inst.count > 0 ? inst.count : '', countHandler: `setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)`,
-            dlVal: inst.deadline || '', dlHandler: `setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)`,
-            removeHandler: `removeBakeInstance('${r.id}', '${inst.id}')`,
-          });
-        });
-        html += `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}')">+ Add another batch (different deadline)</button>`;
-        block.innerHTML = html;
+        block.innerHTML = `<div class="bake-recipe-head"><strong>${escapeHtml(r.name)}</strong><span class="meta">${unitWeightMeta(r, unit)}</span></div>
+          <div class="bake-batch-row">
+            <input type="number" min="0" step="1" value="${count > 0 ? count : ''}" onchange="setPlanCount('${r.id}', this.value)" aria-label="count" />
+            <span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>
+          </div>`;
         countSection.appendChild(block);
       });
       list.appendChild(countSection);
+
+      // Overall default deadline — the one due-time every recipe uses unless
+      // given its own below. Shares the DEFAULT_DEADLINE_KEY store with the
+      // Schedule tab's input (kept in sync by setDefaultDeadline).
+      const dlRow = document.createElement('div');
+      dlRow.className = 'row';
+      dlRow.style.cssText = 'align-items:center; gap:10px; margin-top:20px';
+      dlRow.innerHTML = `<label style="width:120px;font-weight:600">Deadline:</label>
+        <input type="datetime-local" id="plan-deadline-default-input" value="${localStorage.getItem(DEFAULT_DEADLINE_KEY) || ''}" onchange="setDefaultDeadline(this.value)" />`;
+      list.appendChild(dlRow);
+      const dlHint = document.createElement('p');
+      dlHint.className = 'muted';
+      dlHint.style.cssText = 'margin:6px 0 0;font-size:0.85rem';
+      dlHint.textContent = 'When everything needs to be packaged and ready. Applies to every recipe unless you give one its own deadline below.';
+      list.appendChild(dlHint);
+
+      // Collapsed card: per-recipe deadline overrides + extra batches. Opens by
+      // default only if the baker already set any override / extra batch.
+      const hasOverrides = planned.some(r => rd[r.id] || (instMap[r.id] || []).length > 0);
+      const det = document.createElement('details');
+      det.className = 'plan-recipe-deadlines';
+      det.style.cssText = 'margin-top:16px';
+      if (hasOverrides) det.open = true;
+      let detHtml = `<summary class="schedule-section-summary">Recipe-specific deadlines & extra batches <span class="muted" style="font-weight:400;font-size:0.85rem">(optional)</span></summary>`;
+      detHtml += '<div style="margin-top:10px">';
+      planned.forEach(r => {
+        const unit = r.unit || 'loaf';
+        const unitPlural = pluralize(unit);
+        const insts = instMap[r.id] || [];
+        const multi = insts.length > 0;
+        detHtml += `<div class="bake-recipe"><div class="bake-recipe-head"><strong>${escapeHtml(r.name)}</strong></div>`;
+        detHtml += `<div class="bake-batch-row">
+            <span class="bake-batch-label">${multi ? 'Batch 1' : 'Deadline'}</span>
+            <input type="datetime-local" value="${rd[r.id] || ''}" onchange="setPlanDeadline('${r.id}', this.value)" aria-label="deadline" title="Deadline for this batch (blank = default)" />
+          </div>`;
+        insts.forEach((inst, k) => {
+          detHtml += `<div class="bake-batch-row">
+              <span class="bake-batch-label">Batch ${k + 2}</span>
+              <input type="number" min="0" step="1" value="${inst.count > 0 ? inst.count : ''}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)" aria-label="count" />
+              <span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>
+              <input type="datetime-local" value="${inst.deadline || ''}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)" aria-label="deadline" title="Deadline for this batch (blank = default)" />
+              <button class="bake-batch-remove" onclick="removeBakeInstance('${r.id}', '${inst.id}')" title="Remove this batch" aria-label="Remove this batch">✕</button>
+            </div>`;
+        });
+        detHtml += `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}')">+ Add another batch (different deadline)</button></div>`;
+      });
+      detHtml += '</div>';
+      det.innerHTML = detHtml;
+      list.appendChild(det);
     }
 
     renderTotals();
@@ -7392,12 +7424,37 @@ ${notesHtml}
   // recipeDeadlines store (same one the Schedule-tab list uses); blank/default clears it.
   function setPlanDeadline(id, val) {
     const map = loadRecipeDeadlines();
-    const def = (document.getElementById('deadline-default-input') || {}).value || '';
+    const def = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
     if (val && val !== def) map[id] = val; else delete map[id];
     saveRecipeDeadlines(map);
     renderTotals();
     renderSchedule();
+    renderPlan();
     if (typeof renderRecipeDeadlines === 'function') renderRecipeDeadlines();
+  }
+
+  // Set the overall default deadline (the due-time every recipe uses unless it
+  // has its own). Shared by the Bake Plan tab's input and the Schedule tab's;
+  // keeps both in sync, drops per-recipe overrides that were merely tracking the
+  // old/new default, and re-renders everything that depends on the deadline.
+  function setDefaultDeadline(newDefault) {
+    const oldDefault = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
+    if (newDefault) localStorage.setItem(DEFAULT_DEADLINE_KEY, newDefault);
+    else localStorage.removeItem(DEFAULT_DEADLINE_KEY);
+    ['deadline-default-input', 'plan-deadline-default-input'].forEach(elId => {
+      const el = document.getElementById(elId);
+      if (el && el.value !== newDefault) el.value = newDefault;
+    });
+    const map = loadRecipeDeadlines();
+    let changed = false;
+    Object.keys(map).forEach(id => {
+      if (map[id] === oldDefault || map[id] === newDefault) { delete map[id]; changed = true; }
+    });
+    if (changed) saveRecipeDeadlines(map);
+    if (typeof renderRecipeDeadlines === 'function') renderRecipeDeadlines();
+    renderPlan();
+    renderSchedule();
+    renderTotals();
   }
 
   // Per-recipe static pricing data used by renderFinancials + recalcFinancialsTotals.
@@ -15775,22 +15832,7 @@ ${notesHtml}
   if (defaultDeadlineInput) {
     defaultDeadlineInput.value = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
     defaultDeadlineInput.addEventListener('input', () => {
-      const oldDefault = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
-      const newDefault = defaultDeadlineInput.value;
-      if (newDefault) localStorage.setItem(DEFAULT_DEADLINE_KEY, newDefault);
-      else localStorage.removeItem(DEFAULT_DEADLINE_KEY);
-      // A per-recipe override that just matches the default is tracking it, not a real
-      // override — drop those so they follow the new default instead of staying cached
-      // at the old value. (Genuinely different overrides are kept.)
-      const map = loadRecipeDeadlines();
-      let changed = false;
-      Object.keys(map).forEach(id => {
-        if (map[id] === oldDefault || map[id] === newDefault) { delete map[id]; changed = true; }
-      });
-      if (changed) saveRecipeDeadlines(map);
-      renderRecipeDeadlines();
-      renderSchedule();
-      renderTotals();
+      setDefaultDeadline(defaultDeadlineInput.value);
     });
   }
   const defaultBaketimeInput = document.getElementById('bake-time-default-input');
