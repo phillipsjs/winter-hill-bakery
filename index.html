@@ -915,6 +915,12 @@
   .stage-note-text { flex-basis: 100%; font-size: 0.78rem; color: #3a4a55; background: #eaf1f4;
     border-left: 3px solid #4F6A73; padding: 2px 7px; border-radius: 3px; white-space: pre-wrap; }
 
+  /* Per-oven preference control on the bake step (preferred / required / avoid) */
+  .stage-oven-prefs { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 0.8rem; }
+  .stage-oven-pref { display: inline-flex; align-items: center; gap: 4px; }
+  .stage-oven-name { color: #3a4a55; }
+  .stage-oven-sel { font-size: 0.78rem; padding: 1px 4px; width: auto; flex: none; }
+
   /* Per-stage ingredient tagging in the recipe editor */
   .stage-ing-btn { white-space: nowrap; }
   .stage-ing-text { flex-basis: 100%; font-size: 0.78rem; color: #4a3618; background: #f3ead4;
@@ -5822,6 +5828,10 @@ ${notesHtml}
     recipes.forEach(function(r) {
       if (field === 'preferredOvenId' || field === 'preferredPotId') {
         if (r[field] === id) { r[field] = null; changed = true; }
+        // Drop the removed oven from the rich per-oven preference map too.
+        if (field === 'preferredOvenId' && r.ovenPrefs && id in r.ovenPrefs) {
+          const next = { ...r.ovenPrefs }; delete next[id]; applyOvenPrefs(r, next); changed = true;
+        }
       } else if (Array.isArray(r[field]) && r[field].indexOf(id) !== -1) {
         r[field] = r[field].filter(function(x) { return x !== id; });
         changed = true;
@@ -5907,6 +5917,80 @@ ${notesHtml}
       for (let i = 0; i < d; i++) slots.push({ ovenName: o.name, localDeck: i + 1 });
     });
     return slots;
+  }
+  // ---- Per-recipe oven preferences (per-oven preferred / required / avoid) ----
+  // A recipe stores `ovenPrefs` = { [ovenId]: 'preferred' | 'required' | 'avoid' }. Recipes
+  // saved before this feature used a single `preferredOvenId`; that's read as a soft
+  // 'preferred' fallback, and a legacy mirror is kept in sync for the quick single pickers.
+  const OVEN_PREF_STATES = ['preferred', 'required', 'avoid'];
+  function normalizeOvenPrefs(map) {
+    const out = {};
+    if (map && typeof map === 'object') {
+      Object.keys(map).forEach(id => { if (OVEN_PREF_STATES.includes(map[id])) out[id] = map[id]; });
+    }
+    return out;
+  }
+  // Normalized {ovenId: state} for a recipe (falls back to legacy preferredOvenId). Non-mutating.
+  function getRecipeOvenPrefs(r) {
+    if (r && r.ovenPrefs && typeof r.ovenPrefs === 'object' && Object.keys(r.ovenPrefs).length) return normalizeOvenPrefs(r.ovenPrefs);
+    if (r && r.preferredOvenId) return { [r.preferredOvenId]: 'preferred' };
+    return {};
+  }
+  function ovenIdsByState(r, state) {
+    const m = getRecipeOvenPrefs(r);
+    return Object.keys(m).filter(id => m[id] === state);
+  }
+  // The single soft-preferred oven a legacy reader should see: one lone 'required' (only that
+  // oven is allowed → effectively preferred) or one lone 'preferred'; otherwise null.
+  function legacyPreferredOvenId(map) {
+    const m = normalizeOvenPrefs(map);
+    const req = Object.keys(m).filter(id => m[id] === 'required');
+    const pref = Object.keys(m).filter(id => m[id] === 'preferred');
+    if (req.length === 1 && pref.length === 0) return req[0];
+    if (pref.length === 1 && req.length === 0) return pref[0];
+    return null;
+  }
+  // Write a normalized pref map onto a recipe, keeping the legacy mirror in sync.
+  function applyOvenPrefs(r, map) {
+    const clean = normalizeOvenPrefs(map);
+    if (Object.keys(clean).length) r.ovenPrefs = clean; else delete r.ovenPrefs;
+    r.preferredOvenId = legacyPreferredOvenId(clean);
+  }
+  // Quick single-oven picker (Bake Plan card / bake sheet): set one soft-preferred oven (or
+  // clear it), preserving any 'avoid' marks but replacing other preferred/required picks so the
+  // simple control stays predictable. The full matrix lives in the recipe editor.
+  function setRecipePreferredOven(r, ovenId) {
+    const prev = getRecipeOvenPrefs(r);
+    const next = {};
+    Object.keys(prev).forEach(id => { if (prev[id] === 'avoid') next[id] = 'avoid'; });
+    if (ovenId) next[ovenId] = 'preferred';
+    applyOvenPrefs(r, next);
+  }
+  // Which of `availableIds` a recipe may bake in: if it marks any oven 'required', only those
+  // (that still exist); otherwise all except the ones marked 'avoid'. May be empty (infeasible).
+  function allowedOvenIds(r, availableIds) {
+    const req = ovenIdsByState(r, 'required').filter(id => availableIds.includes(id));
+    if (req.length) return req;
+    const avoid = new Set(ovenIdsByState(r, 'avoid'));
+    return availableIds.filter(id => !avoid.has(id));
+  }
+  // Combined constraint for recipes baking together (one process kind → one oven): allowed =
+  // intersection of each recipe's allowed set; score ranks ovens by how many recipes require
+  // (×2) or prefer (×1) them. `restricted` = a real required/avoid limit; `infeasible` = empty.
+  function combinedOvenConstraint(recipeList, availableIds) {
+    let allowed = null;
+    (recipeList || []).forEach(r => {
+      const a = new Set(allowedOvenIds(r, availableIds));
+      allowed = allowed === null ? a : new Set([...allowed].filter(id => a.has(id)));
+    });
+    if (allowed === null) allowed = new Set(availableIds);
+    const score = {};
+    availableIds.forEach(id => { score[id] = 0; });
+    (recipeList || []).forEach(r => {
+      ovenIdsByState(r, 'required').forEach(id => { if (id in score) score[id] += 2; });
+      ovenIdsByState(r, 'preferred').forEach(id => { if (id in score) score[id] += 1; });
+    });
+    return { allowed: [...allowed], score, restricted: allowed.size < availableIds.length, infeasible: allowed.size === 0 };
   }
   // Estimated minutes to preheat an oven to targetTemp from cold, from the user's
   // per-temp data points fit to a line. Returns null when the oven has no data.
@@ -7960,7 +8044,7 @@ ${notesHtml}
       if (!r) return;
       if (kind === 'container') r.preferredContainerIds = value ? [value] : [];
       else if (kind === 'mixer') r.preferredMixerIds = value ? [value] : [];
-      else if (kind === 'oven') { r.preferredOvenId = value || null; setRecipeStageVessel(r, 'bake', value ? 'oven:' + value : ''); }
+      else if (kind === 'oven') setRecipePreferredOven(r, value || null); // quick pick → soft 'preferred' (keeps 'avoid' marks)
       else if (kind === 'pot') { r.preferredPotId = value || null; setRecipeStageVessel(r, 'boil', value ? 'pot:' + value : ''); }
     });
     saveRecipes();
@@ -8828,6 +8912,10 @@ ${notesHtml}
   // The editable stage list is the source of truth in the editor; saveRecipe derives
   // the flat scheduler params from it via paramsFromStages().
   let _editorStages = [];
+  // The recipe's per-oven preferences while editing ({ovenId: 'preferred'|'required'|'avoid'}).
+  // Seeded from the recipe on open, read into ovenPrefs on save. Recipe-level (one bake), kept
+  // off the stage objects so it isn't entangled with stage cloning.
+  let _editorOvenPrefs = {};
   // Which steps are expanded into their full editor (by stage id). Collapsed steps show a
   // compact summary; the rest of the section stays uncluttered.
   let _expandedStageIds = new Set();
@@ -8859,16 +8947,33 @@ ${notesHtml}
   // to the recipe's selected mixer); the bake step offers the kitchen's ovens; the boil step
   // offers the kitchen's pots; other stages use the standard vessel list. The bake/boil pick
   // is the recipe's oven/pot (mirrored to preferredOvenId/preferredPotId on save).
+  // Per-oven preference control for a bake step: each oven gets a 4-way state
+  // (Any / Prefer / Require / Avoid). Stored on the recipe (via _editorOvenPrefs), not the
+  // stage. With no ovens defined there's nothing to choose, so render nothing.
+  function stageOvenPrefsHtml() {
+    if (!userOvens.length) return '';
+    const states = [['', 'Any'], ['preferred', 'Prefer'], ['required', 'Require'], ['avoid', 'Avoid']];
+    const rows = userOvens.map(o => {
+      const cur = _editorOvenPrefs[o.id] || '';
+      return `<label class="stage-oven-pref"><span class="stage-oven-name">${escapeHtml(o.name)}</span>`
+        + `<select class="settings-select stage-oven-sel" onchange="setEditorOvenPref('${o.id}',this.value)">`
+        + states.map(([v, l]) => `<option value="${v}"${cur === v ? ' selected' : ''}>${l}</option>`).join('')
+        + `</select></label>`;
+    }).join('');
+    return `<span class="stage-oven-prefs" title="Per oven: Prefer (soft — used first if it fits), Require (only ovens marked Require are used), or Avoid (never used unless nothing else can bake it).">🔥 ${rows}</span>`;
+  }
+  function setEditorOvenPref(ovenId, state) {
+    if (state) _editorOvenPrefs[ovenId] = state; else delete _editorOvenPrefs[ovenId];
+    renderStageEditor(); // re-render the row (refreshes selects) and trigger autosave
+  }
   function stageVesselSelectHtml(s, i) {
     if (!STAGE_VESSEL_TYPES.includes(s.type)) return '';
+    if (s.type === 'bake') return stageOvenPrefsHtml();
     let options, sel = s.vessel || '';
     if (s.type === 'mix') {
       const mixers = userMixers.map(m => ['mixer:' + m.id, m.name]);
       options = [STAGE_VESSEL_OPTIONS[0], ...mixers, ...STAGE_VESSEL_OPTIONS.slice(1)];
       if (!sel) sel = defaultMixVesselValue();
-    } else if (s.type === 'bake') {
-      if (sel === 'oven') sel = ''; // legacy generic vessel → no specific oven
-      options = [['', '— no oven preference —'], ...userOvens.map(o => ['oven:' + o.id, o.name])];
     } else if (s.type === 'boil') {
       options = [['', '— no pot —'], ...userPots.map(p => ['pot:' + p.id, p.name + (p.size ? ' (' + p.size + ')' : '')])];
     } else {
@@ -9382,6 +9487,7 @@ ${notesHtml}
     _editIsNew = true;          // "Revert changes" discards a brand-new recipe
     snapshotEquipCaps();        // so revert can roll back any pan/mixer caps autosave adds
     _editorBatchYield = 1;
+    _editorOvenPrefs = {};      // a new recipe starts with no oven preferences
     resetRecipeEntryModeToPercent();
     document.getElementById('editor-title').textContent = 'New recipe';
     document.getElementById('r-name').value = '';
@@ -9465,6 +9571,7 @@ ${notesHtml}
     // Load the recipe's saved stages (or migrate on the fly), cloned for editing.
     _editorStages = isLevain ? []
       : (Array.isArray(r.stages) && r.stages.length ? r.stages.map(_cloneStage) : stagesFromRecipe(r));
+    _editorOvenPrefs = getRecipeOvenPrefs(r); // seed the per-oven preferences from the recipe
     migrateStageEquipmentVessels(_editorStages, r); // reflect saved oven/pot on the bake/boil rows
     _expandedStageIds.clear(); // open a recipe with every step collapsed to its summary
     renderStageEditor();
@@ -9802,7 +9909,10 @@ ${notesHtml}
       const v = st && typeof st.vessel === 'string' ? st.vessel : '';
       return v.indexOf(prefix + ':') === 0 ? v.slice(prefix.length + 1) : null;
     };
-    const preferredOvenId = stageEquipId('bake', 'oven');
+    // Oven preference is the per-oven matrix (preferred/required/avoid); keep the legacy
+    // single preferredOvenId mirror for the quick pickers + older readers.
+    const ovenPrefs = normalizeOvenPrefs(_editorOvenPrefs);
+    const preferredOvenId = legacyPreferredOvenId(ovenPrefs);
     const preferredPotId = stageEquipId('boil', 'pot');
     const boilBatchEl = document.getElementById('r-boil-batch');
     const boilBatchSize = (() => { const n = boilBatchEl ? parseInt(boilBatchEl.value, 10) : NaN; return (Number.isFinite(n) && n > 0) ? n : null; })();
@@ -9825,7 +9935,7 @@ ${notesHtml}
     }
 
     const batchYield = _editorBatchYield > 1 ? Math.round(_editorBatchYield) : undefined;
-    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, batchYield, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, preferredPotId, boilBatchSize, ...stepFields, ...overrides };
+    const base = { name, processType, unit, loafWeight, ingredients, bakeTempF, costPerItem: costPerItem !== null ? costPerItem : undefined, leavening, batchYield, preferredContainerIds, preferredBannetonIds, preferredPanIds, preferredMixerIds, preferredOvenId, ovenPrefs: Object.keys(ovenPrefs).length ? ovenPrefs : undefined, preferredPotId, boilBatchSize, ...stepFields, ...overrides };
     // The edited stage list is the source of truth — persist it verbatim, but first
     // re-sync the (ingredient-controlled) mill stage against the resolved pantryId links.
     if (processType !== 'levain') {
@@ -10801,16 +10911,10 @@ ${notesHtml}
         const rs = PROC_RECIPES[kind] || [];
         return recipeBakeTempF(rs[0], PROCESS_TEMPLATES[PROC_PROCESS[kind]].bakeTempF);
       };
-      // A slot has a preferred oven only if every in-plan recipe of that type agrees on one.
-      const slotPreferredOven = (kind) => {
-        const all = PROC_RECIPES[kind] || [];
-        if (all.length > 0 && all.every(r => r.preferredOvenId && r.preferredOvenId === all[0].preferredOvenId)) return all[0].preferredOvenId;
-        return null;
-      };
-
       const ovenDefs = userOvens.length ? userOvens.map(o => ({ id: o.id, name: o.name })) : [{ id: '_oven', name: 'Oven' }];
       const multiOven = ovenDefs.length > 1;
       const ovenName = (id) => { const o = ovenDefs.find(x => x.id === id); return o ? o.name : 'Oven'; };
+      const availOvenIds = ovenDefs.map(o => o.id);
 
       const slots = [
         loafSlot     ? { s: loafSlot,     kind: 'loaf'     } : null,
@@ -10821,7 +10925,14 @@ ${notesHtml}
       ].filter(Boolean);
       slots.forEach(it => {
         it.temp = slotTemp(it.kind);
-        it.preferredOvenId = slotPreferredOven(it.kind);
+        // Per-oven preferences (preferred/required/avoid) combined across this kind's recipes:
+        // allowedOvens is the hard whitelist (required) minus the avoided; ovenScore ranks the
+        // soft 'preferred' picks. If the constraints are impossible, bake anywhere and warn.
+        const c = combinedOvenConstraint(PROC_RECIPES[it.kind] || [], availOvenIds);
+        it.ovenInfeasible = c.infeasible;
+        it.allowedOvens = c.infeasible ? availOvenIds.slice() : c.allowed;
+        it.ovenScore = c.score;
+        it.ovenRestricted = c.restricted && !c.infeasible;
         it.desiredFirst = new Date(it.s.firstBakeStart);     // original (pre-sequencing) start
         it.durationMs = it.s.lastBakeEnd - it.s.firstBakeStart;
         it.coolMin = PROC_COOL_MIN[it.kind];
@@ -10831,7 +10942,6 @@ ${notesHtml}
       const assigned = {}; ovenDefs.forEach(o => assigned[o.id] = []);
       const bakeMs = (it) => it.durationMs;
       const loadOf = (id) => assigned[id].reduce((s, it) => s + bakeMs(it), 0);
-      const validPref = (it) => it.preferredOvenId && assigned[it.preferredOvenId];
 
       // Recompute one oven's bake times from each slot's desired start, pushing a later
       // bake after the previous one ends (+ temp-change buffer). Idempotent — always
@@ -10874,37 +10984,50 @@ ${notesHtml}
         if (list.length) { list[list.length - 1].s.turnOffAfter = true; list[list.length - 1].s.turnOffEndOfSession = true; }
       };
 
-      // Initial assignment: preferred ovens first (honored), then remaining
-      // longest-bake-first into the least-loaded oven for parallelism.
-      slots.filter(validPref).forEach(it => { assigned[it.preferredOvenId].push(it); });
-      slots.filter(it => !validPref(it)).sort((a, b) => bakeMs(b) - bakeMs(a)).forEach(it => {
-        const target = ovenDefs.slice().sort((a, b) => loadOf(a.id) - loadOf(b.id))[0].id;
-        assigned[target].push(it);
-      });
+      // Initial assignment: place the most-constrained slots first (fewest allowed ovens),
+      // each into its best allowed oven — highest preference score, then least loaded for
+      // parallelism. One pass honors 'required'/'avoid' (hard, via allowedOvens) and
+      // 'preferred' (soft, via score); an unconstrained slot can use every oven.
+      const bestOvenFor = (it) => it.allowedOvens.slice().sort((a, b) =>
+        ((it.ovenScore[b] || 0) - (it.ovenScore[a] || 0)) || (loadOf(a) - loadOf(b))
+      )[0];
+      slots.slice().sort((a, b) =>
+        (a.allowedOvens.length - b.allowedOvens.length) || (bakeMs(b) - bakeMs(a))
+      ).forEach(it => { assigned[bestOvenFor(it)].push(it); });
       ovenDefs.forEach(o => sequenceOven(o.id));
 
-      // Soft preferred-oven fallback: if a slot misses its deadline in its preferred
-      // oven, try moving it to another oven where everything still fits, and warn.
+      // Warn when oven constraints are impossible (e.g. two kinds require different ovens but
+      // must share one, or every oven was avoided) — something baked anyway.
+      slots.filter(it => it.ovenInfeasible).forEach(it => {
+        warnings.push({
+          msg: `Couldn't satisfy the oven choice for ${recipeLabel(it.kind)} — its allowed ovens conflict or all were excluded; baking in ${ovenName(it.ovenId)} anyway.`,
+          issue: 'oven-constraint', kind: it.kind, type: 'info',
+        });
+      });
+
+      // Soft fallback: if a slot misses its deadline, try another of ITS ALLOWED ovens where
+      // everything still fits. 'required'/'avoid' stay hard (only allowed ovens are tried), so a
+      // single-allowed slot can't move. Warn on a successful move.
       const overflows = (it) => it.deadlineMs != null && it.s.packageReady.getTime() > it.deadlineMs;
       const ovenFeasible = (ovenId) => assigned[ovenId].every(it => !overflows(it));
-      slots.filter(it => it.preferredOvenId && overflows(it)).forEach(it => {
+      slots.filter(it => overflows(it) && it.allowedOvens.length > 1).forEach(it => {
         const fromId = it.ovenId;
-        for (const o of ovenDefs) {
-          if (o.id === fromId) continue;
+        for (const oid of it.allowedOvens) {
+          if (oid === fromId) continue;
           assigned[fromId] = assigned[fromId].filter(x => x !== it);
-          assigned[o.id].push(it);
-          sequenceOven(fromId); sequenceOven(o.id);
-          if (!overflows(it) && ovenFeasible(o.id)) {
+          assigned[oid].push(it);
+          sequenceOven(fromId); sequenceOven(oid);
+          if (!overflows(it) && ovenFeasible(oid)) {
             warnings.push({
-              msg: `${recipeLabel(it.kind)} moved to ${ovenName(o.id)} — its preferred oven (${ovenName(fromId)}) was busy and couldn't finish it by the deadline.`,
+              msg: `${recipeLabel(it.kind)} moved to ${ovenName(oid)} — its preferred oven (${ovenName(fromId)}) was busy and couldn't finish it by the deadline.`,
               issue: 'oven-fallback', kind: it.kind, type: 'info',
             });
             break; // keep the move
           }
           // revert
-          assigned[o.id] = assigned[o.id].filter(x => x !== it);
+          assigned[oid] = assigned[oid].filter(x => x !== it);
           assigned[fromId].push(it);
-          sequenceOven(fromId); sequenceOven(o.id);
+          sequenceOven(fromId); sequenceOven(oid);
         }
       });
 

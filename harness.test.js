@@ -113,6 +113,9 @@ const exportsTail = `
   startNewRecipe, editRecipe, renderStageEditor, onProcessTypeChange, saveRecipe, revertEdit,
   stageEditorReset, stageEditorAdd, stageEditorMove, stageEditorRemove, toggleStageExpand, stageDurationSummary,
   toggleStageIng, stageIngPanelInner, refreshOpenStageIngPanels,
+  stageOvenPrefsHtml, setEditorOvenPref, getRecipeOvenPrefs, allowedOvenIds, combinedOvenConstraint,
+  setRecipePreferredOven, applyOvenPrefs, legacyPreferredOvenId, normalizeOvenPrefs,
+  __editorOvenPrefs: () => _editorOvenPrefs,
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
   annotateActiveMinutes, detectActiveOverlaps, isActiveStep, lateNightActiveSteps,
@@ -781,11 +784,13 @@ mxOk &= mx('a removed mixer link stays visible', /value="mixer:gone" selected/.t
 
 // Bake step → pick a specific oven; boil step → pick a pot.
 api.__setOvens([{ id: 'o1', name: 'Deck Oven' }, { id: 'o2', name: 'Rack Oven' }]);
-const bakeVessel = api.stageVesselSelectHtml({ type: 'bake', vessel: 'oven:o2', duration: { kind: 'anchored', min: 20 }, tempF: 450 }, 0);
-mxOk &= mx('bake stage lists ovens and selects the chosen one', /value="oven:o1"/.test(bakeVessel) && /Deck Oven/.test(bakeVessel) && /value="oven:o2" selected/.test(bakeVessel));
+// Bake step now shows a per-oven preference matrix (Any / Prefer / Require / Avoid).
+api.setEditorOvenPref('o2', 'required');
+const bakeVessel = api.stageVesselSelectHtml({ type: 'bake', duration: { kind: 'anchored', min: 20 }, tempF: 450 }, 0);
+mxOk &= mx('bake stage lists every oven with a preference select', /Deck Oven/.test(bakeVessel) && /Rack Oven/.test(bakeVessel) && /setEditorOvenPref\('o1'/.test(bakeVessel) && /setEditorOvenPref\('o2'/.test(bakeVessel));
+mxOk &= mx('bake stage marks the required oven selected', /value="required" selected/.test(bakeVessel));
 mxOk &= mx('bake stage does not list pots or mixers', !/value="pot:/.test(bakeVessel) && !/value="mixer:/.test(bakeVessel));
-const legacyBake = api.stageVesselSelectHtml({ type: 'bake', vessel: 'oven', duration: { kind: 'anchored', min: 20 } }, 0);
-mxOk &= mx('legacy bake vessel "oven" normalizes to no specific oven', /value="" selected/.test(legacyBake));
+api.setEditorOvenPref('o2', ''); // reset editor oven prefs for later tests
 api.__setPots([{ id: 'pot1', name: 'Big Stockpot', size: '20 qt', quantity: 1 }]);
 const boilVessel = api.stageVesselSelectHtml({ type: 'boil', vessel: 'pot:pot1', duration: { kind: 'fixed', min: 5 } }, 0);
 mxOk &= mx('boil stage lists pots and selects the chosen one', /value="pot:pot1" selected/.test(boilVessel) && /Big Stockpot/.test(boilVessel));
@@ -891,18 +896,18 @@ edOk &= ed('switching pot does not throw (re-renders cards)', threw === null);
 edOk &= ed('pot edit sets preferredPotId', bagelE.preferredPotId === 'pot1');
 edOk &= ed('pot edit sets the boil stage vessel', (bagelE.stages.find(s => s.type === 'boil') || {}).vessel === 'pot:pot1');
 api.setBakePlanEquip([loafE.id], 'oven', 'o2');
-edOk &= ed('oven edit sets preferredOvenId', loafE.preferredOvenId === 'o2');
-edOk &= ed('oven edit sets the bake stage vessel', (loafE.stages.find(s => s.type === 'bake') || {}).vessel === 'oven:o2');
+edOk &= ed('oven edit sets preferredOvenId mirror', loafE.preferredOvenId === 'o2');
+edOk &= ed('oven edit sets ovenPrefs (preferred)', loafE.ovenPrefs && loafE.ovenPrefs.o2 === 'preferred');
 api.setBakePlanEquip([loafE.id], 'container', 'c9');
 edOk &= ed('container edit sets preferredContainerIds', Array.isArray(loafE.preferredContainerIds) && loafE.preferredContainerIds[0] === 'c9');
 api.setBakePlanEquip([loafE.id], 'mixer', 'm3');
 edOk &= ed('mixer edit sets preferredMixerIds', Array.isArray(loafE.preferredMixerIds) && loafE.preferredMixerIds[0] === 'm3');
 // clearing a value removes the preference
 api.setBakePlanEquip([loafE.id], 'oven', '');
-edOk &= ed('clearing oven resets to auto (null)', !loafE.preferredOvenId && !(loafE.stages.find(s => s.type === 'bake') || {}).vessel);
+edOk &= ed('clearing oven resets to auto (null)', !loafE.preferredOvenId && (!loafE.ovenPrefs || !loafE.ovenPrefs.o2));
 // restore
 delete bagelE.preferredPotId; const bs = bagelE.stages.find(s => s.type === 'boil'); if (bs) delete bs.vessel;
-delete loafE.preferredOvenId; delete loafE.preferredContainerIds; delete loafE.preferredMixerIds;
+delete loafE.preferredOvenId; delete loafE.ovenPrefs; delete loafE.preferredContainerIds; delete loafE.preferredMixerIds;
 allOk &= edOk;
 
 // ---- ingredient catalog (searchable add-ingredient list) ----
@@ -2098,6 +2103,48 @@ allOk &= hvOk;
   api.__setOvens([]);
   localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
   allOk &= ovOk;
+}
+
+// --- Per-oven preferences: model + scheduler (preferred / required / avoid) ---
+{
+  let opOk = true;
+  const avail = ['o1', 'o2', 'o3'];
+  // allowedOvenIds: 'required' is a whitelist; 'avoid' is a blacklist; 'preferred' doesn't restrict.
+  opOk &= hv('required → only required ovens allowed', JSON.stringify(api.allowedOvenIds({ ovenPrefs: { o2: 'required' } }, avail)) === JSON.stringify(['o2']));
+  opOk &= hv('avoid → all ovens except avoided', JSON.stringify(api.allowedOvenIds({ ovenPrefs: { o1: 'avoid' } }, avail)) === JSON.stringify(['o2', 'o3']));
+  opOk &= hv('preferred alone does not restrict the allowed set', JSON.stringify(api.allowedOvenIds({ ovenPrefs: { o3: 'preferred' } }, avail)) === JSON.stringify(avail));
+  opOk &= hv('legacy preferredOvenId reads as soft preferred', api.getRecipeOvenPrefs({ preferredOvenId: 'o1' }).o1 === 'preferred' && JSON.stringify(api.allowedOvenIds({ preferredOvenId: 'o1' }, avail)) === JSON.stringify(avail));
+  // combinedOvenConstraint: intersect required sets; score ranks preferred/required.
+  const c1 = api.combinedOvenConstraint([{ ovenPrefs: { o2: 'required' } }, { ovenPrefs: { o2: 'preferred' } }], avail);
+  opOk &= hv('combined: shared required oven stays allowed + scored highest', JSON.stringify(c1.allowed) === JSON.stringify(['o2']) && c1.restricted && c1.score.o2 >= 3);
+  const c2 = api.combinedOvenConstraint([{ ovenPrefs: { o1: 'required' } }, { ovenPrefs: { o2: 'required' } }], avail);
+  opOk &= hv('combined: disjoint required ovens → infeasible', c2.infeasible);
+  // legacy mirror: a lone required/preferred mirrors to preferredOvenId; ambiguity → null.
+  opOk &= hv('legacy mirror: lone required → preferredOvenId', api.legacyPreferredOvenId({ o2: 'required' }) === 'o2');
+  opOk &= hv('legacy mirror: two preferred → null (ambiguous)', api.legacyPreferredOvenId({ o1: 'preferred', o2: 'preferred' }) === null);
+
+  // End-to-end: a loaf REQUIRED to Oven B bakes there (not Oven A); avoiding both warns.
+  const loaf = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.batard)));
+  api.__setOvens([{ id: 'o1', name: 'Oven A', decks: 3 }, { id: 'o2', name: 'Oven B', decks: 3 }]);
+  api.__setRecipes([loaf]);
+  const plan = { [loaf.id]: 6 };
+  api.__setPlan(plan); seedPlan(plan);
+  const base = new Date(2030, 0, 7, 8, 0);
+  const render = () => { els['deadline-default-input'].value = fmtLocal(base); localStorageStub.removeItem(RECIPE_DEADLINES_KEY); api.renderSchedule(); };
+  const ovenNames = () => [...new Set((api.__sr().equipClaims || []).filter(c => c.pool === 'oven').map(c => c.name))];
+  loaf.ovenPrefs = { o2: 'required' };
+  render();
+  opOk &= hv('required oven → loaf bakes in Oven B only', ovenNames().includes('Oven B') && !ovenNames().includes('Oven A'));
+  loaf.ovenPrefs = { o1: 'avoid' };
+  render();
+  opOk &= hv('avoided oven → loaf bakes in the other oven', ovenNames().includes('Oven B') && !ovenNames().includes('Oven A'));
+  loaf.ovenPrefs = { o1: 'avoid', o2: 'avoid' };
+  render();
+  opOk &= hv('all ovens avoided → infeasible warning (bakes anyway)', (api.__sr().warnings || []).some(w => w.issue === 'oven-constraint'));
+  delete loaf.ovenPrefs;
+  api.__setOvens([]);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  allOk &= opOk;
 }
 
 // --- Combined staggered bake: the "Into fridge" label notes the longer later-batch proof ---
