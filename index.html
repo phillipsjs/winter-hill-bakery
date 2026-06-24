@@ -10835,7 +10835,9 @@ ${notesHtml}
       const d = opts.recipeDeadlines && opts.recipeDeadlines[r.id];
       return d ? new Date(d).getTime() : (procDeadline ? new Date(procDeadline).getTime() : 'none');
     })).size;
-    [['loaves', loafRecipes, loafDeadline], ['English muffins', muffinRecipes, muffinDeadline || loafDeadline], ['bagels', bagelRecipes, bagelDeadline || loafDeadline], ['focaccia', focacciaRecipes, focacciaDeadline]].forEach(([label, recs, pd]) => {
+    // Bagels now split by deadline (their own bake unit per deadline), so they're excluded
+    // here. Muffin/focaccia still collapse to the earliest until Phase 2 lands for them.
+    [['English muffins', muffinRecipes, muffinDeadline || loafDeadline], ['focaccia', focacciaRecipes, focacciaDeadline]].forEach(([label, recs, pd]) => {
       if (recs.length > 1 && deadlineSpread(recs, pd) > 1) {
         warnings.push({ msg: `Your ${label} have different deadlines, but bread of one type still bakes on a single shared timeline — they'll all be scheduled to the earliest deadline for now. (Per-deadline splitting for bread is in progress.)`, issue: 'bread-deadline-merge', kind: label, type: 'info' });
       }
@@ -11179,11 +11181,55 @@ ${notesHtml}
     const muffinSlot = totalMuffins > 0
       ? computeBakeSlot(effMuffinDeadline, effMuffinBakeTime, muffinBakeTotalMin, 'Muffins', 'muffin', muffinCoolMin)
       : null;
-    // Bagel slot: firstBakeStart here is the first BOIL start (active oven work
-    // begins there); lastBakeEnd is when the final batch leaves the oven.
-    const bagelSlot = totalBagels > 0
-      ? computeBakeSlot(effBagelDeadline, effBagelBakeTime, bagelOvenSpanMin, 'Bagels', 'bagel', bagelCoolMin)
-      : null;
+    // Bagel slot(s): firstBakeStart here is the first BOIL start (active oven work
+    // begins there); lastBakeEnd is when the final batch leaves the oven. Bagels split
+    // by deadline — each deadline group is its own bake unit (slot/column/emission),
+    // mirroring side groups. A single deadline → one group keyed 'bagel' whose derived
+    // values equal the legacy globals (byte-identical); multiple → 'bagel#0', 'bagel#1'.
+    const bagelGroups = [];
+    if (totalBagels > 0) {
+      const byDl = new Map();
+      bagelRecipes.forEach(r => {
+        const d = (opts.recipeDeadlines && opts.recipeDeadlines[r.id]) ? new Date(opts.recipeDeadlines[r.id]) : (effBagelDeadline ? new Date(effBagelDeadline) : null);
+        const k = d ? d.getTime() : 'none';
+        if (!byDl.has(k)) byDl.set(k, { deadline: d, recipes: [] });
+        byDl.get(k).recipes.push(r);
+      });
+      const buckets = [...byDl.values()].sort((a, b) => (a.deadline ? a.deadline.getTime() : 0) - (b.deadline ? b.deadline.getTime() : 0));
+      buckets.forEach((bk, i) => {
+        const recs = bk.recipes;
+        const total = recs.reduce((s, r) => s + (plan[r.id] || 0), 0);
+        const agg = {
+          bakeMin:    maxOr(recs.map(r => getRecipeSpec(r).bakeMin), PROCESS_TEMPLATES.bagel.bakeMin),
+          bakeTempF:  breadBakeTempF(recs, 'bagel'),
+          bulkMin:    fermentScale(maxOr(recs.map(r => getRecipeSpec(r).bulkMin), PROCESS_TEMPLATES.bagel.bulkMin)),
+          shapeMinPerUnit: maxOr(recs.map(r => getRecipeSpec(r).shapeMinPerUnit), PROCESS_TEMPLATES.bagel.shapeMinPerUnit),
+        };
+        const explicitCp = recs.filter(r => hasExplicitOverride(r, 'coldProofHr')).map(r => Number(r.coldProofHr));
+        const coldProofHours = explicitCp.length ? Math.max(bagelColdProofBase, ...explicitCp) : bagelColdProofBase;
+        const boilSizes = recs.map(r => Math.floor(Number(r.boilBatchSize))).filter(n => Number.isFinite(n) && n > 0);
+        const batchSizeEff = boilSizes.length ? Math.min(...boilSizes) : SCHED.BAGEL_BATCH_SIZE;
+        const batches = total > 0 ? Math.ceil(total / batchSizeEff) : 0;
+        const cycleMin = SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN + agg.bakeMin;
+        const ovenSpanMin = batches * cycleMin;
+        const mixBatches = total > 0 ? Math.ceil(total / SCHED.BAGEL_MIXER_CAPACITY) : 0;
+        const totalShapeMin = recs.reduce((s, r) => s + (plan[r.id] || 0) * getRecipeSpec(r).shapeMinPerUnit, 0);
+        const coolMin = processCoolMin(recs, SCHED.COOL_HOURS * 60);
+        const key = buckets.length === 1 ? 'bagel' : `bagel#${i}`;
+        const g = {
+          key, process: 'bagel', procType: 'bagel', deadline: bk.deadline,
+          recipes: recs, recipeIds: recs.map(r => r.id), total,
+          label: recs.map(r => r.name).join(', '),
+          agg, coldProofHours, coldProofBase: bagelColdProofBase,
+          batchSizeEff, batches, cycleMin, ovenSpanMin, mixBatches, totalShapeMin, coolMin,
+          millingFlours: millingFloursForRecipes(recs), millMin: millMinFor(recs),
+          times: null, timeline: null, divergent: false, mixStart: null,
+        };
+        g.slot = computeBakeSlot(bk.deadline || effBagelDeadline, effBagelBakeTime, ovenSpanMin, 'Bagels', key, coolMin);
+        bagelGroups.push(g);
+      });
+    }
+    const bagelSlot = bagelGroups.length === 1 ? bagelGroups[0].slot : null;
 
     // Focaccia bake slot: commercial yeast, shorter cool time than sourdough.
     let focacciaSlot = null;
@@ -11341,6 +11387,16 @@ ${notesHtml}
         PROC_RECIPES[g.key]  = g.recipes;
         PROC_PROCESS[g.key]  = g.process;
       });
+      // Each bagel deadline group is likewise its own bake "kind" (key 'bagel' or 'bagel#i').
+      const bagelGroupByKey = {};
+      bagelGroups.forEach(g => {
+        bagelGroupByKey[g.key] = g;
+        PROC_DEADLINE[g.key] = g.deadline;
+        PROC_LABEL[g.key]    = g.label;
+        PROC_COOL_MIN[g.key] = g.coolMin;
+        PROC_RECIPES[g.key]  = g.recipes;
+        PROC_PROCESS[g.key]  = g.procType;
+      });
       // Warnings reference recipe names (what the user knows), not the backend process.
       const recipeLabel = (kind) => {
         const rs = PROC_RECIPES[kind] || [];
@@ -11349,6 +11405,7 @@ ${notesHtml}
 
       const slotTemp = (kind) => {
         if (sideGroupByKey[kind]) return sideGroupByKey[kind].temp;
+        if (bagelGroupByKey[kind]) return bagelGroupByKey[kind].agg.bakeTempF;
         const rs = PROC_RECIPES[kind] || [];
         return recipeBakeTempF(rs[0], PROCESS_TEMPLATES[PROC_PROCESS[kind]].bakeTempF);
       };
@@ -11360,7 +11417,7 @@ ${notesHtml}
       const slots = [
         loafSlot     ? { s: loafSlot,     kind: 'loaf'     } : null,
         muffinSlot   ? { s: muffinSlot,   kind: 'muffin'   } : null,
-        bagelSlot    ? { s: bagelSlot,    kind: 'bagel'    } : null,
+        ...bagelGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
         focacciaSlot ? { s: focacciaSlot, kind: 'focaccia' } : null,
         ...sideGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
       ].filter(Boolean);
@@ -11801,7 +11858,7 @@ ${notesHtml}
       return names.length ? names : (singleOvenName ? [singleOvenName] : []);
     };
     const muffinMixBatches = totalMuffins > 0 ? Math.ceil(totalMuffins / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
-    const bagelMixBatches = totalBagels > 0 ? Math.ceil(totalBagels / SCHED.BAGEL_MIXER_CAPACITY) : 0;
+    const bagelMixBatches = bagelGroups.reduce((s, g) => s + g.mixBatches, 0);
     const focacciaMixBatches = totalFocaccia > 0 ? 1 : 0;
     const totalMixBatches = numContainers + muffinMixBatches + bagelMixBatches + focacciaMixBatches + simpleMixBatches + enrichedMixBatches;
 
@@ -11855,47 +11912,42 @@ ${notesHtml}
       muffinMixStart = muffinTimeline.reduce((m, t) => (t.mixStart < m ? t.mixStart : m), muffinTimeline[0].mixStart);
     }
 
-    // Bagel sub-timeline (mirrors muffins). Bagels are boiled straight from the
-    // cold fridge — no warm-up — so the fridge step ends at the first boil.
-    const totalBagelShapeMin = totalBagels > 0 ? bagelRecipes.reduce(
-      (s, r) => s + plan[r.id] * getRecipeSpec(r).shapeMinPerUnit,
-      0
-    ) : 0;
-    let bagelMixStart = null;
-    let bagelTimes = null;
-    if (totalBagels > 0 && bagelSlot) {
-      const bagelFirstBoil = bagelSlot.firstBakeStart; // active oven work begins here
-      const bagelFridgeIn = addMinutes(bagelFirstBoil, -bagelColdProofHours * 60);
-      const bagelShapeStart = addMinutes(bagelFridgeIn, -totalBagelShapeMin);
-      const bagelBulkStart = addMinutes(bagelShapeStart, -bagelAgg.bulkMin);
-      bagelMixStart = addMinutes(bagelBulkStart, -bagelMixBatches * SCHED.BAGEL_MIX_ACTIVE_MIN);
-      bagelTimes = { bagelFirstBoil, bagelFridgeIn, bagelShapeStart, bagelBulkStart };
-    }
-    // Per-recipe bagel proofing (mirrors muffins, minus the warm-up — bagels boil straight
-    // from cold). Diverges when recipes resolve to different warm bulk or cold proof.
-    const bagelProfileOf = (r) => {
+    // Bagel sub-timeline, computed PER deadline group (each group's slot is now sequenced).
+    // Bagels are boiled straight from the cold fridge — no warm-up — so the fridge step ends
+    // at the first boil. Diverges per-recipe within a group when proofing profiles differ.
+    const bagelProfileOf = (r, base) => {
       const sp = getRecipeSpec(r);
-      const cp = hasExplicitOverride(r, 'coldProofHr') ? Number(r.coldProofHr) : (bagelColdProofBase || 0);
+      const cp = hasExplicitOverride(r, 'coldProofHr') ? Number(r.coldProofHr) : (base || 0);
       const bulk = fermentScale(sp.bulkMin);
       return { cp, bulk };
     };
-    let bagelTimeline = null;
-    const bagelDivergent = totalBagels > 0 && bagelSlot && bagelRecipes.length > 1 &&
-      new Set(bagelRecipes.map(r => { const p = bagelProfileOf(r); return `${p.cp}|${p.bulk}`; })).size > 1;
-    if (bagelDivergent) {
-      const bagelFirstBoil = bagelSlot.firstBakeStart;
-      bagelTimeline = bagelRecipes.map(r => {
-        const p = bagelProfileOf(r);
-        const shapeMin = (plan[r.id] || 0) * getRecipeSpec(r).shapeMinPerUnit;
-        const fridgeIn = addMinutes(bagelFirstBoil, -p.cp * 60);
-        const shapeStart = addMinutes(fridgeIn, -shapeMin);
-        const bulkStart = addMinutes(shapeStart, -p.bulk);
-        const mixBatches = Math.max(1, Math.ceil((plan[r.id] || 0) / SCHED.BAGEL_MIXER_CAPACITY));
-        const mixStart = addMinutes(bulkStart, -mixBatches * SCHED.BAGEL_MIX_ACTIVE_MIN);
-        return { r, p, shapeMin, mixBatches, fridgeIn, shapeStart, bulkStart, mixStart };
-      });
-      bagelMixStart = bagelTimeline.reduce((m, t) => (t.mixStart < m ? t.mixStart : m), bagelTimeline[0].mixStart);
-    }
+    bagelGroups.forEach(g => {
+      if (!g.slot) return;
+      const firstBoil = g.slot.firstBakeStart;
+      const fridgeIn = addMinutes(firstBoil, -g.coldProofHours * 60);
+      const shapeStart = addMinutes(fridgeIn, -g.totalShapeMin);
+      const bulkStart = addMinutes(shapeStart, -g.agg.bulkMin);
+      g.mixStart = addMinutes(bulkStart, -g.mixBatches * SCHED.BAGEL_MIX_ACTIVE_MIN);
+      g.times = { bagelFirstBoil: firstBoil, bagelFridgeIn: fridgeIn, bagelShapeStart: shapeStart, bagelBulkStart: bulkStart };
+      g.divergent = g.recipes.length > 1 &&
+        new Set(g.recipes.map(r => { const p = bagelProfileOf(r, g.coldProofBase); return `${p.cp}|${p.bulk}`; })).size > 1;
+      if (g.divergent) {
+        g.timeline = g.recipes.map(r => {
+          const p = bagelProfileOf(r, g.coldProofBase);
+          const shapeMin = (plan[r.id] || 0) * getRecipeSpec(r).shapeMinPerUnit;
+          const fIn = addMinutes(firstBoil, -p.cp * 60);
+          const sStart = addMinutes(fIn, -shapeMin);
+          const bStart = addMinutes(sStart, -p.bulk);
+          const mixBatches = Math.max(1, Math.ceil((plan[r.id] || 0) / SCHED.BAGEL_MIXER_CAPACITY));
+          const mixStart = addMinutes(bStart, -mixBatches * SCHED.BAGEL_MIX_ACTIVE_MIN);
+          return { r, p, shapeMin, mixBatches, fridgeIn: fIn, shapeStart: sStart, bulkStart: bStart, mixStart };
+        });
+        g.mixStart = g.timeline.reduce((m, t) => (t.mixStart < m ? t.mixStart : m), g.timeline[0].mixStart);
+      }
+    });
+    // Shared levain anchors to the EARLIEST bagel mix across deadline groups (later groups ride
+    // the earlier-anchored levain; per-group levain is a future refinement).
+    const bagelMixStart = bagelGroups.reduce((m, g) => (g.mixStart && (!m || g.mixStart < m) ? g.mixStart : m), null);
 
     const hasSourdoughProcess = totalLoaves > 0 || totalMuffins > 0 || totalBagels > 0;
 
@@ -12531,19 +12583,22 @@ ${notesHtml}
         equip: ovenNamesFromPlan(muffinOvenPlan),
       });
     }
-    // Bagel oven preheat: the first bagel bake is one boil+top cycle after the
-    // first boil starts; the oven must reach temp by then. Always its own
-    // preheat event (bagels run on their own deadline/bake window).
-    if (bagelSlot) {
-      const firstBagelBake = addMinutes(bagelSlot.firstBakeStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
+    // Bagel oven preheat (per deadline group): the first bagel bake is one boil+top cycle
+    // after the first boil starts; the oven must reach temp by then. Always its own preheat
+    // event (bagels run on their own deadline/bake window).
+    bagelGroups.forEach(g => {
+      if (!g.slot) return;
+      const firstBagelBake = addMinutes(g.slot.firstBakeStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
+      const gPreheat = procPreheat(g.slot, g.recipes, 'bagel');
+      const gTemp = procTemp(g.recipes, 'bagel');
       events.push({
-        time: addMinutes(firstBagelBake, -bagelPreheat),
-        title: `Turn on oven (bagels) to ${fmtTemp(bagelTemp)}`,
-        detail: fmtPreheat(bagelPreheat, bagelTemp),
-        process: 'bagel',
-        equip: (bagelSlot && bagelSlot.ovenName ? [bagelSlot.ovenName] : (singleOvenName ? [singleOvenName] : [])),
+        time: addMinutes(firstBagelBake, -gPreheat),
+        title: `Turn on oven (bagels) to ${fmtTemp(gTemp)}`,
+        detail: fmtPreheat(gPreheat, gTemp),
+        process: 'bagel', columnKey: g.key,
+        equip: (g.slot.ovenName ? [g.slot.ovenName] : (singleOvenName ? [singleOvenName] : [])),
       });
-    }
+    });
 
     // --- Loaf bake loop ---
     // Oven naming for the loaf bake/out/off steps (mirrors the turn-off layer below).
@@ -12613,43 +12668,44 @@ ${notesHtml}
       }
     }
 
-    // --- Bagel boil → top → bake loop (strictly sequential per batch) ---
-    if (totalBagels > 0 && bagelSlot) {
-      const firstBoil = bagelSlot.firstBakeStart;
-      const bagelOvenName = (bagelSlot && bagelSlot.ovenName) || '';
+    // --- Bagel boil → top → bake loop (strictly sequential per batch), per deadline group ---
+    bagelGroups.forEach(g => {
+      if (!g.slot) return;
+      const firstBoil = g.slot.firstBakeStart;
+      const bagelOvenName = g.slot.ovenName || '';
       const bagelOvenTag = bagelOvenName ? ` · ${bagelOvenName}` : '';
       const bagelPotTag = bagelPot ? ` · ${bagelPot.name}` : '';
       events.push({
         time: addMinutes(firstBoil, -SCHED.BAGEL_KETTLE_HEATUP_MIN),
         title: `Bring ${bagelPotLabel} to a boil`,
         detail: `${SCHED.BAGEL_KETTLE_HEATUP_MIN} min · bagels are boiled straight from the cold fridge${bagelPotTag}`,
-        process: 'bagel', equip: bagelPotEquip,
+        process: 'bagel', columnKey: g.key, equip: bagelPotEquip,
       });
-      for (let b = 0; b < bagelBatches; b++) {
-        const boilStart = addMinutes(firstBoil, b * bagelCycleMin);
+      for (let b = 0; b < g.batches; b++) {
+        const boilStart = addMinutes(firstBoil, b * g.cycleMin);
         const bakeStart = addMinutes(boilStart, SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN);
-        const countThis = Math.min(bagelBatchSizeEff, totalBagels - b * bagelBatchSizeEff);
+        const countThis = Math.min(g.batchSizeEff, g.total - b * g.batchSizeEff);
         events.push({
           time: boilStart,
-          title: `Boil batch ${b + 1} of ${bagelBatches}`,
+          title: `Boil batch ${b + 1} of ${g.batches}`,
           detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_BOIL_MIN} min boil${bagelPotTag}`,
-          process: 'bagel', equip: bagelPotEquip,
+          process: 'bagel', columnKey: g.key, equip: bagelPotEquip,
         });
         events.push({
           time: addMinutes(boilStart, SCHED.BAGEL_BOIL_MIN),
-          title: `Top batch ${b + 1} of ${bagelBatches}`,
+          title: `Top batch ${b + 1} of ${g.batches}`,
           detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${SCHED.BAGEL_TOP_MIN} min — add toppings`,
-          process: 'bagel',
+          process: 'bagel', columnKey: g.key,
         });
         events.push({
           time: bakeStart,
-          title: `Bake batch ${b + 1} of ${bagelBatches} — bagels into oven`,
-          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${bagelAgg.bakeMin} min bake · ${fmtTemp(bagelAgg.bakeTempF)}${bagelOvenTag}`,
-          process: 'bagel', equip: bagelOvenName ? [bagelOvenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: bagelOvenTag,
+          title: `Bake batch ${b + 1} of ${g.batches} — bagels into oven`,
+          detail: `${countThis} bagel${countThis === 1 ? '' : 's'} · ${g.agg.bakeMin} min bake · ${fmtTemp(g.agg.bakeTempF)}${bagelOvenTag}`,
+          process: 'bagel', columnKey: g.key, equip: bagelOvenName ? [bagelOvenName] : (singleOvenName ? [singleOvenName] : []), equipStrip: bagelOvenTag,
         });
-        addOvenClaim(bagelOvenName ? [bagelOvenName] : [], 'Bagel bake', bakeStart, bagelAgg.bakeMin);
+        addOvenClaim(bagelOvenName ? [bagelOvenName] : [], 'Bagel bake', bakeStart, g.agg.bakeMin);
       }
-    }
+    });
 
     // --- Muffin mix / shape / fridge events (using precomputed muffinTimes) ---
     const muffinMillMin = millMinFor(muffinRecipes);
@@ -12790,21 +12846,24 @@ ${notesHtml}
     }
     }
 
-    // --- Bagel mix / shape / fridge events (using precomputed bagelTimes) ---
-    const bagelMillMin = millMinFor(bagelRecipes);
-    if (totalBagels > 0 && bagelDivergent) {
+    // --- Bagel mix / shape / fridge events (per deadline group, using g.times/g.timeline) ---
+    bagelGroups.forEach(g => {
+      if (!g.times) return;
+      const bagelMillMin = g.millMin;
+      const bagelRecs = g.recipes;
+      if (g.divergent) {
       // Per-recipe: shared Gather/Mill (anchored to earliest mix) then a per-recipe
       // mix→bulk→shape→fridge chain. No warm-up — bagels boil straight from cold.
-      const bagelWeighDuration = weighMinFor(bagelRecipes);
-      const earliestMix = bagelMixStart;
-      const bagelWeighEnd = millingFloursBagel.size > 0 ? addMinutes(earliestMix, -bagelMillMin) : earliestMix;
-      if (millingFloursBagel.size > 0) {
-        events.push({ time: addMinutes(earliestMix, -bagelMillMin), title: 'Mill flour', detail: `${bagelMillMin} min active · ${[...millingFloursBagel].join(' + ')}`, process: 'bagel' });
+      const bagelWeighDuration = weighMinFor(bagelRecs);
+      const earliestMix = g.mixStart;
+      const bagelWeighEnd = g.millingFlours.size > 0 ? addMinutes(earliestMix, -bagelMillMin) : earliestMix;
+      if (g.millingFlours.size > 0) {
+        events.push({ time: addMinutes(earliestMix, -bagelMillMin), title: 'Mill flour', detail: `${bagelMillMin} min active · ${[...g.millingFlours].join(' + ')}`, process: 'bagel', columnKey: g.key });
       }
-      events.push({ time: addMinutes(bagelWeighEnd, -bagelWeighDuration), title: 'Gather ingredients', detail: `${bagelWeighDuration} min active · ${bagelRecipes.length} recipes`, process: 'bagel' });
+      events.push({ time: addMinutes(bagelWeighEnd, -bagelWeighDuration), title: 'Gather ingredients', detail: `${bagelWeighDuration} min active · ${bagelRecs.length} recipes`, process: 'bagel', columnKey: g.key });
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
-      const bagelBakeEndFallback = (bagelSlot && bagelSlot.lastBakeEnd) || bagelSlot.firstBakeStart;
-      bagelTimeline.forEach(t => {
+      const bagelBakeEndFallback = g.slot.lastBakeEnd || g.slot.firstBakeStart;
+      g.timeline.forEach(t => {
         const r = t.r, sfx = ` — ${r.name}`, count = plan[r.id] || 0;
         const mixerName = (mixerForRecipeG(r) || {}).name || 'Mixer';
         const doughG = (r.loafWeight || 0) * count;
@@ -12814,118 +12873,117 @@ ${notesHtml}
         const mixDetail = t.mixBatches > 1
           ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${t.mixBatches} batches${mixParen} ${bagelLevainNote}`
           : `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix ${bagelLevainNote}`;
-        events.push({ time: t.mixStart, title: `Mix bagel dough${sfx}`, detail: mixDetail, process: 'bagel', container: bulkContainer, equip: [mixerName], mixBatchCount: t.mixBatches > 1 ? t.mixBatches : undefined });
+        events.push({ time: t.mixStart, title: `Mix bagel dough${sfx}`, detail: mixDetail, process: 'bagel', columnKey: g.key, container: bulkContainer, equip: [mixerName], mixBatchCount: t.mixBatches > 1 ? t.mixBatches : undefined });
         const mixEv = events[events.length - 1];
         if (t.p.bulk > 0) {
           const bulkHr = (t.p.bulk / 60).toFixed(t.p.bulk % 60 === 0 ? 0 : 1);
-          events.push({ time: t.bulkStart, timeEnd: t.shapeStart, title: `Bagel dough bulk ferment${sfx}`, detail: `${bulkHr} hr bulk ferment ${bagelLevainNote}`, process: 'bagel', stage: 'proof', container: bulkContainer });
+          events.push({ time: t.bulkStart, timeEnd: t.shapeStart, title: `Bagel dough bulk ferment${sfx}`, detail: `${bulkHr} hr bulk ferment ${bagelLevainNote}`, process: 'bagel', columnKey: g.key, stage: 'proof', container: bulkContainer });
           const bulkEv = events[events.length - 1];
           addClaim('container', `Bagel bulk ferment${sfx}`, bulkCont && bulkCont.name, 1, t.bulkStart, t.shapeStart, null,
             bulkCont ? { candidates: containerCandidates(['any', 'loaf'], doughG), relabel: (n) => { bulkEv.container = n; mixEv.container = n; } } : null);
         }
         const weightStr = perUnitDoughDetail([r]);
-        events.push({ time: t.shapeStart, title: `Shape bagels${sfx}`, detail: `${getRecipeSpec(r).shapeMinPerUnit} min × ${count} bagels = ${t.shapeMin} min total${weightStr ? ` · divide into ${weightStr}` : ''}`, process: 'bagel' });
+        events.push({ time: t.shapeStart, title: `Shape bagels${sfx}`, detail: `${getRecipeSpec(r).shapeMinPerUnit} min × ${count} bagels = ${t.shapeMin} min total${weightStr ? ` · divide into ${weightStr}` : ''}`, process: 'bagel', columnKey: g.key });
         if (t.p.cp > 0) {
           const panNames = panNamesForRecipesG([r]);
           const container = panNames.length ? panNames.join(' + ') : 'sheet tray';
-          events.push({ time: t.fridgeIn, title: `Bagels into fridge — cold proof${sfx}`, detail: `${t.p.cp} hr in fridge · boiled straight from cold`, process: 'bagel', container });
+          events.push({ time: t.fridgeIn, title: `Bagels into fridge — cold proof${sfx}`, detail: `${t.p.cp} hr in fridge · boiled straight from cold`, process: 'bagel', columnKey: g.key, container });
           if (panNames.length) {
             addClaim('pan', `Bagel pan${sfx}`, container, count, t.fridgeIn, bagelBakeEndFallback, panCapacityForRecipesG([r]));
           }
         }
       });
-    } else {
-    if (totalBagels > 0 && bagelTimes && millingFloursBagel.size > 0) {
-      events.push({
-        time: addMinutes(bagelMixStart, -bagelMillMin),
-        title: 'Mill flour',
-        detail: `${bagelMillMin} min active · ${[...millingFloursBagel].join(' + ')}`,
-        process: 'bagel',
-      });
-    }
-    if (totalBagels > 0 && bagelTimes) {
+      } else {
+      if (g.millingFlours.size > 0) {
+        events.push({
+          time: addMinutes(g.mixStart, -bagelMillMin),
+          title: 'Mill flour',
+          detail: `${bagelMillMin} min active · ${[...g.millingFlours].join(' + ')}`,
+          process: 'bagel', columnKey: g.key,
+        });
+      }
       // Weigh ingredients before mixing (duration from each recipe's weigh stage) —
       // finishing in time for the mill step (if any flour is milled) or the mix otherwise.
-      const bagelWeighDuration = weighMinFor(bagelRecipes);
-      const bagelWeighEnd = millingFloursBagel.size > 0
-        ? addMinutes(bagelMixStart, -bagelMillMin)
-        : bagelMixStart;
+      const bagelWeighDuration = weighMinFor(bagelRecs);
+      const bagelWeighEnd = g.millingFlours.size > 0
+        ? addMinutes(g.mixStart, -bagelMillMin)
+        : g.mixStart;
       events.push({
         time: addMinutes(bagelWeighEnd, -bagelWeighDuration),
         title: 'Gather ingredients',
-        detail: (bagelRecipes.length > 1
-          ? `${bagelWeighDuration} min active · ${bagelRecipes.length} recipes`
+        detail: (bagelRecs.length > 1
+          ? `${bagelWeighDuration} min active · ${bagelRecs.length} recipes`
           : `${bagelWeighDuration} min active`)
-          + (bagelMixBatches > 1 ? ` · weigh per batch (${bagelMixBatches} mixer loads)` : ''),
-        process: 'bagel',
-        mixBatchCount: bagelMixBatches > 1 ? bagelMixBatches : undefined,
+          + (g.mixBatches > 1 ? ` · weigh per batch (${g.mixBatches} mixer loads)` : ''),
+        process: 'bagel', columnKey: g.key,
+        mixBatchCount: g.mixBatches > 1 ? g.mixBatches : undefined,
       });
-      const bagelBulkHrLabel = (bagelAgg.bulkMin / 60).toFixed(bagelAgg.bulkMin % 60 === 0 ? 0 : 1);
+      const bagelBulkHrLabel = (g.agg.bulkMin / 60).toFixed(g.agg.bulkMin % 60 === 0 ? 0 : 1);
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
-      const bagelMixerName = (bagelRecipes.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
+      const bagelMixerName = (bagelRecs.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
       const bagelMixerParen = ` (mixer holds max ${SCHED.BAGEL_MIXER_CAPACITY} bagels; all batches go into the same container for proofing)`;
-      const bagelMixDetail = bagelMixBatches > 1
-        ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${bagelMixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * bagelMixBatches} min active${bagelMixerParen} ${bagelLevainNote}`
+      const bagelMixDetail = g.mixBatches > 1
+        ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${g.mixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * g.mixBatches} min active${bagelMixerParen} ${bagelLevainNote}`
         : `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix ${bagelLevainNote}`;
       // Dough is mixed straight into the bulk-ferment container, so compute it up front
       // and surface it on both the mix and the bulk-ferment steps.
-      const bagelDoughG = bagelRecipes.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
-      const bagelBulkCont = pickDoughContainer(bagelDoughG, bagelRecipes.flatMap(r => r.preferredContainerIds || []));
+      const bagelDoughG = bagelRecs.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
+      const bagelBulkCont = pickDoughContainer(bagelDoughG, bagelRecs.flatMap(r => r.preferredContainerIds || []));
       const bagelBulkContainer = bagelBulkCont ? bagelBulkCont.name : 'dough tub';
       events.push({
-        time: bagelMixStart,
+        time: g.mixStart,
         title: 'Mix bagel dough',
         detail: bagelMixDetail,
-        process: 'bagel',
-        mixBatchCount: bagelMixBatches > 1 ? bagelMixBatches : undefined,
+        process: 'bagel', columnKey: g.key,
+        mixBatchCount: g.mixBatches > 1 ? g.mixBatches : undefined,
         container: bagelBulkContainer,
         equip: [bagelMixerName],
-        equipStrip: bagelMixBatches > 1 ? bagelMixerParen : '',
+        equipStrip: g.mixBatches > 1 ? bagelMixerParen : '',
       });
       const bagelMixEv = events[events.length - 1];
       // Bulk ferment as its own (proof-stage) step, between mixing and shaping.
-      if (bagelAgg.bulkMin > 0) {
+      if (g.agg.bulkMin > 0) {
         events.push({
-          time: bagelTimes.bagelBulkStart,
-          timeEnd: bagelTimes.bagelShapeStart,
+          time: g.times.bagelBulkStart,
+          timeEnd: g.times.bagelShapeStart,
           title: 'Bagel dough bulk ferment',
           detail: `${bagelBulkHrLabel} hr bulk ferment ${bagelLevainNote}`,
-          process: 'bagel', stage: 'proof', container: bagelBulkContainer,
+          process: 'bagel', columnKey: g.key, stage: 'proof', container: bagelBulkContainer,
         });
         const bagelBulkEv = events[events.length - 1];
-        addClaim('container', 'Bagel bulk ferment', bagelBulkCont && bagelBulkCont.name, 1, bagelTimes.bagelBulkStart, bagelTimes.bagelShapeStart, null,
+        addClaim('container', 'Bagel bulk ferment', bagelBulkCont && bagelBulkCont.name, 1, g.times.bagelBulkStart, g.times.bagelShapeStart, null,
           bagelBulkCont ? { candidates: containerCandidates(['any', 'loaf'], bagelDoughG), relabel: (newName) => { bagelBulkEv.container = newName; bagelMixEv.container = newName; } } : null);
       }
-      const bagelWeightStr = perUnitDoughDetail(bagelRecipes);
-      const bagelShapeDetail = (bagelRecipes.length === 1
-        ? `${getRecipeSpec(bagelRecipes[0]).shapeMinPerUnit} min × ${totalBagels} bagels = ${totalBagelShapeMin} min total`
-        : bagelRecipes
+      const bagelWeightStr = perUnitDoughDetail(bagelRecs);
+      const bagelShapeDetail = (bagelRecs.length === 1
+        ? `${getRecipeSpec(bagelRecs[0]).shapeMinPerUnit} min × ${g.total} bagels = ${g.totalShapeMin} min total`
+        : bagelRecs
             .map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`)
-            .join(' + ') + ` = ${totalBagelShapeMin} min total`)
+            .join(' + ') + ` = ${g.totalShapeMin} min total`)
         + (bagelWeightStr ? ` · divide into ${bagelWeightStr}` : '');
       events.push({
-        time: bagelTimes.bagelShapeStart,
+        time: g.times.bagelShapeStart,
         title: 'Shape bagels',
         detail: bagelShapeDetail,
-        process: 'bagel',
+        process: 'bagel', columnKey: g.key,
       });
-      if (bagelColdProofHours > 0) {
+      if (g.coldProofHours > 0) {
         // Bagels cold-proof on a tray/sheet pan after shaping.
-        const bagelPanNames = panNamesForRecipesG(bagelRecipes);
+        const bagelPanNames = panNamesForRecipesG(bagelRecs);
         const bagelContainer = bagelPanNames.length ? bagelPanNames.join(' + ') : 'sheet tray';
         events.push({
-          time: bagelTimes.bagelFridgeIn,
+          time: g.times.bagelFridgeIn,
           title: 'Bagels into fridge — cold proof',
-          detail: `${bagelColdProofHours} hr in fridge · boiled straight from cold`,
-          process: 'bagel', container: bagelContainer,
+          detail: `${g.coldProofHours} hr in fridge · boiled straight from cold`,
+          process: 'bagel', columnKey: g.key, container: bagelContainer,
         });
         if (bagelPanNames.length) {
-          addClaim('pan', 'Bagel pan', bagelContainer, totalBagels, bagelTimes.bagelFridgeIn,
-            (bagelSlot && bagelSlot.lastBakeEnd) || bagelTimes.bagelFridgeIn, panCapacityForRecipesG(bagelRecipes));
+          addClaim('pan', 'Bagel pan', bagelContainer, g.total, g.times.bagelFridgeIn,
+            g.slot.lastBakeEnd || g.times.bagelFridgeIn, panCapacityForRecipesG(bagelRecs));
         }
       }
-    }
-    }
+      }
+    });
 
     // --- Per-process cooling + package-ready ---
     const lastLoafBakeEnd = breadBatches > 0
@@ -12952,10 +13010,11 @@ ${notesHtml}
       const muffinCoolDetail = `${fmtCoolHr(muffinSlot.packageReady - muffinSlot.lastBakeEnd)} cool`;
       events.push({ time: muffinSlot.lastBakeEnd, title: 'Last muffins out — start cooling', detail: muffinCoolDetail, process: 'muffin' });
     }
-    if (totalBagels > 0 && bagelSlot) {
-      const bagelCoolDetail = `${fmtCoolHr(bagelSlot.packageReady - bagelSlot.lastBakeEnd)} cool`;
-      events.push({ time: bagelSlot.lastBakeEnd, title: 'Last bagels out — start cooling', detail: bagelCoolDetail, process: 'bagel' });
-    }
+    bagelGroups.forEach(g => {
+      if (!g.slot) return;
+      const bagelCoolDetail = `${fmtCoolHr(g.slot.packageReady - g.slot.lastBakeEnd)} cool`;
+      events.push({ time: g.slot.lastBakeEnd, title: 'Last bagels out — start cooling', detail: bagelCoolDetail, process: 'bagel', columnKey: g.key });
+    });
     // --- Focaccia events (mixed plan with sourdough) ---
     if (totalFocaccia > 0 && focacciaSlot) {
       const focacciaPanRiseStart = addMinutes(focacciaSlot.firstBakeStart, -focacciaAgg.warmupMin);
@@ -13052,6 +13111,13 @@ ${notesHtml}
     // process + ratio signature + deadline). Each group is its own column and oven
     // slot, so recipes sharing a dough but with different deadlines split apart. ---
     const sideColumns = sideGroups.map(g => ({ key: g.key, process: g.process, label: g.label, recipeIds: g.recipeIds, total: g.total }));
+    // When bagels split across >1 deadline, each group is its own column (deadline in the
+    // label so two batches of the same recipe are distinguishable). A single group keeps the
+    // bare 'bagel' column (byte-identical), so bagelColumns is empty then.
+    const bagelColLabel = (g) => g.deadline ? `${g.label} · ${new Date(g.deadline).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : g.label;
+    const bagelColumns = bagelGroups.length > 1
+      ? bagelGroups.map(g => ({ key: g.key, process: 'bagel', label: bagelColLabel(g), recipeIds: g.recipeIds, total: g.total }))
+      : [];
 
     // --- Generic stage-walking emitter for the simple/other family. Each side group is
     // its own column + oven slot + deadline. The oven sequence (bakeSeq) drives bake
@@ -13172,7 +13238,7 @@ ${notesHtml}
     [
       { s: loafSlot, process: 'loaf' },
       { s: muffinSlot, process: 'muffin' },
-      { s: bagelSlot, process: 'bagel' },
+      ...bagelGroups.map(g => ({ s: g.slot, process: 'bagel', columnKey: g.key })),
       { s: focacciaSlot, process: 'focaccia' },
       ...sideGroups.map(g => ({ s: g.slot, process: g.process, columnKey: g.key })),
     ].forEach(({ s, process, columnKey }) => {
@@ -13204,10 +13270,17 @@ ${notesHtml}
     });
 
     allocateContainers();
+    // When bagels split across deadline groups there is no bare 'bagel' column, so any shared
+    // bagel event (the levain builds) carries no group columnKey — route it to the first group.
+    if (bagelGroups.length > 1) {
+      const firstKey = bagelGroups[0].key;
+      const groupKeys = new Set(bagelGroups.map(g => g.key));
+      events.forEach(e => { if (e.process === 'bagel' && (!e.columnKey || !groupKeys.has(e.columnKey))) e.columnKey = firstKey; });
+    }
     events.sort((a, b) => a.time - b.time);
     return {
       totalLoaves, totalMuffins, totalBagels, totalFocaccia, totalSimple, totalEnriched, batches, events, warnings,
-      sideColumns, loafColumns,
+      sideColumns, bagelColumns, loafColumns,
       build1Opt, build2Opt,
       muffinBuild1Opt, muffinBuild2Opt,
       useSeparateLevains,
@@ -14109,7 +14182,12 @@ ${notesHtml}
       else columns.push({ key: 'loaf', label: breadColLabel('loaf'), names: breadColNames('loaf') });
     }
     if (hasMuffins) columns.push({ key: 'muffin', label: breadColLabel('muffin'), names: breadColNames('muffin') });
-    if (hasBagels) columns.push({ key: 'bagel', label: breadColLabel('bagel'), names: breadColNames('bagel') });
+    // Bagels: one column per deadline group when split (result.bagelColumns), else the bare column.
+    const bagelCols = result.bagelColumns || [];
+    if (hasBagels) {
+      if (bagelCols.length > 1) bagelCols.forEach(c => columns.push({ key: c.key, label: c.label }));
+      else columns.push({ key: 'bagel', label: breadColLabel('bagel'), names: breadColNames('bagel') });
+    }
     if (hasFocacciaResult) columns.push({ key: 'focaccia', label: breadColLabel('focaccia'), names: breadColNames('focaccia') });
     (result.sideColumns || []).forEach(c => columns.push({ key: c.key, label: c.label }));
     const presentCols = columns.map(c => c.key);

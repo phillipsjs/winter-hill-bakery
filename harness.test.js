@@ -2454,6 +2454,52 @@ const BAKE_INSTANCES_KEY = 'whb-bake-instances-v1';
   allOk &= miOk;
 }
 
+// --- Bagel deadline-splitting (Phase 2): two bagel deadlines schedule independently ---
+{
+  let bdOk = true;
+  const savedRecs = api.__recipes();
+  const g1 = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.bagel)));
+  const g2 = JSON.parse(JSON.stringify(g1)); g2.id = 'bagel2'; g2.name = 'Rye Bagel';
+  const plus4 = new Date(tomorrow8.getTime() + 4 * 3600000);
+  const renderTwo = (deadlines) => {
+    api.__setRecipes([g1, g2]);
+    api.__setPlan({ [g1.id]: 10, [g2.id]: 10 }); seedPlan({ [g1.id]: 10, [g2.id]: 10 });
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+    if (deadlines) localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify(deadlines));
+    else localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    api.renderSchedule();
+    return api.__sr();
+  };
+  // Same deadline → ONE group, bare 'bagel' (no split columns).
+  let sr = renderTwo(null);
+  const bagelCols = (s) => (s.bagelColumns || []);
+  bdOk &= hv('same-deadline bagels → no split columns (one bare bagel column)', bagelCols(sr).length === 0);
+  // Different deadlines (4 h apart) → two groups, two columns, two bake times, no double-book.
+  sr = renderTwo({ bagel2: fmtLocal(plus4) });
+  const keys = [...new Set(sr.events.filter(e => e.process === 'bagel').map(e => e.columnKey))];
+  bdOk &= hv('two bagel deadlines → two columns bagel#0/bagel#1', bagelCols(sr).length === 2 && keys.includes('bagel#0') && keys.includes('bagel#1'));
+  const bakes = sr.events.filter(e => /bagels into oven/.test(e.title));
+  bdOk &= hv('two bagel deadlines → two distinct bake times', new Set(bakes.map(e => +e.time)).size === 2);
+  bdOk &= hv('two bagel deadlines → no oven double-book', !sr.warnings.some(w => /double-book/i.test(w.msg || '')));
+  bdOk &= hv('two bagel deadlines → no bread-deadline-merge warning', !sr.warnings.some(w => w.issue === 'bread-deadline-merge'));
+  bdOk &= hv('two bagel deadlines → shared levain routed to a group column (no orphan)', !sr.events.some(e => e.process === 'bagel' && !e.columnKey));
+
+  // Instance case (Phase 1 + 2): ONE bagel recipe baked twice at different deadlines.
+  api.__setRecipes([g1]);
+  api.__setPlan({ [g1.id]: 10 }); seedPlan({ [g1.id]: 10 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  localStorageStub.setItem('whb-bake-instances-v1', JSON.stringify({ [g1.id]: [{ id: g1.id + '~b1', count: 8, deadline: fmtLocal(plus4) }] }));
+  api.renderSchedule();
+  const sri = api.__sr();
+  bdOk &= hv('one bagel recipe, two deadlines (instance) → two columns', (sri.bagelColumns || []).length === 2);
+  bdOk &= hv('one bagel recipe, two deadlines (instance) → two bake times', new Set(sri.events.filter(e => /bagels into oven/.test(e.title)).map(e => +e.time)).size === 2);
+  localStorageStub.removeItem('whb-bake-instances-v1');
+  api.__setRecipes(savedRecs);
+  allOk &= bdOk;
+}
+
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
 {
   let scOk = true;
