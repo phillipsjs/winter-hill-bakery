@@ -115,7 +115,7 @@ const exportsTail = `
   toggleStageIng, stageIngPanelInner, refreshOpenStageIngPanels,
   stageOvenPrefsHtml, setEditorOvenPref, getRecipeOvenPrefs, allowedOvenIds, combinedOvenConstraint,
   setRecipePreferredOven, applyOvenPrefs, legacyPreferredOvenId, normalizeOvenPrefs,
-  bakePlanOvenMatrix, setBakePlanOvenPref, sharedOvenPrefState,
+  bakePlanOvenMatrix, setBakePlanOvenPref, sharedOvenPrefState, ovenPrefSummaryFor,
   __editorOvenPrefs: () => _editorOvenPrefs,
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
@@ -1754,7 +1754,7 @@ const mixPick = pickerFor(e => api.eventStageType(e) === 'mix');
 hvOk &= hv('bake sheet mix step offers a mixer picker, marked no-print', /bs-equip-edit no-print/.test(mixPick) && /Mixer/.test(mixPick) && /bp-equip-select/.test(mixPick));
 hvOk &= hv('a mix step with a mixer does NOT also offer a container picker (the bowl is the container)', !/data-kind="container"/.test(mixPick));
 const bakePick = pickerFor(e => /^Bake /.test(e.title));
-hvOk &= hv('bake sheet bake step offers an oven picker (2+ ovens)', /Oven/.test(bakePick) && /data-kind="oven"/.test(bakePick));
+hvOk &= hv('bake sheet bake step shows a read-only oven note + link, not a picker', /Oven/.test(bakePick) && /goToOvenAssignment/.test(bakePick) && /change in Bake Plan/.test(bakePick) && !/data-kind="oven"/.test(bakePick));
 const boilPick = pickerFor(e => api.eventStageType(e) === 'boil' || (api.eventSubstep(e) && api.eventSubstep(e).type === 'boil'));
 hvOk &= hv('bake sheet boil step offers a pot picker', /Pot/.test(boilPick) && /data-kind="pot"/.test(boilPick));
 const levPick = pickerFor(e => /Levain Build/.test(e.title));
@@ -2149,6 +2149,11 @@ allOk &= hvOk;
   loaf.ovenPrefs = { o2: 'required' };
   render();
   opOk &= hv('required oven → loaf bakes in Oven B only', ovenNames().includes('Oven B') && !ovenNames().includes('Oven A'));
+  opOk &= hv('summary: required reads "Require Oven B"', api.ovenPrefSummaryFor([loaf.id]) === 'Require Oven B');
+  loaf.ovenPrefs = { o1: 'avoid', o2: 'preferred' };
+  opOk &= hv('summary: combines prefer + avoid', api.ovenPrefSummaryFor([loaf.id]) === 'Prefer Oven B · Avoid Oven A');
+  delete loaf.ovenPrefs;
+  opOk &= hv('summary: no marks reads "Auto (any oven)"', api.ovenPrefSummaryFor([loaf.id]) === 'Auto (any oven)');
   loaf.ovenPrefs = { o1: 'avoid' };
   render();
   opOk &= hv('avoided oven → loaf bakes in the other oven', ovenNames().includes('Oven B') && !ovenNames().includes('Oven A'));

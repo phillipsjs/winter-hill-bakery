@@ -852,6 +852,8 @@
   .bs-equip-edit { margin-top: 5px; display: flex; flex-direction: column; gap: 2px; white-space: normal; }
   .bs-equip-row { display: flex; align-items: baseline; gap: 4px; font-size: 0.74rem; }
   .bs-equip-lbl { color: var(--muted); min-width: 58px; font-size: 0.7rem; text-transform: lowercase; }
+  .bs-equip-note { font-size: 0.74rem; color: #3a4a55; }
+  .bs-equip-note .bs-equip-link { color: var(--accent, #4F6A73); cursor: pointer; }
   /* Bake-sheet equipment pickers read as understated inline text — not the boxed card
      select — so they sit quietly in the minimal bake sheet. A faint border/background
      appears only on hover/focus to signal they're editable. */
@@ -8129,6 +8131,28 @@ ${notesHtml}
     renderTotals();
     rerenderBakeSheetIfVisible();
   }
+  // Short human summary of a recipe group's per-oven marks (for the bake-sheet read-only note).
+  function ovenPrefSummaryFor(recipeIds) {
+    const byState = { required: [], preferred: [], avoid: [] };
+    (Array.isArray(recipeIds) ? recipeIds : [recipeIds]).forEach(id => {
+      const r = recipes.find(x => x.id === id);
+      if (!r) return;
+      const m = getRecipeOvenPrefs(r);
+      Object.keys(m).forEach(ovId => { if (byState[m[ovId]] && !byState[m[ovId]].includes(ovId)) byState[m[ovId]].push(ovId); });
+    });
+    const nm = id => { const o = userOvens.find(x => x.id === id); return o ? o.name : 'oven'; };
+    const parts = [];
+    if (byState.required.length) parts.push('Require ' + byState.required.map(nm).join(', '));
+    if (byState.preferred.length) parts.push('Prefer ' + byState.preferred.map(nm).join(', '));
+    if (byState.avoid.length) parts.push('Avoid ' + byState.avoid.map(nm).join(', '));
+    return parts.length ? parts.join(' · ') : 'Auto (any oven)';
+  }
+  // Jump to the Bake Plan tab's "Assign ovens" matrix (from the bake-sheet oven note).
+  function goToOvenAssignment() {
+    showTab('plan');
+    const el = document.getElementById('oven-overview-card');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   // Bake Order Preferences card: every recipe in the plan, grouped by the deadline it shares
   // (recipes due at the same time bake together). Reordering writes recipe.bakeRank, which
@@ -14204,7 +14228,11 @@ ${notesHtml}
         }
       }
       if (evType === 'mix' && userMixers.length) eq('mixer', 'preferredMixerIds', [['', '— none —'], ...userMixers.map(m => [m.id, m.name])]);
-      if ((evType === 'bake' || (sub && sub.type === 'bake')) && userOvens.length >= 2) eq('oven', 'preferredOvenId', [['', '— auto —'], ...userOvens.map(o => [o.id, o.name])]);
+      // Oven preference is edited in one place (Bake Plan → Assign ovens). Here we only show
+      // the current setting read-only, with a link to change it — so the matrix isn't duplicated.
+      if ((evType === 'bake' || (sub && sub.type === 'bake')) && userOvens.length >= 2 && ids.length) {
+        rows.push(labeled('Oven', `<span class="bs-equip-note" title="Oven preference is set per recipe in the Bake Plan tab (Assign ovens). Prefer = used first if it fits · Require = only these ovens · Avoid = never unless nothing else can bake it.">${escapeHtml(ovenPrefSummaryFor(ids))} · <a href="#" class="bs-equip-link" onclick="goToOvenAssignment();return false;">change in Bake Plan</a></span>`));
+      }
       if ((evType === 'boil' || (sub && sub.type === 'boil')) && userPots.length) eq('pot', 'preferredPotId', [['', '— no pot —'], ...userPots.map(p => [p.id, p.name + (p.size ? ` (${p.size})` : '')])]);
       // Dough container — shown wherever the dough actually sits in one of the kitchen's
       // containers: the bulk-ferment tub for loaf/muffin/bagel pre-shape steps, and the
