@@ -7127,7 +7127,13 @@ ${notesHtml}
     if (name === 'ingredients') { renderPantry(); renderContainers(); renderOvens(); renderBannetons(); renderPans(); renderMixers(); renderPots(); renderKitchenWindows(); refreshTempUnitUI(); refreshOvenBehaviorUI(); }
     if (name === 'prices') renderPrices();
     if (name === 'schedule') { renderRecipeDeadlines(); renderSchedule(); }
-    if (name === 'bakesheet') { renderBakeSheet(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    if (name === 'bakesheet') {
+      // The bake sheet renders from _scheduleResult, which only the Schedule tab builds.
+      // On a fresh reload straight to this tab, build it once so it shows without a detour.
+      if (!_scheduleResult) { renderRecipeDeadlines(); renderSchedule(); }
+      renderBakeSheet();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     if (name === 'history') { renderHistory(); renderFinancials(); }
     if (name === 'settings') {
       const cfg = getGistConfig();

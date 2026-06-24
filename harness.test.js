@@ -98,7 +98,7 @@ function seedPlan(p) { localStorageStub.setItem(PLAN_KEY, JSON.stringify(p)); }
 const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
-  buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet, getHighlightTitlesForWarning,
+  buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet, getHighlightTitlesForWarning, showTab,
   setBakePlanEquip, renderTotals,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
@@ -875,6 +875,27 @@ bsOk &= bsk('bagel-only levain build lists ingredients', /Mature starter/.test(b
   api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Gather ingredients' }), '');
 }
 allOk &= bsOk;
+
+// --- Reload straight to the Bake Sheet builds the schedule (no Schedule-tab detour) ---
+{
+  let rbOk = true;
+  const plan = { [SEED.batard]: 8 };
+  api.__setPlan(plan); seedPlan(plan);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  // Simulate a fresh page load: deadline cleared → no schedule has been built yet.
+  els['deadline-default-input'].value = '';
+  api.renderSchedule();
+  rbOk &= bsk('no schedule is built before a deadline is set', api.__sr() === null);
+  // A deadline now exists (as if restored from storage) but renderSchedule hasn't run —
+  // landing on the bake sheet should build it rather than show the empty placeholder.
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  getEl('bakesheet-content').innerHTML = '';
+  api.showTab('bakesheet');
+  rbOk &= bsk('landing on the bake sheet builds the schedule', !!(api.__sr() && api.__sr().events && api.__sr().events.length > 0));
+  rbOk &= bsk('bake sheet renders content, not the empty placeholder', !/Set up your Bake Plan/.test(getEl('bakesheet-content').innerHTML));
+  allOk &= rbOk;
+}
 
 // ---- editable bake-plan cards: switching equipment updates the recipe preference ----
 console.log('\nBake-plan equipment-edit assertions:');
