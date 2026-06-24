@@ -830,12 +830,15 @@
   .bakesheet-day-header { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px;
     padding: 5px 0; border-bottom: 2px solid var(--border); color: var(--accent-dark); }
   .bakesheet-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; table-layout: fixed; }
-  .bakesheet-table td { word-break: break-word; overflow-wrap: anywhere; }
+  .bakesheet-table td { overflow-wrap: break-word; }
   .bakesheet-table th { text-align: left; padding: 5px 8px; background: var(--bg);
     border-bottom: 2px solid var(--border); font-size: 0.78rem; color: var(--muted); }
   .bakesheet-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
   .bs-time { color: var(--accent-dark); font-weight: 600; font-size: 0.82rem;
-    white-space: nowrap; width: 110px; vertical-align: top; height: 1px; }
+    width: 110px; vertical-align: top; height: 1px; }
+  /* Each clock time stays intact; the range may wrap onto two lines between them
+     so it never overflows the fixed-width Time column into the Step column. */
+  .bs-tspan { white-space: nowrap; }
   /* Fill the (possibly tall, rowspanned) Time cell; the note button sits vertically centered
      in the whitespace left below the recipe pills, still left-justified. */
   .bs-time-inner { display: flex; flex-direction: column; height: 100%; }
@@ -8337,6 +8340,22 @@ ${notesHtml}
       + options.map(([v, l]) => `<option value="${escapeAttr(v)}"${(current || '') === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('')
       + `</select>`;
   }
+  // The current selection in `options` ([value,label] pairs), marked with a ✓ and
+  // "(current)", behind a fixed "Change" trigger label. Used for the bake-sheet
+  // container pickers so the closed cell stays compact (the active container is
+  // already shown as text beside it); the open menu carries the detail.
+  function changeOptionsHtml(current, options) {
+    return `<option value="__change__" selected disabled hidden>Change</option>`
+      + options.map(([v, l]) => {
+          const sel = (current || '') === v;
+          return `<option value="${escapeAttr(v)}">${sel ? '✓ ' : ''}${escapeHtml(l)}${sel ? ' (current)' : ''}</option>`;
+        }).join('');
+  }
+  function bakePlanEquipChangeSelect(kind, recipeIds, current, options) {
+    const ids = (Array.isArray(recipeIds) ? recipeIds : [recipeIds]).join(',');
+    return `<select class="settings-select bp-equip-select" onchange="onBakePlanEquipChange(this)" data-kind="${kind}" data-recipes="${escapeAttr(ids)}">`
+      + changeOptionsHtml(current, options) + `</select>`;
+  }
   // The recipe-group's currently shared preference for a list field, or '' if none/mixed.
   function sharedPrefId(recipeIds, field) {
     const vals = recipeIds.map(id => {
@@ -13163,8 +13182,10 @@ ${notesHtml}
       events.push({
         time: lastLoafBakeEnd,
         title: 'Last loaves out — start cooling',
+        // The turn-off instruction names the oven in the detail; no need to repeat
+        // it in the Equipment column (it's the same oven the loaves just baked in).
         detail: loafCoolDetail + (loafTurnOff ? ` · turn off ${loafOvenLabel} (cools to room temp)` : ''),
-        process: 'loaf', equip: loafTurnOff ? loafOvenEquip : undefined,
+        process: 'loaf',
       });
     }
     muffinGroups.forEach(g => {
@@ -14984,7 +15005,7 @@ ${notesHtml}
     // comes from getEventContainer; ovens/mixers/kettles are attached to events as
     // `equip` lines at schedule time. To avoid repeating that info in the step text,
     // events also carry the exact fragments to strip from their title/detail here.
-    const getEventEquipment = ev => {
+    const getEventEquipment = (ev, eqOpts = {}) => {
       const lines = [];
       // Per-container mix steps: list one container per batch, numbered to line up
       // with the "Batch N" ingredient sets. The contents live in the ingredients
@@ -14992,7 +15013,7 @@ ${notesHtml}
       // proofing containers, so it skips this even though it carries the batch split.)
       if (!/(Weigh|Gather) ingredients/.test(ev.title || '') && Array.isArray(ev.mixBatchContents) && ev.mixBatchContents.length > 1) {
         ev.mixBatchContents.forEach((b, i) => lines.push(`Batch ${i + 1}: ${b.label}`));
-      } else {
+      } else if (!eqOpts.skipContainer) {
         const cont = getEventContainer(ev);
         if (cont && cont !== 'a container') lines.push(cont);
       }
@@ -15056,7 +15077,7 @@ ${notesHtml}
     // No-print equipment pickers for a step — the Bake Sheet counterpart of the Bake Plan
     // card dropdowns. Reuses bakePlanEquipSelect/setBakePlanEquip (mixer/oven/pot/container)
     // and the levain-container picker, scoped to the recipes the step touches.
-    const getEventEquipPicker = ev => {
+    const getEventEquipPicker = (ev, pickerOpts = {}) => {
       const evType = eventStageType(ev);
       const sub = eventSubstep(ev);
       const ids = getEventRecipeIds(ev);
@@ -15070,9 +15091,9 @@ ${notesHtml}
           const stream = /\(muffins\)/.test(ev.title) ? 'muffin' : /\(bagels\)/.test(ev.title) ? 'bagel' : 'shared';
           const build = /Build 1/.test(ev.title) ? 'b1' : 'b2';
           const cur = getLevainContainerPref(stream, build);
-          const opts = [['', 'Change container…'], ...lev.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])];
+          const opts = [['', 'Auto — no preference'], ...lev.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])];
           rows.push(labeled('', `<select class="settings-select bp-equip-select" onchange="onLevainContainerChange(this)" data-levain-key="${stream}" data-build="${build}">`
-            + opts.map(([v, l]) => `<option value="${escapeAttr(v)}"${cur === v ? ' selected' : ''}>${escapeHtml(l)}</option>`).join('') + `</select>`));
+            + changeOptionsHtml(cur, opts) + `</select>`));
         }
       }
       if (evType === 'mix' && userMixers.length) eq('mixer', 'preferredMixerIds', [['', '— none —'], ...userMixers.map(m => [m.id, m.name])]);
@@ -15090,10 +15111,12 @@ ${notesHtml}
       const mixerShown = evType === 'mix' && userMixers.length;
       const bulkStep = ['loaf', 'muffin', 'bagel'].includes(ev.process) && ['autolyse', 'mix', 'fold', 'bulk'].includes(evType) && !mixerShown;
       const chillStep = ['simple', 'enriched'].includes(ev.process) && evType === 'chill';
-      if ((bulkStep || chillStep) && ids.length) {
+      // Skipped on a step that just repeats the previous step's container (the
+      // baker only needs the picker again where the vessel actually changes).
+      if ((bulkStep || chillStep) && ids.length && pickerOpts.includeContainer !== false) {
         const tags = chillStep ? ['any'] : ['any', 'loaf'];
         const cont = userContainers.filter(c => tags.includes(c.processTag));
-        if (cont.length) rows.push(labeled('', bakePlanEquipSelect('container', ids, sharedPrefId(ids, 'preferredContainerIds'), [['', 'Change container…'], ...cont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])));
+        if (cont.length) rows.push(labeled('', bakePlanEquipChangeSelect('container', ids, sharedPrefId(ids, 'preferredContainerIds'), [['', 'Auto — no preference'], ...cont.map(c => [c.id, `${c.name} (${formatGrams(c.maxDoughGrams)})`])])));
       }
       return rows.length ? `<div class="bs-equip-edit no-print">${rows.join('')}</div>` : '';
     };
@@ -15147,11 +15170,11 @@ ${notesHtml}
     const dayFmt  = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
     const fmtTime = t => timeFmt.format(roundToFiveMin(t));
     const fmtRange = ev => ev.timeEnd
-      ? `${fmtTime(ev.time)}&nbsp;–&nbsp;${fmtTime(ev.timeEnd)}`
-      : fmtTime(ev.time);
+      ? `<span class="bs-tspan">${fmtTime(ev.time)}</span> <span class="bs-tspan">–&nbsp;${fmtTime(ev.timeEnd)}</span>`
+      : `<span class="bs-tspan">${fmtTime(ev.time)}</span>`;
 
     const H = buildBakeSheetHelpers();
-    const { ingData, renderIngCol, getEventEquipment, getEventRecipes, getEventBatchRows, bsTitle, bsDetail, allRecipeNames, getEventEquipPicker } = H;
+    const { ingData, renderIngCol, getEventEquipment, getEventContainer, getEventRecipes, getEventBatchRows, bsTitle, bsDetail, allRecipeNames, getEventEquipPicker } = H;
 
     // Group events by day (same display order as the schedule tab — same-recipe steps
     // at the same clock time stay contiguous).
@@ -15176,6 +15199,11 @@ ${notesHtml}
         const batches = getEventBatchRows(ev);
         return { ev, batches, rowCount: batches ? batches.length : 1 };
       });
+      // A dough sits in the same vessel through autolyse → mix → folds → bulk, so
+      // the container is shown once and suppressed on the immediately-following
+      // same-vessel steps. Reset each day. Stage types where the vessel carries over:
+      const CONTAINER_CARRY = ['autolyse', 'mix', 'fold', 'bulk', 'proof', 'chill'];
+      let prevContainer = null;
       // Stage cell spans a run of consecutive same-stage events; with multi-row
       // events the rowspan is the SUM of their row counts. Emitted in the run's
       // first <tr>. No-stage events get an empty cell spanning their own rows.
@@ -15232,13 +15260,21 @@ ${notesHtml}
             ${noteTextHtml}
           </td>`;
         if (!batches) {
+          const carries = CONTAINER_CARRY.includes(eventStageType(ev));
+          const contRaw = getEventContainer(ev);
+          const isRepeat = !!contRaw && carries && contRaw === prevContainer;
+          const showCont = !!contRaw && contRaw !== 'a container' && !isRepeat;
+          prevContainer = carries ? (contRaw || prevContainer) : null;
+          const equipText = getEventEquipment(ev, { skipContainer: !showCont });
           return `
         <tr>${stepCell}
-          <td class="bs-container">${escapeHtml(getEventEquipment(ev))}${getEventEquipPicker(ev)}</td>
+          <td class="bs-container">${escapeHtml(equipText)}${getEventEquipPicker(ev, { includeContainer: showCont })}</td>
           <td class="bs-ings">${renderIngCol(ev)}</td>
           ${stageCell}
         </tr>`;
         }
+        // Multi-row per-batch step: distinct container per batch → break the carry.
+        prevContainer = null;
         // Multi-row: first <tr> carries the spanning time/step + stage cell.
         return batches.map((b, bi) => `
         <tr>${bi === 0 ? stepCell : ''}

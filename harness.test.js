@@ -1796,11 +1796,28 @@ const chillPick = pickerFor(e => api.eventStageType(e) === 'chill');
 hvOk &= hv('bake sheet step with no editable equipment shows no picker', chillPick === '');
 // Bulk-ferment container picker now appears for bagels (and muffins), not just loaves.
 const bagelBulkPick = pickerFor(e => e.process === 'bagel' && api.eventStageType(e) === 'bulk');
-hvOk &= hv('bake sheet bagel bulk ferment offers a container picker', /data-kind="container"/.test(bagelBulkPick) && /Change container/.test(bagelBulkPick));
+hvOk &= hv('bake sheet bagel bulk ferment offers a container picker', /data-kind="container"/.test(bagelBulkPick) && /value="__change__"[^>]*>Change</.test(bagelBulkPick));
 hvOk &= hv('container picker drops the redundant "Container" label', !/bs-equip-lbl">Container</.test(bagelBulkPick));
 const loafBulkPick = pickerFor(e => e.process === 'loaf' && api.eventStageType(e) === 'bulk');
 hvOk &= hv('bake sheet loaf bulk ferment still offers a container picker', /data-kind="container"/.test(loafBulkPick));
-hvOk &= hv('container picker auto option reads "Change container", not "auto"', /Change container/.test(bagelBulkPick) && !/— auto/.test(bagelBulkPick));
+hvOk &= hv('container picker trigger reads "Change"; the menu marks the current option', /value="__change__"[^>]*disabled[^>]*>Change</.test(bagelBulkPick) && /Auto — no preference \(current\)/.test(bagelBulkPick));
+// Container is suppressed on a step that just repeats the previous step's vessel (skipContainer),
+// and the picker can be omitted there too (includeContainer:false) — but kept where it changes.
+const loafBulkEv = evsBs.find(e => e.process === 'loaf' && api.eventStageType(e) === 'bulk');
+if (loafBulkEv) {
+  hvOk &= hv('getEventEquipment shows the container by default but skipContainer drops it',
+    Hb.getEventEquipment(loafBulkEv).length > 0 && Hb.getEventEquipment(loafBulkEv, { skipContainer: true }) === '');
+  hvOk &= hv('getEventEquipPicker omits the container picker when includeContainer:false',
+    /data-kind="container"/.test(Hb.getEventEquipPicker(loafBulkEv)) && !/data-kind="container"/.test(Hb.getEventEquipPicker(loafBulkEv, { includeContainer: false })));
+}
+// "Last loaves out — start cooling" must not repeat the oven in the Equipment column.
+const loafCoolEv = evsBs.find(e => /Last loaves out/.test(e.title));
+hvOk &= hv('loaf cooling step carries no oven equip (inferable from the bake)',
+  !!loafCoolEv && loafCoolEv.equip === undefined && Hb.getEventEquipment(loafCoolEv) === '');
+// The bake sheet renders each clock time in a no-wrap span so the Time column can't overflow.
+api.showTab('bakesheet');
+const bsHtml = getEl('bakesheet-content').innerHTML;
+hvOk &= hv('time range uses wrap-safe bs-tspan spans', /bs-tspan/.test(bsHtml));
 // pickDoughContainer honors a preference (so the bagel/muffin picker actually takes effect).
 api.__setContainers([
   { id: 'small', name: 'Small tub', maxDoughGrams: 3000, processTag: 'loaf' },
