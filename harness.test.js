@@ -1690,6 +1690,15 @@ hvOk &= hv('a passive step is excluded from late-night active steps', api.lateNi
 function mkEvPassive() { const e = mkEv(); return e; }
 api.__setRecipes(_savedRecipes);
 
+// --- Focaccia active-step fallback (recipe with no `stages`): Mix/Fold/Shape count as
+//     hands-on so they get late-night warnings; bake/preheat/pan-rise stay passive. ---
+const focActive = (title) => api.isActiveStep({ title, process: 'focaccia' }, 'focaccia');
+hvOk &= hv('focaccia Gather is active via fallback', focActive('Gather ingredients') === true);
+hvOk &= hv('focaccia Mix is active via fallback', focActive('Mix focaccia dough') === true);
+hvOk &= hv('focaccia Stretch & fold is active via fallback', focActive('Stretch & fold 2 of 4 — focaccia') === true);
+hvOk &= hv('focaccia Shape is active via fallback', focActive('Shape focaccia — transfer to pans') === true);
+hvOk &= hv('focaccia bake/pan-rise stay passive', focActive('Turn on oven to 475°F') === false && focActive('Pan rise') === false);
+
 // --- detectActiveOverlaps: two hands-on steps the baker can't do at once ---
 const T = (h, m) => new Date(2030, 0, 1, h, m);
 const overlapEvents = [

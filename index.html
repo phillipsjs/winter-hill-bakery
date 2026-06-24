@@ -10230,6 +10230,16 @@ ${notesHtml}
     /^Shape enriched/,
     /^Glaze \/ ice/,
   ];
+  // Focaccia's hands-on prep. Bake/preheat and the warm pan rise are anchored/passive, so
+  // they're excluded (like loaf/muffin/bagel bakes). Without this set, focaccia events with
+  // no editable stages fell back to the muffin patterns and missed Mix/Fold/Shape.
+  const ACTIVE_FOCACCIA_TITLE_PATTERNS = [
+    /^(Weigh|Gather) ingredients/,
+    /^Mill /,
+    /^Mix /,
+    /^Stretch & fold/,
+    /^Shape /,
+  ];
   // Original title-pattern / activeStep classification — the fallback used when an event
   // has no annotated activeMin (i.e. no editable stage drives it).
   function _legacyIsActiveStep(ev, kind) {
@@ -10238,6 +10248,7 @@ ${notesHtml}
       : kind === 'bagel' ? ACTIVE_BAGEL_TITLE_PATTERNS
       : kind === 'simple' ? ACTIVE_SIMPLE_TITLE_PATTERNS
       : kind === 'enriched' ? ACTIVE_ENRICHED_TITLE_PATTERNS
+      : kind === 'focaccia' ? ACTIVE_FOCACCIA_TITLE_PATTERNS
       : ACTIVE_MUFFIN_TITLE_PATTERNS;
     return patterns.some(p => p.test(ev.title));
   }
