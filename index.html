@@ -921,6 +921,14 @@
   .stage-oven-name { color: #3a4a55; }
   .stage-oven-sel { font-size: 0.78rem; padding: 1px 4px; width: auto; flex: none; }
 
+  /* Per-oven preference matrix in the Bake Plan "Assign ovens" section */
+  .bp-oven-row { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 4px 0; }
+  .bp-oven-grouplabel { flex: 1 0 110px; }
+  .bp-oven-matrix { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+  .bp-oven-pref { display: inline-flex; align-items: center; gap: 4px; font-size: 0.82rem; }
+  .bp-oven-name { color: #3a4a55; }
+  .bp-oven-sel { font-size: 0.78rem; padding: 1px 4px; width: auto; flex: none; }
+
   /* Per-stage ingredient tagging in the recipe editor */
   .stage-ing-btn { white-space: nowrap; }
   .stage-ing-text { flex-basis: 100%; font-size: 0.78rem; color: #4a3618; background: #f3ead4;
@@ -7632,10 +7640,10 @@ ${notesHtml}
         const rs = active.filter(r => getProcessType(r) === pt);
         if (!rs.length) return;
         const ids = rs.map(r => r.id);
-        const picker = bakePlanEquipSelect('oven', ids, sharedPrefId(ids, 'preferredOvenId'), [['', '— auto —'], ...userOvens.map(o => [o.id, o.name])]);
-        assignHtml += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0"><span style="flex:1">${escapeHtml(label)} <span class="muted" style="font-size:0.8rem">(${rs.length})</span></span>${picker}</div>`;
+        const matrix = bakePlanOvenMatrix(ids);
+        assignHtml += `<div class="bp-oven-row"><span class="bp-oven-grouplabel">${escapeHtml(label)} <span class="muted" style="font-size:0.8rem">(${rs.length})</span></span>${matrix}</div>`;
       });
-      if (assignHtml) html += `<div style="padding:8px 0;border-top:1px solid var(--border)"><div style="font-weight:600;margin-bottom:4px">Assign ovens</div>${assignHtml}</div>`;
+      if (assignHtml) html += `<div style="padding:8px 0;border-top:1px solid var(--border)"><div style="font-weight:600;margin-bottom:2px">Assign ovens</div><div class="muted" style="font-size:0.8rem;margin-bottom:6px">Prefer = used first if it fits · Require = only these ovens · Avoid = never (unless nothing else can bake it)</div>${assignHtml}</div>`;
     }
 
     // Single-oven, mixed-temp heads-up across the whole plan.
@@ -8077,6 +8085,49 @@ ${notesHtml}
       return Array.isArray(v) ? (v[0] || '') : (v || '');
     });
     return vals.every(v => v === vals[0]) ? (vals[0] || '') : '';
+  }
+  // The group's shared per-oven preference state, or '__mixed__' if the recipes disagree.
+  function sharedOvenPrefState(recipeIds, ovenId) {
+    const vals = recipeIds.map(id => {
+      const r = recipes.find(x => x.id === id);
+      return (r ? getRecipeOvenPrefs(r)[ovenId] : '') || '';
+    });
+    return vals.every(v => v === vals[0]) ? vals[0] : '__mixed__';
+  }
+  // The full oven-preference matrix for a plan group: each oven gets an Any/Prefer/Require/Avoid
+  // select, applied to every recipe in the group (they bake together in one slot).
+  function bakePlanOvenMatrix(recipeIds) {
+    const states = [['', 'Any'], ['preferred', 'Prefer'], ['required', 'Require'], ['avoid', 'Avoid']];
+    const idsAttr = (Array.isArray(recipeIds) ? recipeIds : [recipeIds]).join(',');
+    return `<span class="bp-oven-matrix">` + userOvens.map(o => {
+      const cur = sharedOvenPrefState(recipeIds, o.id);
+      const mixed = cur === '__mixed__';
+      return `<label class="bp-oven-pref"><span class="bp-oven-name">${escapeHtml(o.name)}</span>`
+        + `<select class="settings-select bp-oven-sel" data-recipes="${escapeAttr(idsAttr)}" data-oven="${escapeAttr(o.id)}" onchange="onBakePlanOvenPrefChange(this)">`
+        + (mixed ? `<option value="__mixed__" selected>(mixed)</option>` : '')
+        + states.map(([v, l]) => `<option value="${v}"${!mixed && cur === v ? ' selected' : ''}>${l}</option>`).join('')
+        + `</select></label>`;
+    }).join('') + `</span>`;
+  }
+  function onBakePlanOvenPrefChange(sel) {
+    if (sel.value === '__mixed__') return; // the placeholder isn't a real choice
+    const ids = (sel.dataset.recipes || '').split(',').filter(Boolean);
+    setBakePlanOvenPref(ids, sel.dataset.oven, sel.value);
+  }
+  // Set one oven's preference state ('', 'preferred', 'required', 'avoid') across a group of
+  // recipes, preserving their other per-oven marks. '' clears that oven's mark.
+  function setBakePlanOvenPref(recipeIds, ovenId, state) {
+    (Array.isArray(recipeIds) ? recipeIds : [recipeIds]).forEach(rid => {
+      const r = recipes.find(x => x.id === rid);
+      if (!r) return;
+      const prefs = getRecipeOvenPrefs(r);
+      if (state) prefs[ovenId] = state; else delete prefs[ovenId];
+      applyOvenPrefs(r, prefs);
+    });
+    saveRecipes();
+    renderSchedule();
+    renderTotals();
+    rerenderBakeSheetIfVisible();
   }
 
   // Bake Order Preferences card: every recipe in the plan, grouped by the deadline it shares

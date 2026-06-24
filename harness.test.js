@@ -115,6 +115,7 @@ const exportsTail = `
   toggleStageIng, stageIngPanelInner, refreshOpenStageIngPanels,
   stageOvenPrefsHtml, setEditorOvenPref, getRecipeOvenPrefs, allowedOvenIds, combinedOvenConstraint,
   setRecipePreferredOven, applyOvenPrefs, legacyPreferredOvenId, normalizeOvenPrefs,
+  bakePlanOvenMatrix, setBakePlanOvenPref, sharedOvenPrefState,
   __editorOvenPrefs: () => _editorOvenPrefs,
   stageIsActive, stageActiveMinutes, stageDefaultActiveMin,
   toggleStageActive, stageEditorSetActiveMin,
@@ -905,6 +906,19 @@ edOk &= ed('mixer edit sets preferredMixerIds', Array.isArray(loafE.preferredMix
 // clearing a value removes the preference
 api.setBakePlanEquip([loafE.id], 'oven', '');
 edOk &= ed('clearing oven resets to auto (null)', !loafE.preferredOvenId && (!loafE.ovenPrefs || !loafE.ovenPrefs.o2));
+// Bake Plan full oven matrix: per-oven preferred/required/avoid across a group.
+api.setBakePlanOvenPref([loafE.id], 'o1', 'required');
+edOk &= ed('matrix: setting required writes ovenPrefs', loafE.ovenPrefs && loafE.ovenPrefs.o1 === 'required');
+edOk &= ed('matrix: shared state reflects the group setting', api.sharedOvenPrefState([loafE.id], 'o1') === 'required');
+api.setBakePlanOvenPref([loafE.id], 'o2', 'avoid');
+edOk &= ed('matrix: a second oven mark is preserved alongside the first', loafE.ovenPrefs.o1 === 'required' && loafE.ovenPrefs.o2 === 'avoid');
+const matrixHtml = api.bakePlanOvenMatrix([loafE.id]);
+edOk &= ed('matrix renders a select per oven with the chosen states', /data-oven="o1"/.test(matrixHtml) && /data-oven="o2"/.test(matrixHtml) && /value="required" selected/.test(matrixHtml) && /value="avoid" selected/.test(matrixHtml));
+api.setBakePlanOvenPref([loafE.id], 'o1', '');
+edOk &= ed('matrix: clearing a mark removes it', !(loafE.ovenPrefs && loafE.ovenPrefs.o1));
+// A group whose recipes disagree on an oven shows the "(mixed)" placeholder.
+loafE.ovenPrefs = { o1: 'required' }; delete bagelE.ovenPrefs; delete bagelE.preferredOvenId;
+edOk &= ed('matrix: differing marks across a group show mixed', api.sharedOvenPrefState([loafE.id, bagelE.id], 'o1') === '__mixed__' && /value="__mixed__" selected/.test(api.bakePlanOvenMatrix([loafE.id, bagelE.id])));
 // restore
 delete bagelE.preferredPotId; const bs = bagelE.stages.find(s => s.type === 'boil'); if (bs) delete bs.vessel;
 delete loafE.preferredOvenId; delete loafE.ovenPrefs; delete loafE.preferredContainerIds; delete loafE.preferredMixerIds;
