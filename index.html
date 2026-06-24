@@ -8569,8 +8569,8 @@ ${notesHtml}
     ['sourdough-loaf', 'Loaves'], ['sourdough-muffin', 'Muffins'], ['bagel', 'Bagels'],
     ['focaccia', 'Focaccia'], ['simple', 'Simple bakes'], ['enriched', 'Enriched'],
   ];
-  const PROOF_AGG_WARM = new Set(['sourdough-loaf', 'sourdough-muffin', 'bagel', 'focaccia']); // warm bulk uses max() across the type
-  const PROOF_AGG_COLD = new Set(['sourdough-muffin', 'bagel']); // cold proof shared; loaf is per-recipe (Part B)
+  const PROOF_AGG_WARM = new Set(['sourdough-loaf', 'sourdough-muffin', 'bagel', 'focaccia']); // warm bulk uses max() within a bake
+  const PROOF_AGG_COLD = new Set(['sourdough-loaf', 'sourdough-muffin', 'bagel']); // cold proof shared within a bake (loaves split only across deadlines)
   const COLD_BUCKET = { 'sourdough-loaf': 'loaf', 'sourdough-muffin': 'muffin', 'bagel': 'bagel' };
   const COLD_PROOF_OPTIONS = (() => {
     const opts = [['', 'Auto (fit deadline)'], ['0', 'None (bake after shape)']];
@@ -8683,22 +8683,29 @@ ${notesHtml}
     if (sum) sum.textContent = `${inPlan.length} recipe${inPlan.length === 1 ? '' : 's'}`;
     card.style.display = '';
   }
-  // Honest note where the engine still shares one window across a process type.
+  // Honest note where the engine still shares one window within a bake. Aggregation happens
+  // among recipes that bake together — for loaves that's "same deadline" (loaves at different
+  // deadlines proof independently); muffins/bagels always bake as one batch per type.
   function proofAggNote(type, rs, label) {
     if (rs.length < 2) return '';
     const tmpl = PROCESS_TEMPLATES[type];
     const num = (raw, d) => (raw != null && raw !== '' && Number.isFinite(Number(raw))) ? Number(raw) : d;
+    const splitsByDeadline = type === 'sourdough-loaf';
+    let cohorts = [rs];
+    if (splitsByDeadline) {
+      const dl = loadRecipeDeadlines();
+      const def = (document.getElementById('deadline-default-input') || {}).value || '';
+      const byDl = {};
+      rs.forEach(r => { const d = dl[r.id] || def || '_'; (byDl[d] = byDl[d] || []).push(r); });
+      cohorts = Object.values(byDl);
+    }
+    const differs = (valOf) => cohorts.some(g => g.length > 1 && new Set(g.map(valOf)).size > 1);
     const parts = [];
-    if (PROOF_AGG_WARM.has(type)) {
-      const vals = new Set(rs.map(r => num(r.bulkMin, tmpl.bulkMin || 0)));
-      if (vals.size > 1) parts.push('warm bulk');
-    }
-    if (PROOF_AGG_COLD.has(type)) {
-      const vals = new Set(rs.map(r => (r.coldProofHr == null || r.coldProofHr === '') ? 'auto' : String(r.coldProofHr)));
-      if (vals.size > 1) parts.push('cold proof');
-    }
+    if (PROOF_AGG_WARM.has(type) && differs(r => num(r.bulkMin, tmpl.bulkMin || 0))) parts.push('warm bulk');
+    if (PROOF_AGG_COLD.has(type) && differs(r => (r.coldProofHr == null || r.coldProofHr === '') ? 'auto' : String(r.coldProofHr))) parts.push('cold proof');
     if (!parts.length) return '';
-    return `These ${label.toLowerCase()} share one ${parts.join(' and ')} window — the schedule uses the longest. (Per-recipe support coming.)`;
+    const tail = splitsByDeadline ? ' Give them different deadlines to proof independently.' : '';
+    return `These ${label.toLowerCase()} bake together so they share one ${parts.join(' and ')} window — the schedule uses the longest.${tail}`;
   }
 
   function formatGrams(g) {
@@ -12944,26 +12951,35 @@ ${notesHtml}
     const rd = baseOpts.recipeDeadlines || {};
     const dlMs = (r) => { const d = rd[r.id] || baseOpts.loafDeadline; return d ? new Date(d).getTime() : null; };
     // Per-recipe cold proof: a loaf with its own coldProofHr gets its own cold-proof window;
-    // loaves left on "auto" use the global/derived window. Loaves are grouped by (deadline,
-    // window) and each group runs an independent buildSchedule with its own window, so distinct
-    // cold proofs no longer collapse to one max() across the type.
+    // loaves left on "auto" use the global/derived window. Loaves are grouped ONLY by deadline
+    // (same-deadline loaves bake together and share the oven — splitting them by window would
+    // double-book the oven), and each deadline group runs buildSchedule with its own window.
+    // So loaves at different deadlines honor their own cold proof (incl. range overlaps, which
+    // buildSchedule's numeric max() couldn't); same-deadline loaves still share one window (the
+    // longest), flagged in the Proofing card. True per-recipe same-deadline cold proof needs
+    // per-container fridge anchoring inside buildSchedule (a later phase).
     const globalWindow = { min: Number(baseOpts.loafColdProofHours) || 0, max: Number.isFinite(Number(baseOpts.loafColdProofMaxHr)) ? Number(baseOpts.loafColdProofMaxHr) : (Number(baseOpts.loafColdProofHours) || 0) };
     const loafColdWindowFor = (r) => {
       const raw = r.coldProofHr;
       if (raw != null && raw !== '') { const w = parseColdProofWindow(String(raw)); if (w) return { min: w.min, max: w.max }; }
       return globalWindow;
     };
-    const coldKeyOf = (r) => { const w = loafColdWindowFor(r); return `${w.min}-${w.max}`; };
+    const sameWindow = (a, b) => a.min === b.min && a.max === b.max;
+    // A group's window = the longest cold window among its recipes (each recipe's explicit
+    // override, or the auto/global default). Seed with the first recipe's window — NOT the
+    // global — so an explicit window shorter than the auto default still wins.
+    const groupWindow = (recs) => { const ws = recs.map(loafColdWindowFor); return ws.reduce((a, w) => (w.min > a.min ? w : a), ws[0] || globalWindow); };
     const loafRecipes = recipes.filter(r => getProcessType(r) === 'sourdough-loaf' && (plan[r.id] || 0) > 0);
     const groupsMap = new Map();
     loafRecipes.forEach(r => {
-      const key = dlMs(r) + '|' + coldKeyOf(r);
-      if (!groupsMap.has(key)) groupsMap.set(key, { ms: dlMs(r), coldKey: coldKeyOf(r), window: loafColdWindowFor(r), recipes: [] });
+      const key = dlMs(r);
+      if (!groupsMap.has(key)) groupsMap.set(key, { ms: key, recipes: [] });
       groupsMap.get(key).recipes.push(r);
     });
     const groups = [...groupsMap.values()].sort((a, b) => (a.ms || 0) - (b.ms || 0));
+    groups.forEach(g => { g.window = groupWindow(g.recipes); });
     if (groups.length <= 1) {
-      // Single group: still honor a shared explicit window (e.g. all loaves set to "20-24").
+      // Single deadline: still honor the group's window (e.g. all loaves set to "20-24").
       const w = groups.length ? groups[0].window : null;
       const r = buildSchedule(w ? { ...baseOpts, loafColdProofHours: w.min, loafColdProofMaxHr: w.max } : baseOpts);
       insertToppingSteps(r.events); return r;
@@ -12973,18 +12989,18 @@ ${notesHtml}
     const combineSigs = loadCombineDoughs();
     // Units start one-per-deadline-group; merge groups that share a combine-flagged dough
     // signature (within the cold-proof window) into a single combined staggered unit.
-    let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, coldKey: g.coldKey, window: g.window, combined: false }));
+    let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, window: g.window, combined: false }));
     if (combineSigs.size && windowWidthHr > 0) {
       let changed = true;
       while (changed) {
         changed = false;
         for (let i = 0; i < units.length && !changed; i++) {
           for (let j = i + 1; j < units.length; j++) {
-            if (units[i].coldKey !== units[j].coldKey) continue; // only combine the same cold-proof window
+            if (!sameWindow(units[i].window, units[j].window)) continue; // only combine the same cold-proof window
             const flaggedI = new Set(units[i].recipes.map(ratioSignature).filter(s => combineSigs.has(s)));
             if (!flaggedI.size || !units[j].recipes.some(r => flaggedI.has(ratioSignature(r)))) continue;
             if (Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 > windowWidthHr) continue;
-            units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), coldKey: units[i].coldKey, window: units[i].window, combined: true };
+            units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), window: units[i].window, combined: true };
             units.splice(j, 1); changed = true; break;
           }
         }
@@ -13023,7 +13039,6 @@ ${notesHtml}
       for (let j = i + 1; j < groups.length; j++) {
         const sharedSig = groups[i].recipes.map(ratioSignature).find(s => groups[j].recipes.some(r => ratioSignature(r) === s));
         if (!sharedSig || warnedSigs.has(sharedSig)) continue;
-        if ((groups[i].ms || 0) === (groups[j].ms || 0)) continue; // split only by cold-proof window (same deadline), not a deadline conflict
         const diffHr = Math.abs((groups[i].ms || 0) - (groups[j].ms || 0)) / 3600000;
         if (diffHr >= warnThresholdHr || !Number.isFinite(diffHr)) continue;
         warnedSigs.add(sharedSig);

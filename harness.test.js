@@ -2262,14 +2262,24 @@ allOk &= hvOk;
   api.setBakePlanProof(batard.id, 'bulkMin', '');
   prOk &= pr('clearing removes the override', !api.__recipes().find(r => r.id === batard.id).bulkMin);
 
-  // Part B: two loaves, one deadline, different cold proof → two distinct cold-proof spans.
+  // Part B: cold proof is per-recipe ACROSS deadlines (separate bakes); same-deadline loaves
+  // still share one window (the longest) and must NOT spuriously double-book the oven.
   const fridgeHrs = () => { api.renderSchedule(); return new Set(api.__sr().events.filter(e => /Into fridge/.test(e.title)).map(e => (String(e.detail || '').match(/(\d+) hr cold proof/) || [])[1]).filter(Boolean)); };
+  const ovenDoubleBooks = () => (api.__sr().warnings || []).filter(w => /double-booked/.test(w.msg || '')).length;
   api.__setPlan({ [batard.id]: 6, [boule.id]: 6 }); seedPlan({ [batard.id]: 6, [boule.id]: 6 });
   delete batard.coldProofHr; delete boule.coldProofHr;
   prOk &= pr('both on auto → one shared cold-proof window', fridgeHrs().size === 1);
+  // Same deadline, different cold proof → aggregate to the longest, no oven double-book.
   batard.coldProofHr = '8'; boule.coldProofHr = '24';
-  const cps = fridgeHrs();
-  prOk &= pr('different coldProofHr → two distinct cold-proof spans (per-recipe)', cps.has('8') && cps.has('24'));
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  const same = fridgeHrs();
+  prOk &= pr('same deadline + different cold proof → one window (longest), no oven double-book', same.has('24') && !same.has('8') && ovenDoubleBooks() === 0);
+  // Different deadlines → each loaf honors its own cold proof.
+  const t8b = new Date(tomorrow8); t8b.setHours(tomorrow8.getHours() + 6);
+  localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify({ [batard.id]: tomorrow8.toISOString(), [boule.id]: t8b.toISOString() }));
+  const diff = fridgeHrs();
+  prOk &= pr('different deadlines → per-recipe cold proof (8 and 24), no double-book', diff.has('8') && diff.has('24') && ovenDoubleBooks() === 0);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
   delete batard.coldProofHr; delete boule.coldProofHr; delete batard.bulkMin; delete batard.stages;
   allOk &= prOk;
 }
