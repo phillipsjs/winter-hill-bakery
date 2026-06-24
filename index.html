@@ -250,6 +250,18 @@
   }
   .bake-row:last-child { border-bottom: none; }
   .bake-row .meta { font-size: 0.8rem; color: var(--muted); }
+  .bake-recipe { padding: 10px 0; border-bottom: 1px dashed var(--border); }
+  .bake-recipe:last-child { border-bottom: none; }
+  .bake-recipe-head .meta { font-size: 0.8rem; color: var(--muted); margin-left: 8px; }
+  .bake-batch-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0; }
+  .bake-batch-label { font-size: 0.78rem; color: var(--muted); min-width: 54px; }
+  .bake-batch-row input[type="number"] { width: 72px; }
+  .bake-batch-row input[type="datetime-local"] { flex: 1; min-width: 156px; }
+  .bake-batch-unit { font-size: 0.85rem; color: var(--muted); min-width: 46px; }
+  .bake-add-btn { background: none; border: none; color: #8a5a2b; cursor: pointer; font-size: 0.82rem; padding: 4px 0; }
+  .bake-add-btn:hover { text-decoration: underline; }
+  .bake-batch-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 4px; }
+  .bake-batch-remove:hover { color: #c0392b; }
   .plan-btn {
     font-size: 0.82rem;
     padding: 5px 12px;
@@ -6967,6 +6979,96 @@ ${notesHtml}
   }
   function uid() { return 'r-' + Math.random().toString(36).slice(2, 10); }
 
+  // ---- multi-bake instances (same recipe, extra deadlines) ----
+  // Batch 1 of a recipe lives in `plan` + `recipeDeadlines` (unchanged). EXTRA bakes
+  // (batch 2+) live here as { [baseRecipeId]: [{ id, count, deadline }] }. At schedule
+  // time each extra bake is expanded into a synthetic clone recipe (same dough, own id +
+  // deadline) so the engine schedules it as just another recipe — reusing the loaf /
+  // simple / enriched per-deadline machinery. Invariant: base keys in `plan` always equal
+  // the batch-1 count (the swap wrappers never mutate them in place).
+  const BAKE_INSTANCES_KEY = 'whb-bake-instances-v1';
+  function loadBakeInstances() {
+    try { const raw = localStorage.getItem(BAKE_INSTANCES_KEY); const o = raw ? JSON.parse(raw) : {}; return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; }
+  }
+  function saveBakeInstances(map) {
+    const clean = {};
+    Object.keys(map || {}).forEach(k => { const arr = (map[k] || []).filter(Boolean); if (arr.length) clean[k] = arr; });
+    if (Object.keys(clean).length) localStorage.setItem(BAKE_INSTANCES_KEY, JSON.stringify(clean));
+    else localStorage.removeItem(BAKE_INSTANCES_KEY);
+    scheduleSyncToGist();
+  }
+  function addBakeInstance(baseId) {
+    const map = loadBakeInstances();
+    const arr = map[baseId] || [];
+    const used = new Set(arr.map(i => i.id));
+    let n = arr.length + 1, id = `${baseId}~b${n}`;
+    while (used.has(id)) { n++; id = `${baseId}~b${n}`; }
+    arr.push({ id, count: plan[baseId] || 0, deadline: '' });
+    map[baseId] = arr; saveBakeInstances(map);
+    renderPlan(); renderSchedule();
+  }
+  function setBakeInstanceField(baseId, instId, field, val) {
+    const map = loadBakeInstances();
+    const inst = (map[baseId] || []).find(i => i.id === instId); if (!inst) return;
+    if (field === 'count') inst.count = Math.max(0, Math.floor(Number(val) || 0));
+    else inst.deadline = val || '';
+    saveBakeInstances(map);
+    renderTotals(); renderSchedule();
+  }
+  function removeBakeInstance(baseId, instId) {
+    const map = loadBakeInstances();
+    map[baseId] = (map[baseId] || []).filter(i => i.id !== instId);
+    saveBakeInstances(map);
+    renderPlan(); renderSchedule();
+  }
+  // Derive the schedulable view: authoring recipes (synthetic ones filtered out → idempotent)
+  // plus one synthetic clone per extra bake, and a plan keyed by every id. Pure/read-only.
+  function expandPlan() {
+    const base = recipes.filter(r => !r.__instanceOf);
+    const store = loadBakeInstances();
+    const synth = [];
+    const exPlan = {};
+    base.forEach(r => { if (Object.prototype.hasOwnProperty.call(plan, r.id)) exPlan[r.id] = plan[r.id]; });
+    base.forEach(r => {
+      (store[r.id] || []).forEach((inst, k) => {
+        synth.push({ ...r, id: inst.id, name: `${r.name} — batch ${k + 2}`, __instanceOf: r.id, __instanceDeadline: inst.deadline || '' });
+        exPlan[inst.id] = Math.max(0, Math.floor(Number(inst.count) || 0));
+      });
+    });
+    return { recipes: base.concat(synth), plan: exPlan, hasInstances: synth.length > 0 };
+  }
+  // Summed-count view (base recipes only): batch 1 + Σ extra batches. Keeps pricing /
+  // _soldOverrides keyed by the base recipe (instances must NOT be priced separately).
+  function summedPlanObj() {
+    const base = recipes.filter(r => !r.__instanceOf);
+    const store = loadBakeInstances();
+    const out = {};
+    base.forEach(r => {
+      if (!Object.prototype.hasOwnProperty.call(plan, r.id)) return;
+      let c = plan[r.id] || 0;
+      (store[r.id] || []).forEach(inst => { c += Math.max(0, Math.floor(Number(inst.count) || 0)); });
+      out[r.id] = c;
+    });
+    return out;
+  }
+  // Run fn with `recipes`/`plan` swapped to the expanded (per-instance) view; restore after.
+  // No-instances → no-op fast path so the common case stays byte-identical.
+  function withExpandedPlan(fn) {
+    const exp = expandPlan();
+    if (!exp.hasInstances) return fn();
+    const sr = recipes, sp = plan;
+    recipes = exp.recipes; plan = exp.plan;
+    try { return fn(); } finally { recipes = sr; plan = sp; }
+  }
+  // Run fn with `plan` swapped to summed counts (recipes unchanged). No-instances → no-op.
+  function withSummedPlan(fn) {
+    const store = loadBakeInstances();
+    if (!Object.keys(store).some(k => (store[k] || []).length)) return fn();
+    const sp = plan;
+    plan = summedPlanObj();
+    try { return fn(); } finally { plan = sp; }
+  }
+
   // ---- anchor modal ----
   let pendingAnchorEventId = null;
   let pendingAnchorScheduledMs = null;
@@ -7222,29 +7324,48 @@ ${notesHtml}
     pickerDiv.innerHTML = pickerBtns;
     list.appendChild(pickerDiv);
 
-    // Count inputs for selected recipes.
+    // Count inputs for selected recipes. Each recipe can have multiple batches (extra bakes
+    // at different deadlines) — batch 1 lives in plan/recipeDeadlines, the rest in the
+    // bake-instances store. The deadline input is blank when the recipe uses the default.
     const planned = recipes.filter(r => isInPlan(r.id) && r.processType !== 'levain');
     if (planned.length > 0) {
+      const rd = loadRecipeDeadlines();
+      const instMap = loadBakeInstances();
+      const batchRowHtml = (o) => `
+        <div class="bake-batch-row">
+          ${o.label ? `<span class="bake-batch-label">${o.label}</span>` : ''}
+          <input type="number" min="0" step="1" value="${o.countVal}" onchange="${o.countHandler}" aria-label="count" />
+          <span class="bake-batch-unit">${escapeHtml(o.unitPlural)}</span>
+          <input type="datetime-local" value="${o.dlVal || ''}" onchange="${o.dlHandler}" aria-label="deadline" title="Deadline for this batch (blank = default)" />
+          ${o.removeHandler ? `<button class="bake-batch-remove" onclick="${o.removeHandler}" title="Remove this batch" aria-label="Remove this batch">✕</button>` : ''}
+        </div>`;
       const countSection = document.createElement('div');
       countSection.style.marginTop = '16px';
       planned.forEach(r => {
         const count = plan[r.id] || 0;
         const unit = r.unit || 'loaf';
         const unitPlural = pluralize(unit);
-        const row = document.createElement('div');
-        row.className = 'bake-row';
-        row.innerHTML = `
-          <div>
-            <div><strong>${escapeHtml(r.name)}</strong></div>
-            <div class="meta">${unitWeightMeta(r, unit)}</div>
-          </div>
-          <div>
-            <input type="number" min="0" step="1" value="${count > 0 ? count : ''}"
-              onchange="setPlanCount('${r.id}', this.value)" aria-label="Number of ${escapeHtml(unitPlural)}" />
-          </div>
-          <div class="muted">${escapeHtml(unitPlural)}</div>
-        `;
-        countSection.appendChild(row);
+        const insts = instMap[r.id] || [];
+        const multi = insts.length > 0;
+        const block = document.createElement('div');
+        block.className = 'bake-recipe';
+        let html = `<div class="bake-recipe-head"><strong>${escapeHtml(r.name)}</strong><span class="meta">${unitWeightMeta(r, unit)}</span></div>`;
+        html += batchRowHtml({
+          label: multi ? 'Batch 1' : '', unitPlural,
+          countVal: count > 0 ? count : '', countHandler: `setPlanCount('${r.id}', this.value)`,
+          dlVal: rd[r.id] || '', dlHandler: `setPlanDeadline('${r.id}', this.value)`,
+        });
+        insts.forEach((inst, k) => {
+          html += batchRowHtml({
+            label: `Batch ${k + 2}`, unitPlural,
+            countVal: inst.count > 0 ? inst.count : '', countHandler: `setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)`,
+            dlVal: inst.deadline || '', dlHandler: `setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)`,
+            removeHandler: `removeBakeInstance('${r.id}', '${inst.id}')`,
+          });
+        });
+        html += `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}')">+ Add another batch (different deadline)</button>`;
+        block.innerHTML = html;
+        countSection.appendChild(block);
       });
       list.appendChild(countSection);
     }
@@ -7264,6 +7385,18 @@ ${notesHtml}
     renderTotals();
     renderFinancials();
     // Keep the per-recipe deadline list in sync (it appears once 2+ recipes are in plan).
+    if (typeof renderRecipeDeadlines === 'function') renderRecipeDeadlines();
+  }
+
+  // Batch-1 deadline for a recipe, set from the Bake Plan row. Writes the shared
+  // recipeDeadlines store (same one the Schedule-tab list uses); blank/default clears it.
+  function setPlanDeadline(id, val) {
+    const map = loadRecipeDeadlines();
+    const def = (document.getElementById('deadline-default-input') || {}).value || '';
+    if (val && val !== def) map[id] = val; else delete map[id];
+    saveRecipeDeadlines(map);
+    renderTotals();
+    renderSchedule();
     if (typeof renderRecipeDeadlines === 'function') renderRecipeDeadlines();
   }
 
@@ -7451,6 +7584,11 @@ ${notesHtml}
   }
 
   function renderTotals() {
+    // Totals/financials use summed counts (batch 1 + extra bakes) keyed by base recipe, so
+    // pricing + sold-overrides stay per recipe. No instances → no-op (byte-identical).
+    return withSummedPlan(renderTotalsInner);
+  }
+  function renderTotalsInner() {
     const activeRecipes = recipes.filter(r => (plan[r.id] || 0) > 0);
     const card = document.getElementById('totals-card');
     const out = document.getElementById('totals-output');
@@ -13635,7 +13773,9 @@ ${notesHtml}
     const defaultDeadlineStr = document.getElementById('deadline-default-input').value;
     const defaultBakeTime = document.getElementById('bake-time-default-input').value;
     const recipeDeadlines = loadRecipeDeadlines();
-    const effRecipeDeadline = (r) => recipeDeadlines[r.id] || defaultDeadlineStr;
+    // Synthetic bake-instance clones carry their own deadline (__instanceDeadline); honor it
+    // first so each extra batch lands in its own loaf/side deadline group.
+    const effRecipeDeadline = (r) => r.__instanceDeadline || recipeDeadlines[r.id] || defaultDeadlineStr;
     const effRecipeDeadlines = {};
     recipes.forEach(r => { if ((plan[r.id] || 0) > 0) { const d = effRecipeDeadline(r); if (d) effRecipeDeadlines[r.id] = d; } });
     const procDeadlineStr = (pt) => {
@@ -13751,6 +13891,11 @@ ${notesHtml}
 
   function renderSchedule() {
     if (suppressScheduleRender) return;
+    // Run the whole schedule build + render with recipes/plan expanded to include extra
+    // bake instances (synthetic per-deadline clones); restored after. No instances → no-op.
+    return withExpandedPlan(renderScheduleInner);
+  }
+  function renderScheduleInner() {
     _scheduleResult = null;
     updateProcessRowVisibility();
     const out = document.getElementById('schedule-output');

@@ -140,7 +140,10 @@ const exportsTail = `
   ratioSignature, sameDough, clusterDoughs,
   loadSplitLoafCols, setSplitLoafCols, toggleSplitLoafCols,
   getOvenCoolGapMin, setOvenCoolGapMin, getOvenShowEndOff, setOvenShowEndOff,
+  expandPlan, summedPlanObj, withExpandedPlan, withSummedPlan,
+  loadBakeInstances, saveBakeInstances, addBakeInstance, setBakeInstanceField, removeBakeInstance,
   __recipes: () => recipes,
+  __plan: () => plan,
 };`;
 
 const factory = new Function(
@@ -2404,6 +2407,51 @@ allOk &= hvOk;
   bpOk &= hv('distinct bagel bulk → durations 1 hr and 4 hr', bagelBulks.has('1') && bagelBulks.has('4'));
   api.__setRecipes(savedRecs);
   allOk &= bpOk;
+}
+
+// --- Multi-bake instances: same recipe, extra deadlines ---
+const BAKE_INSTANCES_KEY = 'whb-bake-instances-v1';
+{
+  let miOk = true;
+  const savedRecs = api.__recipes();
+  const boule = JSON.parse(JSON.stringify(api.SEED_RECIPES.find(r => r.id === SEED.boule)));
+  api.__setRecipes([boule]);
+  api.__setPlan({ [boule.id]: 8 });
+  const plus3 = new Date(tomorrow8.getTime() + 3 * 3600000);
+  // expandPlan / summedPlanObj units
+  localStorageStub.setItem(BAKE_INSTANCES_KEY, JSON.stringify({ [boule.id]: [{ id: boule.id + '~b1', count: 6, deadline: fmtLocal(plus3) }] }));
+  const exp = api.expandPlan();
+  miOk &= hv('expandPlan adds one synthetic clone', exp.recipes.length === 2 && exp.recipes.filter(r => r.__instanceOf === boule.id).length === 1);
+  miOk &= hv('expandPlan sums plan keys (8 + 6)', exp.plan[boule.id] === 8 && exp.plan[boule.id + '~b1'] === 6);
+  miOk &= hv('expandPlan flags hasInstances', exp.hasInstances === true);
+  miOk &= hv('synthetic clone carries its own deadline', exp.recipes.find(r => r.__instanceOf)?.__instanceDeadline === fmtLocal(plus3));
+  const summed = api.summedPlanObj();
+  miOk &= hv('summedPlanObj sums to base only (14)', summed[boule.id] === 14 && !(boule.id + '~b1' in summed));
+  const idem = api.withExpandedPlan(() => api.expandPlan());
+  miOk &= hv('expandPlan idempotent under expanded globals', idem.recipes.length === 2 && idem.plan[boule.id] === 8);
+
+  // End-to-end: two loaf instances at different deadlines → two deadline groups (separate doughs).
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  seedPlan({ [boule.id]: 8 });
+  api.renderSchedule();
+  const sr = api.__sr();
+  miOk &= hv('two instances → totalLoaves sums (14)', sr.totalLoaves === 14);
+  const fridge = sr.events.filter(e => e.process === 'loaf' && /Into fridge/.test(e.title));
+  miOk &= hv('two instances → two distinct cold-proof (fridge) times', new Set(fridge.map(e => +e.time)).size === 2);
+  miOk &= hv('two instances → same-dough-close info warning', sr.warnings.some(w => w.issue === 'same-dough-close'));
+  miOk &= hv('two instances → no oven double-book', !sr.warnings.some(w => /double-book/i.test(w.msg || '')));
+
+  // Same deadline → one group, counts just sum (no split warning).
+  localStorageStub.setItem(BAKE_INSTANCES_KEY, JSON.stringify({ [boule.id]: [{ id: boule.id + '~b1', count: 6, deadline: '' }] }));
+  api.renderSchedule();
+  const sr2 = api.__sr();
+  miOk &= hv('same-deadline instance → one group (no same-dough-close)', sr2.totalLoaves === 14 && !sr2.warnings.some(w => w.issue === 'same-dough-close'));
+
+  localStorageStub.removeItem(BAKE_INSTANCES_KEY);
+  api.__setRecipes(savedRecs);
+  allOk &= miOk;
 }
 
 // --- Wide split view (≥5 columns) scrolls horizontally with min-width columns ---
