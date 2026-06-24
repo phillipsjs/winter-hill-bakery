@@ -11007,7 +11007,7 @@ ${notesHtml}
     const focacciaPrepEvents = (shapeStart, recs = focacciaRecipes, agg = focacciaAgg, milling = millingFloursFocaccia, columnKey = undefined) => {
       const foldInterval = agg.foldIntervalMin;
       const bulkOf = (r) => fermentScale(getRecipeSpec(r).bulkMin || PROCESS_TEMPLATES.focaccia.bulkMin);
-      const divergent = recs.length > 1 && new Set(recs.map(bulkOf)).size > 1;
+      const divergent = recs.length > 1 && (new Set(recs.map(ratioSignature)).size > 1 || new Set(recs.map(bulkOf)).size > 1);
       const foldGap = (agg.foldsCount - 1) * foldInterval;
       const preMix = foldInterval + agg.autolyseMin;
       const lines = (divergent ? recs.map(r => ({ r, bulk: bulkOf(r) })) : [{ r: null, bulk: agg.bulkMin }])
@@ -11261,6 +11261,20 @@ ${notesHtml}
     const loafSlot = totalLoaves > 0
       ? computeBakeSlot(loafDeadline, loafBakeTime, loafBakeTotalMin, 'Bread', 'loaf', loafCoolMin)
       : null;
+    // A mixer load can only ever hold ONE dough — two recipes with different
+    // ingredients can't be mixed together even if their combined count would fit
+    // the mixer. So mix batches are counted PER dough (recipes with an identical
+    // ratioSignature pool; different doughs are summed separately), and a deadline
+    // group that spans more than one dough is treated as divergent (each dough gets
+    // its own mix / bulk container / batch count). Same-dough recipes are unchanged.
+    const mixBatchesByDough = (recs, cap) => {
+      const byDough = new Map();
+      recs.forEach(r => { const sig = ratioSignature(r); byDough.set(sig, (byDough.get(sig) || 0) + (plan[r.id] || 0)); });
+      let n = 0;
+      byDough.forEach(cnt => { if (cnt > 0) n += Math.ceil(cnt / cap); });
+      return n;
+    };
+    const multiDough = (recs) => new Set(recs.map(ratioSignature)).size > 1;
     // Muffin slot(s): split by deadline into independent bake groups (mirrors bagels). A
     // single deadline → one group keyed 'muffin' whose derived values equal the legacy
     // globals (byte-identical); multiple deadlines → 'muffin#0', 'muffin#1', …
@@ -11290,7 +11304,7 @@ ${notesHtml}
         const ovenPlan = planMuffinBakes(recs, plan);
         const batches = ovenPlan.length;
         const bakeTotalMin = batches * agg.bakeMin + Math.max(0, batches - 1) * SCHED.REHEAT_MIN;
-        const mixBatches = total > 0 ? Math.ceil(total / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
+        const mixBatches = total > 0 ? mixBatchesByDough(recs, SCHED.MUFFIN_MIXER_CAPACITY) : 0;
         const totalShapeMin = recs.reduce((s, r) => s + (plan[r.id] || 0) * getRecipeSpec(r).shapeMinPerUnit, 0);
         const coolMin = processCoolMin(recs, SCHED.COOL_HOURS * 60);
         const key = buckets.length === 1 ? 'muffin' : `muffin#${i}`;
@@ -11339,7 +11353,7 @@ ${notesHtml}
         const batches = total > 0 ? Math.ceil(total / batchSizeEff) : 0;
         const cycleMin = SCHED.BAGEL_BOIL_MIN + SCHED.BAGEL_TOP_MIN + agg.bakeMin;
         const ovenSpanMin = batches * cycleMin;
-        const mixBatches = total > 0 ? Math.ceil(total / SCHED.BAGEL_MIXER_CAPACITY) : 0;
+        const mixBatches = total > 0 ? mixBatchesByDough(recs, SCHED.BAGEL_MIXER_CAPACITY) : 0;
         const totalShapeMin = recs.reduce((s, r) => s + (plan[r.id] || 0) * getRecipeSpec(r).shapeMinPerUnit, 0);
         const coolMin = processCoolMin(recs, SCHED.COOL_HOURS * 60);
         const key = buckets.length === 1 ? 'bagel' : `bagel#${i}`;
@@ -12019,8 +12033,9 @@ ${notesHtml}
       const bulkStart = addMinutes(shapeStart, -g.agg.bulkMin);
       g.mixStart = addMinutes(bulkStart, -SCHED.MUFFIN_MIX_ACTIVE_MIN);
       g.times = { muffinBakeStart, muffinOutFridge: outFridge, muffinFridgeIn: fridgeIn, muffinShapeStart: shapeStart, muffinBulkStart: bulkStart };
-      g.divergent = g.recipes.length > 1 &&
-        new Set(g.recipes.map(r => { const p = muffinProfileOf(r, g.coldProofBase); return `${p.cp}|${p.bulk}|${p.warm}`; })).size > 1;
+      g.divergent = g.recipes.length > 1 && (
+        multiDough(g.recipes) ||
+        new Set(g.recipes.map(r => { const p = muffinProfileOf(r, g.coldProofBase); return `${p.cp}|${p.bulk}|${p.warm}`; })).size > 1);
       if (g.divergent) {
         g.timeline = g.recipes.map(r => {
           const p = muffinProfileOf(r, g.coldProofBase);
@@ -12056,8 +12071,9 @@ ${notesHtml}
       const bulkStart = addMinutes(shapeStart, -g.agg.bulkMin);
       g.mixStart = addMinutes(bulkStart, -g.mixBatches * SCHED.BAGEL_MIX_ACTIVE_MIN);
       g.times = { bagelFirstBoil: firstBoil, bagelFridgeIn: fridgeIn, bagelShapeStart: shapeStart, bagelBulkStart: bulkStart };
-      g.divergent = g.recipes.length > 1 &&
-        new Set(g.recipes.map(r => { const p = bagelProfileOf(r, g.coldProofBase); return `${p.cp}|${p.bulk}`; })).size > 1;
+      g.divergent = g.recipes.length > 1 && (
+        multiDough(g.recipes) ||
+        new Set(g.recipes.map(r => { const p = bagelProfileOf(r, g.coldProofBase); return `${p.cp}|${p.bulk}`; })).size > 1);
       if (g.divergent) {
         g.timeline = g.recipes.map(r => {
           const p = bagelProfileOf(r, g.coldProofBase);

@@ -2591,5 +2591,53 @@ const BAKE_INSTANCES_KEY = 'whb-bake-instances-v1';
   allOk &= scOk;
 }
 
+// ---- a mixer never pools DIFFERENT doughs into one mix (per-dough batching fix) ----
+console.log('\nMixer per-dough batching assertions:');
+let mbOk = true;
+{
+  const recs = api.__recipes();
+  const mkClone = (baseId, newId, name) => {
+    const base = recs.find(r => r.id === baseId);
+    const c = JSON.parse(JSON.stringify(base));
+    c.id = newId; c.name = name;
+    // bump water % so the dough's ratioSignature differs → a genuinely different dough
+    c.ingredients = c.ingredients.map(i => i.name === 'Water' ? { ...i, pct: (Number(i.pct) || 60) + 20 } : i);
+    recs.push(c);
+    return c;
+  };
+  mkClone(SEED.muffin, 'mix-m2', 'Cinnamon Muffins');
+  mkClone(SEED.bagel, 'mix-b2', 'Everything Bagels');
+  const runMix = (plan) => {
+    els['deadline-default-input'].value = fmtLocal(tomorrow8);
+    ['coldproof-loaf-input','coldproof-muffin-input','coldproof-bagel-input','bake-time-default-input','build1-ratio-input','build2-ratio-input']
+      .forEach(id => { els[id].value = ''; });
+    localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+    seedPlan(plan); api.__setPlan(plan);
+    api.renderSchedule();
+    return api.__sr().events;
+  };
+
+  // Two DIFFERENT muffin doughs, same deadline, 10+10 = 20 (would fit one 24-cap load if
+  // wrongly pooled). Must split into two per-recipe Mix events, never one shared mix.
+  let mix = runMix({ [SEED.muffin]: 10, 'mix-m2': 10 }).filter(e => /^Mix muffin dough/.test(e.title));
+  mbOk &= hv('two different muffin doughs → two separate Mix events (never pooled)',
+    mix.length === 2 && mix.every(e => / — /.test(e.title)));
+
+  // Single muffin dough → still one pooled Mix event (unchanged byte-for-byte behavior).
+  mix = runMix({ [SEED.muffin]: 20 }).filter(e => /^Mix muffin dough/.test(e.title));
+  mbOk &= hv('single muffin dough → one pooled Mix event (unchanged)',
+    mix.length === 1 && mix[0].title === 'Mix muffin dough');
+
+  // Two DIFFERENT bagel doughs, same deadline → two separate Mix events.
+  mix = runMix({ [SEED.bagel]: 8, 'mix-b2': 8 }).filter(e => /^Mix bagel dough/.test(e.title));
+  mbOk &= hv('two different bagel doughs → two separate Mix events (never pooled)',
+    mix.length === 2 && mix.every(e => / — /.test(e.title)));
+
+  // Remove the clones so later assertions (if any) see the original recipe set.
+  const drop = new Set(['mix-m2', 'mix-b2']);
+  for (let k = recs.length - 1; k >= 0; k--) if (drop.has(recs[k].id)) recs.splice(k, 1);
+}
+allOk &= mbOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
