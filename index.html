@@ -579,21 +579,26 @@
     }
   }
   .schedule-time-clickable {
-    cursor: grab;
+    cursor: pointer;
     text-decoration: underline dotted;
     text-decoration-color: var(--muted);
     text-underline-offset: 2px;
-    touch-action: none;            /* let a vertical drag adjust the time, not scroll */
-    user-select: none; -webkit-user-select: none;
   }
   .schedule-time-clickable:hover {
     color: var(--accent);
   }
-  .schedule-time-dragging {
-    cursor: grabbing;
-    color: var(--accent-dark);
-    background: rgba(31, 77, 46, 0.1);
-    border-radius: 4px;
+  /* Long-press a step to pick it up, then slide up/down to shift its time.
+     On touch devices, suppress the OS text-selection callout so the long-press
+     feels clean; desktop keeps normal text selection. */
+  @media (hover: none) and (pointer: coarse) {
+    .schedule-row, .schedule-event {
+      -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    }
+  }
+  .schedule-step-dragging {
+    position: relative; z-index: 20; background: var(--card);
+    border-radius: 8px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28); opacity: 0.97;
+    will-change: transform;
   }
   /* Floating preview while dragging a step's time. */
   .anchor-drag-bubble {
@@ -7272,59 +7277,84 @@ ${notesHtml}
     renderTotals();
   }
 
-  // ---- drag-to-anchor (slide a step's time up=earlier / down=later) ----
-  // Vertical drag distance → minutes, snapped to 5. Pure so it can be unit-tested.
-  const ANCHOR_DRAG_PX_PER_MIN = 4;   // ~20px of drag per 5-minute step
-  const ANCHOR_DRAG_THRESHOLD_PX = 5; // below this it's a tap (opens the modal), not a drag
+  // ---- long-press a step, then slide up/down to anchor its time ----
+  // Vertical slide distance → minutes, snapped to 5. Pure so it can be unit-tested.
+  const ANCHOR_DRAG_PX_PER_MIN = 4;        // ~20px of slide per 5-minute step
+  const ANCHOR_LONGPRESS_MS = 380;         // hold this long to pick a step up
+  const ANCHOR_LONGPRESS_CANCEL_PX = 10;   // moving more than this first = a scroll, not a press
   function computeDragAnchorMs(scheduledMs, dyPx) {
     const deltaMin = Math.round((dyPx / ANCHOR_DRAG_PX_PER_MIN) / 5) * 5;
     return { newMs: scheduledMs + deltaMin * 60000, deltaMin };
   }
-  let _anchorDrag = null;
+  let _stepDrag = null;
   let _suppressNextScheduleClick = false;
   const _anchorDragFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
   function onAnchorPointerDown(e) {
-    if (e.button != null && e.button > 0) return;            // primary button / touch only
-    const chip = e.target.closest && e.target.closest('.schedule-time-clickable');
+    if (e.button != null && e.button > 0) return;
+    // Leave presses on interactive children (note button, links, inputs) alone.
+    if (e.target.closest && e.target.closest('button, a, input, select, textarea')) return;
+    const stepEl = e.target.closest && e.target.closest('.schedule-row, .schedule-event');
+    if (!stepEl) return;
+    const chip = stepEl.querySelector('.schedule-time-clickable');
     if (!chip) return;
     const title = chip.dataset.eventTitle;
     const scheduledMs = Number(chip.dataset.eventTime);
     if (!title || !Number.isFinite(scheduledMs)) return;
-    _anchorDrag = { chip, title, scheduledMs, startY: e.clientY, moved: false, newMs: scheduledMs };
-    try { chip.setPointerCapture(e.pointerId); } catch (_) {}
-    chip.addEventListener('pointermove', onAnchorPointerMove);
-    chip.addEventListener('pointerup', onAnchorPointerUp);
-    chip.addEventListener('pointercancel', onAnchorPointerUp);
+    const d = { stepEl, chip, title, scheduledMs, startX: e.clientX, startY: e.clientY,
+      pointerId: e.pointerId, activated: false, newMs: scheduledMs, timer: null };
+    d.timer = setTimeout(() => activateStepDrag(d), ANCHOR_LONGPRESS_MS);
+    _stepDrag = d;
+    stepEl.addEventListener('pointermove', onAnchorPointerMove);
+    stepEl.addEventListener('pointerup', onAnchorPointerUp);
+    stepEl.addEventListener('pointercancel', onAnchorPointerUp);
+  }
+  function activateStepDrag(d) {
+    if (_stepDrag !== d) return;
+    d.activated = true;
+    d.stepEl.classList.add('schedule-step-dragging');
+    try { d.stepEl.setPointerCapture(d.pointerId); } catch (_) {}
+    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+    const timeStr = _anchorDragFmt.format(roundToFiveMin(new Date(d.scheduledMs)));
+    showAnchorDragBubble(d.startX, d.startY, timeStr, 0);
   }
   function onAnchorPointerMove(e) {
-    const d = _anchorDrag;
+    const d = _stepDrag;
     if (!d) return;
-    const dy = e.clientY - d.startY;
-    if (!d.moved && Math.abs(dy) < ANCHOR_DRAG_THRESHOLD_PX) return;
-    d.moved = true;
+    const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
+    if (!d.activated) {
+      // Moved before the long-press fired → it's a scroll/swipe; let the page have it.
+      if (Math.abs(dx) > ANCHOR_LONGPRESS_CANCEL_PX || Math.abs(dy) > ANCHOR_LONGPRESS_CANCEL_PX) finishStepDrag(d);
+      return;
+    }
     e.preventDefault();
-    d.chip.classList.add('schedule-time-dragging');
     const { newMs, deltaMin } = computeDragAnchorMs(d.scheduledMs, dy);
     d.newMs = newMs;
+    d.stepEl.style.transform = `translateY(${dy}px) scale(1.015)`;
     const timeStr = _anchorDragFmt.format(roundToFiveMin(new Date(newMs)));
     d.chip.textContent = timeStr;
     showAnchorDragBubble(e.clientX, e.clientY, timeStr, deltaMin);
   }
   function onAnchorPointerUp(e) {
-    const d = _anchorDrag;
+    const d = _stepDrag;
     if (!d) return;
-    d.chip.removeEventListener('pointermove', onAnchorPointerMove);
-    d.chip.removeEventListener('pointerup', onAnchorPointerUp);
-    d.chip.removeEventListener('pointercancel', onAnchorPointerUp);
-    try { d.chip.releasePointerCapture(e.pointerId); } catch (_) {}
-    hideAnchorDragBubble();
-    d.chip.classList.remove('schedule-time-dragging');
-    _anchorDrag = null;
-    if (!d.moved) return;                          // a tap → let the click handler open the modal
-    _suppressNextScheduleClick = true;             // a drag → don't also open the modal
+    const wasActive = d.activated;
+    finishStepDrag(d);
+    if (!wasActive) return;             // short press → the click handler (tooltip/modal) runs
+    _suppressNextScheduleClick = true;  // a real drag → don't also fire the click
     if (d.newMs !== d.scheduledMs) setAnchorForEvent(d.title, d.newMs);
     renderSchedule();
     renderTotals();
+  }
+  function finishStepDrag(d) {
+    if (d.timer) { clearTimeout(d.timer); d.timer = null; }
+    d.stepEl.removeEventListener('pointermove', onAnchorPointerMove);
+    d.stepEl.removeEventListener('pointerup', onAnchorPointerUp);
+    d.stepEl.removeEventListener('pointercancel', onAnchorPointerUp);
+    try { d.stepEl.releasePointerCapture(d.pointerId); } catch (_) {}
+    d.stepEl.classList.remove('schedule-step-dragging');
+    d.stepEl.style.transform = '';
+    hideAnchorDragBubble();
+    if (_stepDrag === d) _stepDrag = null;
   }
   function showAnchorDragBubble(x, y, timeStr, deltaMin) {
     let b = document.getElementById('anchor-drag-bubble');
@@ -14677,9 +14707,9 @@ ${notesHtml}
     html += `<p class="schedule-meta">${metaParts.join(' · ')}</p>`;
     if (anchoredTitles.size > 0) {
       const word = anchoredTitles.size === 1 ? 'anchor' : 'anchors';
-      html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Drag a time up/down to shift it, or tap for an exact time.</p>`;
+      html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Long-press a step, then slide up/down to shift it. Tap a time for exact entry.</p>`;
     } else {
-      html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: drag any time up (earlier) or down (later) to anchor a step — the rest of the schedule shifts with it. Tap a time for exact entry.</p>`;
+      html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: long-press a step, then slide up (earlier) or down (later) to anchor it — the rest of the schedule shifts with it. Tap a time for exact entry.</p>`;
     }
     // minmax(0, 1fr) keeps every column an equal width even when one cell holds a long
     // unbreakable line — otherwise a 1fr (= minmax(auto,1fr)) column grows to its content
