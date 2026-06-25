@@ -935,9 +935,18 @@
   }
   /* Bake sheet — mobile stacked cards (one per step). Only emitted on phones
      (renderDayCards), so these rules need no media gate. */
-  .bs-cards { display: flex; flex-direction: column; gap: 10px; }
-  .bs-card { border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; background: var(--card); }
-  .bs-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  /* On screen the bake sheet is a list of step cards (mobile + desktop); print
+     uses the dense table instead. Cap card width so it reads well on wide screens. */
+  .bs-cards { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+  .bs-card { border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; background: var(--card);
+    transition: opacity 0.15s ease, background 0.15s ease; }
+  .bs-card-head { display: flex; align-items: center; gap: 8px; }
+  .bs-check { flex: 0 0 auto; display: inline-flex; align-items: center; cursor: pointer; }
+  .bs-check input { width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent); margin: 0; }
+  .bs-card-stage { margin-left: auto; }
+  /* Completed steps grey out and strike through the title. */
+  .bs-card-done { opacity: 0.5; background: var(--bg); }
+  .bs-card-done .bs-card-title strong { text-decoration: line-through; }
   .bs-card-time { font-weight: 600; color: var(--accent-dark); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
   .bs-card-stage { flex: 0 0 auto; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.06em;
     text-transform: uppercase; color: #5a6b5e; background: #eef2ee; border: 1px solid #d6e0d6;
@@ -2580,6 +2589,43 @@
     const t = (ev.title || '').toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
     return proc + '|' + t;
   }
+
+  // ---- per-step "done" checkmarks on the bake sheet ----
+  // Finer than the note key: the FULL title (keeps "fold 1" vs "fold 2" distinct)
+  // plus the column, so each step occurrence is tracked on its own. Stable across
+  // re-renders/anchor shifts (no time/count in the key).
+  const STEP_DONE_KEY = 'whb-bakesheet-done-v1';
+  function stepDoneKey(ev) {
+    return (ev.columnKey || ev.process || '') + '|' + (ev.title || '').trim();
+  }
+  let _stepDone = null;
+  function loadDoneSteps() {
+    if (_stepDone) return _stepDone;
+    let arr = [];
+    try { const r = localStorage.getItem(STEP_DONE_KEY); arr = r ? JSON.parse(r) : []; } catch (e) {}
+    _stepDone = new Set(Array.isArray(arr) ? arr : []);
+    return _stepDone;
+  }
+  function saveDoneSteps() {
+    const set = loadDoneSteps();
+    if (set.size) localStorage.setItem(STEP_DONE_KEY, JSON.stringify([...set]));
+    else localStorage.removeItem(STEP_DONE_KEY);
+  }
+  function isStepDone(ev) { return loadDoneSteps().has(stepDoneKey(ev)); }
+  // Toggle from the card checkbox/swipe. Flips the card's greyed state in place
+  // (no full re-render) so checking off stays snappy.
+  function setStepDone(key, done, el) {
+    const set = loadDoneSteps();
+    if (done) set.add(key); else set.delete(key);
+    saveDoneSteps();
+    const card = el && el.closest ? el.closest('.bs-card') : null;
+    if (card) {
+      card.classList.toggle('bs-card-done', done);
+      const cb = card.querySelector('.bs-check input');
+      if (cb) cb.checked = done;
+    }
+  }
+  function onStepDoneToggle(input, key) { setStepDone(key, input.checked, input); }
   function getStepNoteFor(ev) { const n = loadStepNotes()[stepNoteKey(ev)]; return typeof n === 'string' ? n : ''; }
   function setStepNote(key, text) {
     const notes = loadStepNotes();
@@ -15430,32 +15476,18 @@ ${notesHtml}
     return { ingData, ingTableHtml, getEventIngredients, recipeBlockHtml, batchedBlocks, renderIngCol, getEventContainer, getEventEquipment, bsTitle, allRecipeNames, getEventRecipes, bsDetail, getEventBatchRows, getEventEquipPicker };
   }
 
-  // The bake sheet renders as stacked cards on phones and a dense table on
-  // wider screens. _bsForceMobile lets the test harness pin the mode (matchMedia
-  // isn't available there); null = follow the viewport.
-  let _bsForceMobile = null;
-  function isBakeSheetMobile() {
-    if (_bsForceMobile !== null) return _bsForceMobile;
-    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      && window.matchMedia('(max-width: 640px)').matches;
-  }
+  // On screen the bake sheet renders as stacked cards (every width); printing
+  // uses the dense table (the print stylesheet targets it). _bsPrintMode flips to
+  // the table just for the print, then back. The harness sets it to test the table.
+  let _bsPrintMode = false;
   function renderBakeSheet() {
     const content = document.getElementById('bakesheet-content');
     if (!content) return;
-    // Re-render once when the phone/desktop breakpoint is crossed (bind once).
-    if (typeof window !== 'undefined' && window.matchMedia && !renderBakeSheet._mqBound) {
-      renderBakeSheet._mqBound = true;
-      const mq = window.matchMedia('(max-width: 640px)');
-      const cb = () => rerenderBakeSheetIfVisible();
-      mq.addEventListener ? mq.addEventListener('change', cb) : mq.addListener(cb);
-    }
-    // Printing always uses the dense table (the print stylesheet targets it).
-    // Force it for the print, then restore the on-screen layout afterward.
+    // Swap to the table for printing, then restore the on-screen cards (bind once).
     if (typeof window !== 'undefined' && window.addEventListener && !renderBakeSheet._printBound) {
       renderBakeSheet._printBound = true;
-      let savedForce;
-      window.addEventListener('beforeprint', () => { savedForce = _bsForceMobile; _bsForceMobile = false; renderBakeSheet(); });
-      window.addEventListener('afterprint', () => { _bsForceMobile = savedForce; renderBakeSheet(); });
+      window.addEventListener('beforeprint', () => { _bsPrintMode = true; renderBakeSheet(); });
+      window.addEventListener('afterprint', () => { _bsPrintMode = false; renderBakeSheet(); });
     }
 
     const printBar = document.getElementById('bakesheet-print-bar');
@@ -15528,7 +15560,10 @@ ${notesHtml}
         const batches = getEventBatchRows(ev);
         const p = eventParts(ev, prevContainerRef);
         const stage = getEventStage(ev);
+        const doneKey = stepDoneKey(ev);
+        const done = isStepDone(ev);
         const head = `<div class="bs-card-head">
+            <label class="bs-check no-print" title="Mark this step done"><input type="checkbox" ${done ? 'checked' : ''} onchange="onStepDoneToggle(this, '${escapeAttr(doneKey)}')"></label>
             <span class="bs-card-time">${fmtRange(ev)}</span>
             ${stage ? `<span class="bs-card-stage">${escapeHtml(stage)}</span>` : ''}
           </div>
@@ -15553,7 +15588,7 @@ ${notesHtml}
             <div class="bs-card-section"><span class="bs-card-lbl">Ingredients</span>${b.ingHtml}</div>
           </div>`).join('');
         }
-        return `<div class="bs-card">${head}${body}<div class="bs-card-foot no-print">${p.noteBtnHtml}</div></div>`;
+        return `<div class="bs-card${done ? ' bs-card-done' : ''}" data-done-key="${escapeAttr(doneKey)}">${head}${body}<div class="bs-card-foot no-print">${p.noteBtnHtml}</div></div>`;
       }).join('');
       return `
         <div class="bakesheet-day">
@@ -15665,9 +15700,8 @@ ${notesHtml}
         </div>`;
     };
 
-    // Phones get stacked cards (no horizontal squeeze / dropdown overflow);
-    // wider screens keep the dense table. Print always uses the table.
-    const renderDay = isBakeSheetMobile() ? renderDayCards : renderDayTable;
+    // Stacked cards on screen at every width; the dense table only for printing.
+    const renderDay = _bsPrintMode ? renderDayTable : renderDayCards;
     const daysHtml = groups.map((g, gi) => renderDay(g, gi)).join('');
 
     content.innerHTML = `

@@ -144,8 +144,9 @@ const exportsTail = `
   loadBakeInstances, saveBakeInstances, addBakeInstance, setBakeInstanceField, removeBakeInstance,
   __recipes: () => recipes,
   __plan: () => plan,
-  __setBakeSheetMobile: (v) => { _bsForceMobile = v; },
+  __setBakeSheetPrintMode: (v) => { _bsPrintMode = v; },
   computeDragAnchorMs, getAnchors, setAnchorForEvent, clearAllAnchors,
+  stepDoneKey, loadDoneSteps, isStepDone, setStepDone, saveDoneSteps,
 };`;
 
 const factory = new Function(
@@ -867,10 +868,12 @@ bsOk &= bsk('muffin-only levain build lists ingredients', /Mature starter/.test(
 bsOk &= bsk('bagel-only levain build lists ingredients', /Mature starter/.test(bakeSheetHtml({ [SEED.bagel]: 10 })));
 
 // The note add/edit button sits at the bottom of the first (Time) column; the note TEXT
-// stays in the Step column once created.
+// stays in the Step column once created. (Table layout — now used only for printing.)
 {
   api.setStepNote(api.stepNoteKey({ process: 'loaf', title: 'Gather ingredients' }), 'sift the rye');
+  api.__setBakeSheetPrintMode(true);
   const h = bakeSheetHtml({ [SEED.batard]: 8 });
+  api.__setBakeSheetPrintMode(false);
   const timeCells = h.match(/<td class="bs-time"[^>]*>[\s\S]*?<\/td>/g) || [];
   const stepCells = h.match(/<td class="bs-step"[^>]*>[\s\S]*?<\/td>/g) || [];
   bsOk &= bsk('note button is in the first (Time) column, not the Step column',
@@ -1820,19 +1823,34 @@ hvOk &= hv('loaf cooling step carries no oven equip (inferable from the bake)',
 api.showTab('bakesheet');
 const bsHtml = getEl('bakesheet-content').innerHTML;
 hvOk &= hv('time range uses wrap-safe bs-tspan spans', /bs-tspan/.test(bsHtml));
-// Mobile: the bake sheet renders stacked cards (no <table>), with labeled
-// Equipment/Ingredients sections; desktop keeps the table.
-api.__setBakeSheetMobile(true);
+// On screen (every width) the bake sheet renders stacked cards (no <table>),
+// with labeled Equipment/Ingredients sections; printing uses the table.
 api.renderBakeSheet();
-const bsMobile = getEl('bakesheet-content').innerHTML;
-hvOk &= hv('mobile bake sheet renders stacked cards, not a table',
-  /class="bs-cards"/.test(bsMobile) && /class="bs-card"/.test(bsMobile) && !/bakesheet-table/.test(bsMobile));
-hvOk &= hv('mobile cards label the Equipment and Ingredients sections',
-  /bs-card-lbl">Equipment</.test(bsMobile) && /bs-card-lbl">Ingredients</.test(bsMobile));
-api.__setBakeSheetMobile(false);
+const bsCards = getEl('bakesheet-content').innerHTML;
+hvOk &= hv('screen bake sheet renders stacked cards, not a table',
+  /class="bs-cards"/.test(bsCards) && /class="bs-card"/.test(bsCards) && !/bakesheet-table/.test(bsCards));
+hvOk &= hv('cards label the Equipment and Ingredients sections',
+  /bs-card-lbl">Equipment</.test(bsCards) && /bs-card-lbl">Ingredients</.test(bsCards));
+hvOk &= hv('each step card carries a done checkbox', /class="bs-check no-print"/.test(bsCards) && /onStepDoneToggle\(/.test(bsCards));
+api.__setBakeSheetPrintMode(true);
 api.renderBakeSheet();
-hvOk &= hv('desktop bake sheet still renders the table', /bakesheet-table/.test(getEl('bakesheet-content').innerHTML));
-api.__setBakeSheetMobile(null);
+hvOk &= hv('print mode renders the dense table', /bakesheet-table/.test(getEl('bakesheet-content').innerHTML));
+api.__setBakeSheetPrintMode(false);
+// Per-step done checkmarks: finer key than notes, persisted, greys the card.
+{
+  const evs = api.__sr().events;
+  const f1 = evs.find(e => /Stretch & fold 1/.test(e.title));
+  const f2 = evs.find(e => /Stretch & fold 2/.test(e.title));
+  if (f1 && f2) hvOk &= hv('done key keeps distinct folds separate (unlike the note key)', api.stepDoneKey(f1) !== api.stepDoneKey(f2));
+  const anyEv = evs[0];
+  const k = api.stepDoneKey(anyEv);
+  api.setStepDone(k, true);
+  hvOk &= hv('setStepDone marks a step done + persists', api.isStepDone(anyEv) === true && api.loadDoneSteps().has(k));
+  api.renderBakeSheet();
+  hvOk &= hv('a done step renders greyed (bs-card-done)', /bs-card-done/.test(getEl('bakesheet-content').innerHTML));
+  api.setStepDone(k, false);
+  hvOk &= hv('un-checking clears done', api.isStepDone(anyEv) === false);
+}
 // pickDoughContainer honors a preference (so the bagel/muffin picker actually takes effect).
 api.__setContainers([
   { id: 'small', name: 'Small tub', maxDoughGrams: 3000, processTag: 'loaf' },
