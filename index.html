@@ -7724,6 +7724,7 @@ ${notesHtml}
     return Object.prototype.hasOwnProperty.call(plan, id);
   }
 
+  let _planDeadlinesOpen = false;
   function renderPlan() {
     const list = document.getElementById('plan-list');
     list.innerHTML = '';
@@ -7795,6 +7796,11 @@ ${notesHtml}
       const det = document.createElement('details');
       det.className = 'plan-recipe-deadlines';
       det.style.cssText = 'margin-top:16px';
+      // Preserve expand/collapse across re-renders: adding/removing a batch
+      // re-runs renderPlan(), which rebuilds this <details>. Without this it
+      // would snap back to collapsed every time the user clicked +Add/+Split.
+      det.open = _planDeadlinesOpen;
+      det.addEventListener('toggle', () => { _planDeadlinesOpen = det.open; });
       let detHtml = `<summary class="schedule-section-summary">Recipe-specific deadlines & extra batches <span class="muted" style="font-weight:400;font-size:0.85rem">(optional)</span></summary>`;
       detHtml += '<div style="margin-top:10px">';
       planned.forEach(r => {
