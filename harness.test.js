@@ -146,7 +146,7 @@ const exportsTail = `
   __recipes: () => recipes,
   __plan: () => plan,
   __setBakeSheetPrintMode: (v) => { _bsPrintMode = v; },
-  computeDragAnchorMs, getAnchors, setAnchorForEvent, clearAllAnchors,
+  computeDragAnchorMs, getAnchors, setAnchorForEvent, clearAllAnchors, applyAnchorsToEvents,
   stepDoneKey, loadDoneSteps, isStepDone, setStepDone, saveDoneSteps,
 };`;
 
@@ -2720,6 +2720,23 @@ function dg(label, cond) { console.log(`  [drag] ${cond ? 'PASS' : 'FAIL'} — $
   api.setAnchorForEvent('Mix dough', newMs);
   const a = api.getAnchors().find(x => x.eventId === 'Mix dough');
   dragOk &= dg('setAnchorForEvent stores the dragged time', !!a && a.actualTimeMs === newMs);
+  api.clearAllAnchors();
+}
+// Duplicate-title occurrence matching: titles like "Gather ingredients" repeat across
+// processes. Anchoring the LATER occurrence must shift that one (and steps after it), not
+// the earlier same-title step — which would compute a huge offset and fling it hours away.
+{
+  const mk = (title, h, m) => ({ title, time: new Date(2024, 0, 1, h, m || 0, 0, 0) });
+  const events = [ mk('Gather ingredients', 6), mk('Stretch & fold', 9), mk('Gather ingredients', 10), mk('Bake', 12) ];
+  const baseMs = events[2].time.getTime(); // the 10:00 (muffin) gather
+  api.clearAllAnchors();
+  api.setAnchorForEvent('Gather ingredients', baseMs + 5 * 60000, baseMs); // nudge +5 min
+  api.applyAnchorsToEvents(events, api.getAnchors());
+  const at = (i) => `${events[i].time.getHours()}:${String(events[i].time.getMinutes()).padStart(2, '0')}`;
+  dragOk &= dg('dup-title: the EARLIER same-title step is untouched (no hours-long fling)', at(0) === '6:00');
+  dragOk &= dg('dup-title: the anchored occurrence shifts exactly +5 min', at(2) === '10:05');
+  dragOk &= dg('dup-title: a later step cascades by the same +5 min', at(3) === '12:05');
+  dragOk &= dg('dup-title: only the matched occurrence is flagged anchored', events[2]._anchored === true && events[0]._anchored === false);
   api.clearAllAnchors();
 }
 allOk &= dragOk;

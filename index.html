@@ -7397,15 +7397,17 @@ ${notesHtml}
   // ---- anchor modal ----
   let pendingAnchorEventId = null;
   let pendingAnchorScheduledMs = null;
+  let pendingAnchorBaseMs = null;
 
-  function openAnchorModal(eventTitle, scheduledTimeMs) {
+  function openAnchorModal(eventTitle, scheduledTimeMs, baseMs) {
     pendingAnchorEventId = eventTitle;
     pendingAnchorScheduledMs = scheduledTimeMs;
+    pendingAnchorBaseMs = (baseMs != null) ? baseMs : scheduledTimeMs;
     const scheduled = new Date(scheduledTimeMs);
     document.getElementById('anchor-event-title').textContent = eventTitle;
     const fmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
     document.getElementById('anchor-scheduled-time').textContent = fmt.format(scheduled);
-    const existing = getAnchors().find(a => a.eventId === eventTitle);
+    const existing = getAnchors().find(a => anchorMatches(a, eventTitle, pendingAnchorBaseMs));
     const seedTime = existing ? new Date(existing.actualTimeMs) : scheduled;
     const hh = String(seedTime.getHours()).padStart(2, '0');
     const mm = String(seedTime.getMinutes()).padStart(2, '0');
@@ -7416,13 +7418,14 @@ ${notesHtml}
   function closeAnchorModal() {
     pendingAnchorEventId = null;
     pendingAnchorScheduledMs = null;
+    pendingAnchorBaseMs = null;
     document.getElementById('anchor-modal').style.display = 'none';
   }
   function closeAnchorModalOnBg(e) {
     if (e.target.id === 'anchor-modal') closeAnchorModal();
   }
   function clearCurrentAnchorAndClose() {
-    if (pendingAnchorEventId) removeAnchorForEvent(pendingAnchorEventId);
+    if (pendingAnchorEventId) removeAnchorForEvent(pendingAnchorEventId, pendingAnchorBaseMs);
     closeAnchorModal();
     renderSchedule();
     renderTotals();
@@ -7441,7 +7444,7 @@ ${notesHtml}
     let offset = actual.getTime() - pendingAnchorScheduledMs;
     if (offset > HALF_DAY) offset -= 24 * 60 * 60 * 1000;
     else if (offset < -HALF_DAY) offset += 24 * 60 * 60 * 1000;
-    setAnchorForEvent(pendingAnchorEventId, pendingAnchorScheduledMs + offset);
+    setAnchorForEvent(pendingAnchorEventId, pendingAnchorScheduledMs + offset, pendingAnchorBaseMs);
     closeAnchorModal();
     renderSchedule();
     renderTotals();
@@ -7465,13 +7468,23 @@ ${notesHtml}
       localStorage.removeItem(ANCHORS_KEY);
     }
   }
-  function setAnchorForEvent(eventId, actualTimeMs) {
-    const anchors = getAnchors().filter(a => a.eventId !== eventId);
-    anchors.push({ eventId, actualTimeMs });
+  // An anchor's identity is its title PLUS the step's pre-anchor "base" time. Titles
+  // repeat across processes (e.g. "Gather ingredients" for muffins and loaves), so a
+  // title-only key would let anchoring one collapse onto another. baseMs disambiguates
+  // the specific occurrence. Legacy anchors (saved without scheduledMs) match by title
+  // alone so they keep working.
+  function anchorMatches(a, eventId, baseMs) {
+    if (a.eventId !== eventId) return false;
+    if (a.scheduledMs == null || baseMs == null) return true;
+    return Math.abs(a.scheduledMs - baseMs) <= 1000;
+  }
+  function setAnchorForEvent(eventId, actualTimeMs, baseMs) {
+    const anchors = getAnchors().filter(a => !anchorMatches(a, eventId, baseMs));
+    anchors.push({ eventId, actualTimeMs, scheduledMs: baseMs });
     saveAnchorsList(anchors);
   }
-  function removeAnchorForEvent(eventId) {
-    saveAnchorsList(getAnchors().filter(a => a.eventId !== eventId));
+  function removeAnchorForEvent(eventId, baseMs) {
+    saveAnchorsList(getAnchors().filter(a => !anchorMatches(a, eventId, baseMs)));
   }
   function clearAllAnchors() { saveAnchorsList(null); }
   function clearAllAnchorsAndRender() {
@@ -7518,7 +7531,12 @@ ${notesHtml}
     const title = chip.dataset.eventTitle;
     const scheduledMs = Number(chip.dataset.eventTime);
     if (!title || !Number.isFinite(scheduledMs)) return;
-    const d = { stepEl, chip, title, scheduledMs,
+    // baseMs = the step's pre-anchor time, used as the anchor's stable identity so a
+    // re-drag updates the SAME anchor and same-title steps stay distinct. Falls back to
+    // the displayed time for safety. The visual delta still rides the displayed time.
+    const bm = Number(chip.dataset.eventBaseTime);
+    const baseMs = Number.isFinite(bm) ? bm : scheduledMs;
+    const d = { stepEl, chip, title, scheduledMs, baseMs,
       startClientX: e.clientX, startClientY: e.clientY, startScrollY: scheduleScrollY(),
       lastClientX: e.clientX, lastClientY: e.clientY,
       pointerId: e.pointerId, activated: false, newMs: scheduledMs, timer: null, rafId: null,
@@ -7607,7 +7625,7 @@ ${notesHtml}
     finishStepDrag(d);
     if (!wasActive) return;             // short press → the click handler (tooltip/modal) runs
     _suppressNextScheduleClick = true;  // a real drag → don't also fire the click
-    if (d.newMs !== d.scheduledMs) setAnchorForEvent(d.title, d.newMs);
+    if (d.newMs !== d.scheduledMs) setAnchorForEvent(d.title, d.newMs, d.baseMs);
     renderSchedule();
     renderTotals();
   }
@@ -7673,6 +7691,10 @@ ${notesHtml}
   // event's scheduled time is <= this event's scheduled time. Returns the set
   // of event titles that are themselves anchored (for visual indication).
   function applyAnchorsToEvents(events, anchors) {
+    // Stamp every event's pre-anchor (base) time first — the drag/modal read this back
+    // from the DOM to identify the SPECIFIC occurrence being anchored, and the badge
+    // logic marks the matched event. Done unconditionally so it's set even with no anchors.
+    events.forEach(ev => { ev._baseMs = ev.time.getTime(); ev._anchored = false; });
     if (!anchors || anchors.length === 0) return new Set();
     const originals = events.map(ev => ({
       time: ev.time.getTime(),
@@ -7680,9 +7702,25 @@ ${notesHtml}
     }));
     const resolved = anchors
       .map(a => {
-        const idx = events.findIndex(e => e.title === a.eventId);
+        // Resolve to the SPECIFIC occurrence: among same-title events, pick the one whose
+        // original (pre-anchor) time is closest to the anchor's stored base time. Titles
+        // repeat (e.g. muffin vs loaf "Gather ingredients"), so a first-match would compute
+        // the offset against the wrong step and fling it hours away. Legacy anchors with no
+        // scheduledMs fall back to the first match (old behaviour).
+        let idx = -1;
+        if (a.scheduledMs != null) {
+          let best = Infinity;
+          for (let i = 0; i < events.length; i++) {
+            if (events[i].title !== a.eventId) continue;
+            const d = Math.abs(originals[i].time - a.scheduledMs);
+            if (d < best) { best = d; idx = i; }
+          }
+        } else {
+          idx = events.findIndex(e => e.title === a.eventId);
+        }
         if (idx < 0) return null;
         return {
+          idx,
           eventId: a.eventId,
           actualTimeMs: a.actualTimeMs,
           scheduledTimeMs: originals[idx].time,
@@ -7706,7 +7744,8 @@ ${notesHtml}
         }
       }
     }
-    return new Set(resolved.map(a => a.eventId));
+    resolved.forEach(r => { events[r.idx]._anchored = true; });
+    return new Set(resolved.map(r => r.idx));
   }
 
   // ---- tabs ----
@@ -15111,8 +15150,9 @@ ${notesHtml}
     `;
     const renderClickableTime = (ev) => {
       const display = timeFmt.format(roundToFiveMin(ev.time));
-      const cls = 'schedule-time-clickable' + (anchoredTitles.has(ev.title) ? ' schedule-time-anchored' : '');
-      return `<span class="${cls}" data-event-title="${escapeAttr(ev.title)}" data-event-time="${ev.time.getTime()}">${display}</span>`;
+      const cls = 'schedule-time-clickable' + (ev._anchored ? ' schedule-time-anchored' : '');
+      const baseMs = (ev._baseMs != null) ? ev._baseMs : ev.time.getTime();
+      return `<span class="${cls}" data-event-title="${escapeAttr(ev.title)}" data-event-time="${ev.time.getTime()}" data-event-base-time="${baseMs}">${display}</span>`;
     };
     const formatEventTime = (ev) => ev.timeEnd
       ? `${renderClickableTime(ev)} – ${timeFmt.format(roundToFiveMin(ev.timeEnd))}`
@@ -16981,7 +17021,8 @@ ${notesHtml}
     const title = target.dataset.eventTitle;
     const timeMs = Number(target.dataset.eventTime);
     if (!title || !Number.isFinite(timeMs)) return;
-    openAnchorModal(title, timeMs);
+    const bm = Number(target.dataset.eventBaseTime);
+    openAnchorModal(title, timeMs, Number.isFinite(bm) ? bm : timeMs);
   });
   // Hover tooltips on schedule steps.
   let _scheduleTooltipEl = null, _scheduleTooltipFor = null, _scheduleTooltipPinned = false;
