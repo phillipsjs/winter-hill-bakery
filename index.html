@@ -269,6 +269,9 @@
   .bake-recipe-firstline { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
   .bake-recipe-firstline .bake-batch-row.bake-batch-row-first { padding: 0; }
   .bake-batch-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 4px 0; }
+  /* Split / extra-batch rows right-align so their count + deadline sit under Bake 1's
+     (which is pushed right by the recipe name in .bake-recipe-firstline). */
+  .bake-batch-extra-row { justify-content: flex-end; }
   .bake-batch-label { font-size: 0.78rem; color: var(--muted); min-width: 54px; }
   .bake-batch-row input[type="number"] { width: 72px; }
   .bake-batch-row input[type="datetime-local"] { flex: 0 1 210px; min-width: 156px; max-width: 220px; }
@@ -1132,6 +1135,8 @@
     .bake-recipe-compact { gap: 8px; }
     /* Recipe-specific deadlines: stack the deadline beneath the name on phones. */
     .bake-recipe-firstline { flex-direction: column; align-items: stretch; gap: 4px; }
+    /* The firstline stacks full-width on phones, so left-align the split rows to match. */
+    .bake-batch-extra-row { justify-content: flex-start; }
 
     /* Recipe editor: the 5-column ingredient grid (~400px of fixed columns)
        overflows phones — restack it (name full-width, then %/tag/link/remove). */
@@ -7251,14 +7256,16 @@ ${notesHtml}
     let n = arr.length + 1, id = `${baseId}~b${n}`;
     while (used.has(id)) { n++; id = `${baseId}~b${n}`; }
     if (share) {
+      // The top count stays the WHOLE dough; a split just carves part of it off to
+      // a later bake. Seed the new portion with half — Bake 1 derives as total − Σsplits.
       const cur = plan[baseId] || 0;
       const portion = Math.floor(cur / 2);
-      if (portion > 0) { plan[baseId] = cur - portion; savePlan(); }
       arr.push({ id, count: portion, deadline: '', share: true });
     } else {
       arr.push({ id, count: plan[baseId] || 0, deadline: '' });
     }
     map[baseId] = arr; saveBakeInstances(map);
+    _planDeadlinesOpen = true; // keep the card open so the new split rows are visible
     renderPlan(); renderSchedule();
   }
   function setBakeInstanceField(baseId, instId, field, val) {
@@ -7268,6 +7275,36 @@ ${notesHtml}
     else inst.deadline = val || '';
     saveBakeInstances(map);
     renderTotals(); renderSchedule();
+  }
+  // --- Split-bake count syncing: the top count is the whole dough; Bake 1 and the
+  //     split portion(s) must always sum to it. ---
+  // Editing a split portion: clamp it so it can't exceed what's left after the other
+  // splits, then Bake 1 re-derives (total − Σsplits) on render.
+  function setSplitShareCount(baseId, instId, val) {
+    const map = loadBakeInstances();
+    const arr = map[baseId] || [];
+    const inst = arr.find(i => i.id === instId); if (!inst) return;
+    const total = plan[baseId] || 0;
+    const otherShares = arr.reduce((s, i) => s + (i.share && i.id !== instId ? Math.max(0, Math.floor(Number(i.count) || 0)) : 0), 0);
+    let n = Math.max(0, Math.floor(Number(val) || 0));
+    n = Math.min(n, Math.max(0, total - otherShares));
+    inst.count = n;
+    saveBakeInstances(map);
+    renderPlan(); renderSchedule();
+  }
+  // Editing Bake 1: the splits must absorb the remainder (total − Bake1). With one
+  // split (the common case) it takes it exactly; with several, the first split absorbs.
+  function setSplitBake1Count(baseId, val) {
+    const map = loadBakeInstances();
+    const arr = map[baseId] || [];
+    const shares = arr.filter(i => i.share); if (!shares.length) return;
+    const total = plan[baseId] || 0;
+    let v = Math.max(0, Math.min(Math.floor(Number(val) || 0), total));
+    const targetShareSum = total - v;
+    const others = shares.slice(1).reduce((s, i) => s + Math.max(0, Math.floor(Number(i.count) || 0)), 0);
+    shares[0].count = Math.max(0, targetShareSum - others);
+    saveBakeInstances(map);
+    renderPlan(); renderSchedule();
   }
   function removeBakeInstance(baseId, instId) {
     const map = loadBakeInstances();
@@ -7284,12 +7321,20 @@ ${notesHtml}
     const exPlan = {};
     base.forEach(r => { if (Object.prototype.hasOwnProperty.call(plan, r.id)) exPlan[r.id] = plan[r.id]; });
     base.forEach(r => {
+      let shareSum = 0;
       (store[r.id] || []).forEach((inst, k) => {
         synth.push({ ...r, id: inst.id,
           name: inst.share ? `${r.name} — split bake` : `${r.name} — batch ${k + 2}`,
           __instanceOf: r.id, __instanceDeadline: inst.deadline || '', __sharePrep: !!inst.share });
-        exPlan[inst.id] = Math.max(0, Math.floor(Number(inst.count) || 0));
+        const c = Math.max(0, Math.floor(Number(inst.count) || 0));
+        exPlan[inst.id] = c;
+        if (inst.share) shareSum += c;
       });
+      // Split portions are carved OUT of the top count: Bake 1 = total − Σsplits
+      // (non-share "extra batches" are separate production and don't deduct).
+      if (shareSum > 0 && Object.prototype.hasOwnProperty.call(exPlan, r.id)) {
+        exPlan[r.id] = Math.max(0, exPlan[r.id] - shareSum);
+      }
     });
     return { recipes: base.concat(synth), plan: exPlan, hasInstances: synth.length > 0 };
   }
@@ -7302,7 +7347,8 @@ ${notesHtml}
     base.forEach(r => {
       if (!Object.prototype.hasOwnProperty.call(plan, r.id)) return;
       let c = plan[r.id] || 0;
-      (store[r.id] || []).forEach(inst => { c += Math.max(0, Math.floor(Number(inst.count) || 0)); });
+      // Split portions live inside the top count already; only extra batches add.
+      (store[r.id] || []).forEach(inst => { if (!inst.share) c += Math.max(0, Math.floor(Number(inst.count) || 0)); });
       out[r.id] = c;
     });
     return out;
@@ -7801,6 +7847,7 @@ ${notesHtml}
       // would snap back to collapsed every time the user clicked +Add/+Split.
       det.open = _planDeadlinesOpen;
       det.addEventListener('toggle', () => { _planDeadlinesOpen = det.open; });
+      const defaultDl = localStorage.getItem(DEFAULT_DEADLINE_KEY) || '';
       let detHtml = `<summary class="schedule-section-summary">Recipe-specific deadlines & extra batches <span class="muted" style="font-weight:400;font-size:0.85rem">(optional)</span></summary>`;
       detHtml += '<div style="margin-top:10px">';
       planned.forEach(r => {
@@ -7808,22 +7855,36 @@ ${notesHtml}
         const unitPlural = pluralize(unit);
         const insts = instMap[r.id] || [];
         const multi = insts.length > 0;
+        // A split (share) instance carves part of the top total off to a later bake.
+        // Bake 1's effective count is the remainder; the two stay summed to the total.
+        const total = plan[r.id] || 0;
+        const shareSum = insts.reduce((s, i) => s + (i.share ? Math.max(0, Math.floor(Number(i.count) || 0)) : 0), 0);
+        const hasSplit = insts.some(i => i.share);
+        const bake1Count = Math.max(0, total - shareSum);
+        const firstLabel = hasSplit ? 'Bake 1' : (multi ? 'Batch 1' : 'Deadline');
+        // When split, the first row gains a synced count input (sums with the splits to the total).
+        const bake1CountHtml = hasSplit
+          ? `<input type="number" min="0" step="1" value="${bake1Count > 0 ? bake1Count : ''}" onchange="setSplitBake1Count('${r.id}', this.value)" aria-label="Bake 1 count" title="How many bake at this first time (the rest split to later times)" /><span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>`
+          : '';
         detHtml += `<div class="bake-recipe">
           <div class="bake-recipe-firstline">
             <div class="bake-recipe-head"><strong>${escapeHtml(r.name)}</strong></div>
             <div class="bake-batch-row bake-batch-row-first">
-              <span class="bake-batch-label">${multi ? 'Batch 1' : 'Deadline'}</span>
-              <input type="datetime-local" value="${rd[r.id] || ''}" onchange="setPlanDeadline('${r.id}', this.value)" aria-label="deadline" title="Deadline for this batch (blank = default)" />
+              <span class="bake-batch-label">${firstLabel}</span>
+              ${bake1CountHtml}
+              <input type="datetime-local" value="${rd[r.id] || defaultDl}" onchange="setPlanDeadline('${r.id}', this.value)" aria-label="deadline" title="Deadline for this batch (blank = default)" />
             </div>
           </div>`;
         insts.forEach((inst, k) => {
-          const label = inst.share ? '🔗 Split' : `Batch ${k + 2}`;
+          const n = k + 2;
+          const label = inst.share ? `🔗 Bake ${n}` : `Batch ${n}`;
           const lblTitle = inst.share ? 'Split bake — same dough, baked at this time (shares mixing/folding/shaping with the rest)' : '';
-          detHtml += `<div class="bake-batch-row">
+          const cntChange = inst.share ? `setSplitShareCount('${r.id}', '${inst.id}', this.value)` : `setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)`;
+          detHtml += `<div class="bake-batch-row bake-batch-extra-row">
               <span class="bake-batch-label"${lblTitle ? ` title="${escapeAttr(lblTitle)}"` : ''}>${label}</span>
-              <input type="number" min="0" step="1" value="${inst.count > 0 ? inst.count : ''}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)" aria-label="count" />
+              <input type="number" min="0" step="1" value="${inst.count > 0 ? inst.count : ''}" onchange="${cntChange}" aria-label="count" />
               <span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>
-              <input type="datetime-local" value="${inst.deadline || ''}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)" aria-label="deadline" title="${inst.share ? 'When this split portion bakes' : 'Deadline for this batch (blank = default)'}" />
+              <input type="datetime-local" value="${inst.deadline || defaultDl}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)" aria-label="deadline" title="${inst.share ? 'When this split portion bakes' : 'Deadline for this batch (blank = default)'}" />
               <button class="bake-batch-remove" onclick="removeBakeInstance('${r.id}', '${inst.id}')" title="Remove this batch" aria-label="Remove this batch">✕</button>
             </div>`;
         });
@@ -7849,8 +7910,25 @@ ${notesHtml}
     const n = Math.max(0, Math.floor(Number(val) || 0));
     plan[id] = n;
     savePlan();
+    // Splits are carved from the total — if the total drops below the split portions,
+    // trim them (from the last split back) so Bake 1 + splits never exceed the total.
+    const map = loadBakeInstances();
+    const shares = (map[id] || []).filter(i => i.share);
+    if (shares.length) {
+      let budget = n;
+      let trimmed = false;
+      shares.forEach(i => {
+        const c = Math.max(0, Math.floor(Number(i.count) || 0));
+        const allowed = Math.max(0, Math.min(c, budget));
+        if (allowed !== c) { i.count = allowed; trimmed = true; }
+        budget -= allowed;
+      });
+      if (trimmed) saveBakeInstances(map);
+    }
     renderTotals();
     renderFinancials();
+    renderSchedule();
+    renderPlan(); // refresh derived Bake-1/split counts in the deadlines card
     // Keep the per-recipe deadline list in sync (it appears once 2+ recipes are in plan).
     if (typeof renderRecipeDeadlines === 'function') renderRecipeDeadlines();
   }

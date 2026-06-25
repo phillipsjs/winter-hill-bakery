@@ -142,6 +142,7 @@ const exportsTail = `
   getOvenCoolGapMin, setOvenCoolGapMin, getOvenShowEndOff, setOvenShowEndOff,
   expandPlan, summedPlanObj, withExpandedPlan, withSummedPlan,
   loadBakeInstances, saveBakeInstances, addBakeInstance, setBakeInstanceField, removeBakeInstance,
+  setSplitBake1Count, setSplitShareCount, setPlanCount,
   __recipes: () => recipes,
   __plan: () => plan,
   __setBakeSheetPrintMode: (v) => { _bsPrintMode = v; },
@@ -2727,8 +2728,9 @@ function sp(label, cond) { console.log(`  [split] ${cond ? 'PASS' : 'FAIL'} — 
   api.__setPlan({ [SEED.batard]: 20 }); seedPlan({ [SEED.batard]: 20 });
   api.addBakeInstance(SEED.batard, true);                          // split bake
   const inst = api.loadBakeInstances()[SEED.batard][0];
-  spOk &= sp('split moves half of batch 1 into the new portion (20 → 10 + 10)',
-    api.__plan()[SEED.batard] === 10 && inst.count === 10 && inst.share === true);
+  spOk &= sp('split keeps the top total at 20 and carves off half (Bake 1 10 + split 10)',
+    api.__plan()[SEED.batard] === 20 && inst.count === 10 && inst.share === true &&
+    api.expandPlan().plan[SEED.batard] === 10 && api.expandPlan().plan[inst.id] === 10);
   api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
   api.renderSchedule();
   let sr = api.__sr();
@@ -2746,6 +2748,26 @@ function sp(label, cond) { console.log(`  [split] ${cond ? 'PASS' : 'FAIL'} — 
   api.renderSchedule(); sr = api.__sr();
   spOk &= sp('warns when the split gap exceeds the cold-proof window', (sr.warnings || []).some(w => w.issue === 'split-over-window'));
   spOk &= sp('still schedules the split despite the over-window gap (two bakes)', titles().filter(t => /^Bake \d+ of/.test(t)).length === 2);
+  api.saveBakeInstances({});
+}
+// Count-syncing: top total fixed at 20, Bake 1 + split stay summed to it.
+{
+  api.saveBakeInstances({});
+  api.__setPlan({ [SEED.batard]: 20 }); seedPlan({ [SEED.batard]: 20 });
+  api.addBakeInstance(SEED.batard, true);
+  let inst = api.loadBakeInstances()[SEED.batard][0];
+  const bake1 = () => api.expandPlan().plan[SEED.batard];
+  const splitCnt = () => api.loadBakeInstances()[SEED.batard][0].count;
+  spOk &= sp('top total unchanged by split (still 20)', api.__plan()[SEED.batard] === 20);
+  spOk &= sp('initial derive: Bake 1 = 10, split = 10', bake1() === 10 && splitCnt() === 10);
+  api.setSplitShareCount(SEED.batard, inst.id, 7);
+  spOk &= sp('editing split → Bake 1 re-derives (13 + 7 = 20)', bake1() === 13 && splitCnt() === 7);
+  api.setSplitShareCount(SEED.batard, inst.id, 99);
+  spOk &= sp('split clamped to the total (Bake 1 0 + 20)', bake1() === 0 && splitCnt() === 20);
+  api.setSplitBake1Count(SEED.batard, 6);
+  spOk &= sp('editing Bake 1 → split absorbs (6 + 14 = 20)', bake1() === 6 && splitCnt() === 14);
+  api.setPlanCount(SEED.batard, 10);
+  spOk &= sp('shrinking total trims the split to fit (Bake 1 0 + 10)', api.__plan()[SEED.batard] === 10 && bake1() === 0 && splitCnt() === 10);
   api.saveBakeInstances({});
 }
 allOk &= spOk;
