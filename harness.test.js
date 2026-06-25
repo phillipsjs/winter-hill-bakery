@@ -2943,6 +2943,16 @@ function sd(label, cond) { console.log(`  [split-dough] ${cond ? 'PASS' : 'FAIL'
     bouleColLabel && !/staggered/.test(bouleColLabel.label));
   sdOk &= sd('same-dough split: the split batard columns DO read "(staggered)"',
     (sr.loafColumns || []).filter(c => /batard/.test(c.key)).every(c => /staggered/.test(c.label)));
+  // Containers must NOT mix recipes (boule packed with batard), and each container's shape step
+  // confines to ONE column (no colDetails span). Base and clone get DIFFERENT columns.
+  const shapeSteps = sr.events.filter(e => e.process === 'loaf' && /^Start preshape/.test(e.title));
+  sdOk &= sd('no container mixes recipes — every shape step is single-column (no span)',
+    shapeSteps.length > 0 && shapeSteps.every(e => !e.colDetails && /loaf::/.test(e.columnKey || '')));
+  sdOk &= sd('no shape step title lists two recipes in one container (no "A + B")',
+    !sr.events.some(e => /^(Start preshape|Into fridge)/.test(e.title) && /×.+\+.+×/.test(e.title)));
+  const shapeCols = new Set(shapeSteps.map(e => e.columnKey));
+  sdOk &= sd('split batard portions shape into their OWN columns (base ≠ clone), boule separate',
+    shapeCols.has('g0~loaf::seed-sourdough-batard') && shapeCols.has('g0~loaf::seed-sourdough-batard~b1') && shapeCols.has('g0~loaf::seed-sourdough-boule'));
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }

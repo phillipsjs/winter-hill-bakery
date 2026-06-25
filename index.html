@@ -8715,7 +8715,11 @@ ${notesHtml}
       const separatedCount = items.reduce((s, i) => s + Math.ceil(i.dough / effectiveCapacity), 0);
 
       let containers;
-      if (combinedCount === separatedCount || items.length === 1) {
+      // Different recipes are different shapes (and split portions bake at different times), so
+      // they never share a proofing container — always give each its own, even when pooling the
+      // dough into fewer mixed tubs would save one. (Matches the Bake-Plan container card, which
+      // packs the base recipes the same way.) Single-recipe groups split evenly across containers.
+      if (true || combinedCount === separatedCount || items.length === 1) {
         // SEPARATED: each recipe gets its own container(s), split evenly by loaves
         containers = [];
         for (const item of items) {
@@ -8723,7 +8727,7 @@ ${notesHtml}
           const loavesPerContainer = splitEvenly(item.count, recipeContainers);
           for (const loaves of loavesPerContainer) {
             containers.push({
-              loaves: [{ recipe: item.recipe.name, count: loaves, dough: loaves * item.recipe.loafWeight }],
+              loaves: [{ recipe: item.recipe.name, recipeId: item.recipe.id, count: loaves, dough: loaves * item.recipe.loafWeight }],
               totalLoaves: loaves,
               totalDough: loaves * item.recipe.loafWeight,
               containerName,
@@ -12325,6 +12329,7 @@ ${notesHtml}
     let splitLoaf = false; // user toggle: one column per loaf recipe (set in the loaf block)
     let loafColAttrFor = (contents, fallbackColKey) => ({ columnKey: fallbackColKey });
     const loafRecipeColKey = new Map(); // recipe name -> loaf column key (for shared-step breakdowns)
+    const loafRecipeColKeyById = new Map(); // recipe id -> column key (split base + clone share a NAME)
     let shapePhaseStart = null, lastFoldTime = null, firstFoldTime = null, mixTime = null, autolyseStart = null;
     // Per-dough proofing: when distinct doughs at one deadline want different cold proofs/bulk,
     // each container gets its own backward prep timeline (see below). Stays null/false otherwise.
@@ -12386,6 +12391,7 @@ ${notesHtml}
           .forEach(r => {
             const ck = `loaf::${r.id}`;
             loafRecipeColKey.set(r.name, ck);
+            loafRecipeColKeyById.set(r.id, ck);
             loafColumns.push({ key: ck, label: r.name, names: [r.name] });
           });
       }
@@ -12396,7 +12402,9 @@ ${notesHtml}
         if (!splitLoaf) return { columnKey: fallbackColKey };
         const cd = {};
         (contents || []).forEach(x => {
-          const ck = loafRecipeColKey.get(x.recipe);
+          // Prefer the recipe ID (split base + clone share a NAME, so a name lookup would
+          // collapse both portions into one column); fall back to the name otherwise.
+          const ck = (x.recipeId && loafRecipeColKeyById.get(x.recipeId)) || loafRecipeColKey.get(x.recipe);
           if (!ck) return;
           const line = `${x.count} × ${x.recipe}`;
           cd[ck] = cd[ck] ? `${cd[ck]}\n${line}` : line;
