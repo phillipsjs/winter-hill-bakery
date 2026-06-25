@@ -14172,13 +14172,18 @@ ${notesHtml}
     // and oven claims first so we can sequence portions that share an oven. Each portion's
     // buildSchedule assigns the oven assuming full availability, so two portions baking close
     // together would otherwise grab the same oven at once → a false "oven double-booked".
+    // In the per-recipe column view, each portion is a single recipe whose own buildSchedule
+    // can't know it belongs to a per-recipe column — so its bake/cool steps carry no columnKey
+    // and would span EVERY loaf column. Stamp each portion's bake steps with its recipe column
+    // key (`loaf::<id>`, matching the prep's split-loaf columns) so they confine to that column.
+    const splitLoafView = loadSplitLoafCols();
     const portions = [];
     sorted.forEach(r => {
       const bp = {}; bp[r.id] = fullPlan[r.id] || 0;
       plan = bp;
       const br = buildSchedule({ ...baseOpts, ...cw, loafDeadline: rd[r.id] || baseOpts.loafDeadline });
       const pEvents = [];
-      br.events.forEach(ev => { if (isLoafBake(ev)) pEvents.push(ev); });
+      br.events.forEach(ev => { if (isLoafBake(ev)) { if (splitLoafView) ev.columnKey = `loaf::${r.id}`; pEvents.push(ev); } });
       const pClaims = (br.equipClaims || []).filter(c => c.pool === 'oven');
       const starts = pClaims.map(c => c.startMs), ends = pClaims.map(c => c.endMs);
       portions.push({
@@ -14454,7 +14459,18 @@ ${notesHtml}
       const dlLabel = group.combined ? ' · one dough (staggered)' : ` · ${fmtDl(group.ms)}`;
       const singleDough = !(res.loafColumns && res.loafColumns.length);
       const grpRank = (r) => Number.isFinite(Number(r.bakeRank)) ? Number(r.bakeRank) : Infinity;
-      let cols = (res.loafColumns || []).map(c => ({ key: prefix + c.key, label: c.label + dlLabel, names: c.names }));
+      // In a combined/split unit the per-recipe columns share one dough, but only the SPLIT
+      // recipe's columns are actually staggered across bake times. A neighbour that merely
+      // shares the dough (e.g. boules baked once alongside split batards) bakes at a single
+      // time — tag it with that time, not "(staggered)". (Base + clone share a name, so the
+      // split recipe's name covers both its columns.)
+      const splitNames = new Set(group.recipes.filter(r => r.__sharePrep).map(r => r.name));
+      const colLabel = (c) => {
+        if (!group.combined) return ` · ${fmtDl(group.ms)}`;
+        const isSplitCol = (c.names || []).some(n => splitNames.has(n));
+        return isSplitCol ? ' · one dough (staggered)' : ` · ${fmtDl(group.ms)}`;
+      };
+      let cols = (res.loafColumns || []).map(c => ({ key: prefix + c.key, label: c.label + colLabel(c), names: c.names }));
       if (!cols.length) {
         const names = [...new Set(group.recipes.slice().sort((a, b) => grpRank(a) - grpRank(b)).map(r => r.name))];
         cols = [{ key: prefix + 'loaf', label: names.join(', ') + dlLabel, names }];

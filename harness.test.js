@@ -2912,6 +2912,40 @@ function sd(label, cond) { console.log(`  [split-dough] ${cond ? 'PASS' : 'FAIL'
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
+// Same dough, different shapes (batard + boule share a formula): split one, per-recipe columns.
+// Each bake must confine to its own column, and the UN-split shape must not read "(staggered)".
+{
+  api.__setOvens([]);
+  localStorageStub.setItem('whb-split-loaf-cols-v1', '1');
+  api.saveBakeInstances({});
+  // Force boule to share batard's exact dough (same formula, different shape).
+  const batR = api.__recipes().find(r => r.id === SEED.batard);
+  const bouR = api.__recipes().find(r => r.id === SEED.boule);
+  bouR.ingredients = batR.ingredients.map(i => ({ ...i }));
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 8 }); seedPlan({ [SEED.batard]: 20, [SEED.boule]: 8 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const bouleColKey = (sr.loafColumns || []).map(c => c.key).find(k => /boule/.test(k));
+  const bakes = sr.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title));
+  const bouleBake = bakes.find(e => (e.columnKey || '') === bouleColKey);
+  sdOk &= sd('same-dough split: boule bake confines to the boule column (not spanning all)',
+    !!bouleBake && bakes.every(e => /loaf::/.test(e.columnKey || '')));
+  const bouleColLabel = (sr.loafColumns || []).find(c => c.key === bouleColKey);
+  sdOk &= sd('same-dough split: the un-split boule column is NOT tagged "(staggered)"',
+    bouleColLabel && !/staggered/.test(bouleColLabel.label));
+  sdOk &= sd('same-dough split: the split batard columns DO read "(staggered)"',
+    (sr.loafColumns || []).filter(c => /batard/.test(c.key)).every(c => /staggered/.test(c.label)));
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  api.saveBakeInstances({});
+}
 allOk &= sdOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
