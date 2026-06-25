@@ -15487,17 +15487,26 @@ ${notesHtml}
               let cellHtml = '';
               for (const ev of bucket.shared) {
                 if (loafScopedShared(ev)) {
-                  // Render the box inside the column grid spanning only the loaf columns this
-                  // step actually touches (the contiguous range covering its involved columns).
-                  // A whole-dough step covers all loaf columns; a single-recipe shape/bake
-                  // confines to one; a mixed bake spans the ones it mixes.
-                  const idxs = loafInvolvedIdxs(ev);
-                  const minI = Math.min(...idxs), maxI = Math.max(...idxs);
-                  const sliceCols = presentCols.slice(minI, maxI + 1);
+                  // Render the box inside the column grid over only the loaf columns this step
+                  // touches. A whole-dough step covers all loaf columns; a single-recipe shape/
+                  // bake confines to one; a mixed bake/ready-marker covers the ones it involves.
+                  // Involved columns may be NON-contiguous (e.g. boules + the first batard batch,
+                  // with the split column between) — render one box per CONTIGUOUS run so the box
+                  // repeats in each group rather than bleeding across an in-between column.
+                  const idxs = [...new Set(loafInvolvedIdxs(ev))].sort((a, b) => a - b);
+                  const runs = [];
+                  idxs.forEach(i => {
+                    const last = runs[runs.length - 1];
+                    if (last && i === last[last.length - 1] + 1) last.push(i);
+                    else runs.push([i]);
+                  });
                   cellHtml += `<div class="schedule-hour-cols" style="${colsStyle}">`
-                    + `<div style="grid-column: ${minI + 1} / span ${maxI - minI + 1};">`
-                    + renderSharedEvent(ev, null, sliceCols)
-                    + `</div></div>`;
+                    + runs.map(run => {
+                      const minI = run[0], maxI = run[run.length - 1];
+                      const sliceCols = presentCols.slice(minI, maxI + 1);
+                      return `<div style="grid-column: ${minI + 1} / span ${maxI - minI + 1};">${renderSharedEvent(ev, null, sliceCols)}</div>`;
+                    }).join('')
+                    + `</div>`;
                 } else {
                   cellHtml += renderSharedEvent(ev);
                 }

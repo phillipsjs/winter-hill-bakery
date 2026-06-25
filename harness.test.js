@@ -3072,6 +3072,37 @@ function runDiffDough(split) {
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.__setContainers([]); api.saveBakeInstances({});
 }
+// Non-contiguous span: when a marker's columns aren't adjacent (the split column sits between
+// the boules and the first batard batch), it REPEATS in each column instead of bleeding across.
+{
+  api.__setOvens([]); api.__setBannetons([]);
+  api.__setContainers([{ id: 'big', name: 'Big tub', maxDoughGrams: 30000, quantity: 6, processTag: 'any' }]);
+  localStorageStub.setItem('whb-split-loaf-cols-v1', '1');
+  const batR = api.__recipes().find(r => r.id === SEED.batard);
+  const bouR = api.__recipes().find(r => r.id === SEED.boule);
+  const savedBatRank = batR.bakeRank, savedBouRank = bouR.bakeRank;
+  batR.bakeRank = 1; bouR.bakeRank = 99; // column order [batard, split, boule] → base+boule non-contiguous
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.saveBakeInstances({});
+  api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 15 }); seedPlan({ [SEED.batard]: 20, [SEED.boule]: 15 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setSplitShareCount(SEED.batard, inst.id, 4);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const html = els['schedule-output'].innerHTML || '';
+  const n31 = (html.match(/31 loaves ready for sale/g) || []).length; // 2 boxes (base + boule)
+  const n4 = (html.match(/4 loaves ready for sale/g) || []).length;   // 1 box (split column)
+  sdOk &= sd('non-contiguous ready marker repeats per column (2 boxes), not one bleeding span',
+    n4 > 0 && n31 === 2 * n4);
+  batR.bakeRank = savedBatRank; bouR.bakeRank = savedBouRank;
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  api.__setContainers([]); api.saveBakeInstances({});
+}
 // Preheat consolidation: bakes that run back-to-back on one oven share ONE "turn on oven";
 // a split's later bake (after a cooldown gap) gets its own. Not one preheat per portion.
 {
