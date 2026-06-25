@@ -2938,6 +2938,39 @@ function runDiffDough(split) {
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
+// Split bake + a milled flour: the shared Mill step applies to BOTH split portions (same dough),
+// so it must span both split columns — not just one batch (base + clone share a NAME, so a
+// name-keyed attribution would collapse them; the fix uses the recipe-ID map like the shape step).
+{
+  api.__setOvens([]);
+  api.__setPantry([{ id: 'pan-rye-split', name: 'Whole rye', requiresMilling: true }]);
+  localStorageStub.setItem('whb-split-loaf-cols-v1', '1');
+  api.saveBakeInstances({});
+  const batR = api.__recipes().find(r => r.id === SEED.batard);
+  const batSnap = batR.ingredients.map(i => ({ ...i }));
+  batR.ingredients = batR.ingredients.map(i => ({ ...i }));
+  batR.ingredients.push({ name: 'Whole rye', pct: 20, flourType: 'specialty', pantryId: 'pan-rye-split' });
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.batard]: 20 }); seedPlan({ [SEED.batard]: 20 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const colsOf = (e) => e.colDetails ? Object.keys(e.colDetails) : (e.columnKey ? [e.columnKey] : []);
+  const mills = sr.events.filter(e => e.process === 'loaf' && /^Mill flour/.test(e.title));
+  sdOk &= sd('split + milled flour: one shared Mill step', mills.length === 1);
+  sdOk &= sd('split + milled flour: the Mill step spans BOTH split columns (not just one batch)',
+    mills.length === 1 && colsOf(mills[0]).filter(k => /batard/.test(k || '')).length === 2);
+  batR.ingredients = batSnap;
+  api.__setPantry([]);
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  api.saveBakeInstances({});
+}
 // Same dough, different shapes (batard + boule share a formula): split one, per-recipe columns.
 // Each bake must confine to its own column, and the UN-split shape must not read "(staggered)".
 {

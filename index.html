@@ -13101,7 +13101,10 @@ ${notesHtml}
       // list its own milled flours.
       const millByCol = {};
       for (const r of loafRecipes) {
-        const ck = loafRecipeColKey.get(r.name) || 'loaf';
+        // Prefer the recipe ID: a split bake's two portions (base + clone) share a NAME,
+        // so a name lookup collapses both into one column and the mill step would show in
+        // only one batch. The id map keeps each portion's column distinct (same as loafColAttrFor).
+        const ck = loafRecipeColKeyById.get(r.id) || loafRecipeColKey.get(r.name) || 'loaf';
         for (const i of r.ingredients) {
           if ((Number(i.pct) || 0) > 0 && i.pantryId) {
             const pi = pantryItems.find(p => p.id === i.pantryId);
