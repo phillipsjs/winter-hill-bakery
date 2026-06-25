@@ -7881,11 +7881,11 @@ ${notesHtml}
           const lblTitle = inst.share ? 'Split bake — same dough, baked at this time (shares mixing/folding/shaping with the rest)' : '';
           const cntChange = inst.share ? `setSplitShareCount('${r.id}', '${inst.id}', this.value)` : `setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)`;
           detHtml += `<div class="bake-batch-row bake-batch-extra-row">
+              <button class="bake-batch-remove" onclick="removeBakeInstance('${r.id}', '${inst.id}')" title="Remove this batch" aria-label="Remove this batch">✕</button>
               <span class="bake-batch-label"${lblTitle ? ` title="${escapeAttr(lblTitle)}"` : ''}>${label}</span>
               <input type="number" min="0" step="1" value="${inst.count > 0 ? inst.count : ''}" onchange="${cntChange}" aria-label="count" />
               <span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>
               <input type="datetime-local" value="${inst.deadline || defaultDl}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)" aria-label="deadline" title="${inst.share ? 'When this split portion bakes' : 'Deadline for this batch (blank = default)'}" />
-              <button class="bake-batch-remove" onclick="removeBakeInstance('${r.id}', '${inst.id}')" title="Remove this batch" aria-label="Remove this batch">✕</button>
             </div>`;
         });
         const splitBtn = ['sourdough-loaf', 'sourdough-muffin', 'bagel'].includes(getProcessType(r))
