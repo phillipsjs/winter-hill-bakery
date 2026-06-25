@@ -579,14 +579,29 @@
     }
   }
   .schedule-time-clickable {
-    cursor: pointer;
+    cursor: grab;
     text-decoration: underline dotted;
     text-decoration-color: var(--muted);
     text-underline-offset: 2px;
+    touch-action: none;            /* let a vertical drag adjust the time, not scroll */
+    user-select: none; -webkit-user-select: none;
   }
   .schedule-time-clickable:hover {
     color: var(--accent);
   }
+  .schedule-time-dragging {
+    cursor: grabbing;
+    color: var(--accent-dark);
+    background: rgba(31, 77, 46, 0.1);
+    border-radius: 4px;
+  }
+  /* Floating preview while dragging a step's time. */
+  .anchor-drag-bubble {
+    position: fixed; z-index: 2000; pointer-events: none; white-space: nowrap;
+    background: var(--accent-dark); color: #fff; font-size: 0.82rem; font-weight: 600;
+    padding: 4px 9px; border-radius: 7px; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
+  }
+  .anchor-drag-bubble .adb-delta { font-weight: 400; opacity: 0.85; margin-left: 5px; }
   .schedule-time-anchored {
     color: var(--accent);
     font-weight: 700;
@@ -7255,6 +7270,74 @@ ${notesHtml}
     clearAllAnchors();
     renderSchedule();
     renderTotals();
+  }
+
+  // ---- drag-to-anchor (slide a step's time up=earlier / down=later) ----
+  // Vertical drag distance → minutes, snapped to 5. Pure so it can be unit-tested.
+  const ANCHOR_DRAG_PX_PER_MIN = 4;   // ~20px of drag per 5-minute step
+  const ANCHOR_DRAG_THRESHOLD_PX = 5; // below this it's a tap (opens the modal), not a drag
+  function computeDragAnchorMs(scheduledMs, dyPx) {
+    const deltaMin = Math.round((dyPx / ANCHOR_DRAG_PX_PER_MIN) / 5) * 5;
+    return { newMs: scheduledMs + deltaMin * 60000, deltaMin };
+  }
+  let _anchorDrag = null;
+  let _suppressNextScheduleClick = false;
+  const _anchorDragFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+  function onAnchorPointerDown(e) {
+    if (e.button != null && e.button > 0) return;            // primary button / touch only
+    const chip = e.target.closest && e.target.closest('.schedule-time-clickable');
+    if (!chip) return;
+    const title = chip.dataset.eventTitle;
+    const scheduledMs = Number(chip.dataset.eventTime);
+    if (!title || !Number.isFinite(scheduledMs)) return;
+    _anchorDrag = { chip, title, scheduledMs, startY: e.clientY, moved: false, newMs: scheduledMs };
+    try { chip.setPointerCapture(e.pointerId); } catch (_) {}
+    chip.addEventListener('pointermove', onAnchorPointerMove);
+    chip.addEventListener('pointerup', onAnchorPointerUp);
+    chip.addEventListener('pointercancel', onAnchorPointerUp);
+  }
+  function onAnchorPointerMove(e) {
+    const d = _anchorDrag;
+    if (!d) return;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.abs(dy) < ANCHOR_DRAG_THRESHOLD_PX) return;
+    d.moved = true;
+    e.preventDefault();
+    d.chip.classList.add('schedule-time-dragging');
+    const { newMs, deltaMin } = computeDragAnchorMs(d.scheduledMs, dy);
+    d.newMs = newMs;
+    const timeStr = _anchorDragFmt.format(roundToFiveMin(new Date(newMs)));
+    d.chip.textContent = timeStr;
+    showAnchorDragBubble(e.clientX, e.clientY, timeStr, deltaMin);
+  }
+  function onAnchorPointerUp(e) {
+    const d = _anchorDrag;
+    if (!d) return;
+    d.chip.removeEventListener('pointermove', onAnchorPointerMove);
+    d.chip.removeEventListener('pointerup', onAnchorPointerUp);
+    d.chip.removeEventListener('pointercancel', onAnchorPointerUp);
+    try { d.chip.releasePointerCapture(e.pointerId); } catch (_) {}
+    hideAnchorDragBubble();
+    d.chip.classList.remove('schedule-time-dragging');
+    _anchorDrag = null;
+    if (!d.moved) return;                          // a tap → let the click handler open the modal
+    _suppressNextScheduleClick = true;             // a drag → don't also open the modal
+    if (d.newMs !== d.scheduledMs) setAnchorForEvent(d.title, d.newMs);
+    renderSchedule();
+    renderTotals();
+  }
+  function showAnchorDragBubble(x, y, timeStr, deltaMin) {
+    let b = document.getElementById('anchor-drag-bubble');
+    if (!b) { b = document.createElement('div'); b.id = 'anchor-drag-bubble'; b.className = 'anchor-drag-bubble'; document.body.appendChild(b); }
+    const delta = deltaMin > 0 ? `+${deltaMin} min` : (deltaMin < 0 ? `${deltaMin} min` : 'no change');
+    b.innerHTML = `⚓ ${escapeHtml(timeStr)}<span class="adb-delta">${delta}</span>`;
+    b.style.left = (x + 14) + 'px';
+    b.style.top = (y - 12) + 'px';
+    b.style.display = 'block';
+  }
+  function hideAnchorDragBubble() {
+    const b = document.getElementById('anchor-drag-bubble');
+    if (b) b.style.display = 'none';
   }
 
   // Apply a one-click scheduling fix offered under a warning. A fix is one or
@@ -14594,9 +14677,9 @@ ${notesHtml}
     html += `<p class="schedule-meta">${metaParts.join(' · ')}</p>`;
     if (anchoredTitles.size > 0) {
       const word = anchoredTitles.size === 1 ? 'anchor' : 'anchors';
-      html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Click any time to set one.</p>`;
+      html += `<p class="schedule-meta" style="margin-top: -8px;">⚓ ${anchoredTitles.size} ${word} active · <button class="anchor-clear-link" onclick="clearAllAnchorsAndRender()">Clear all anchors</button> · Drag a time up/down to shift it, or tap for an exact time.</p>`;
     } else {
-      html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: click any time to anchor a step — the rest of the schedule will shift.</p>`;
+      html += `<p class="schedule-meta" style="margin-top: -8px; font-size: 0.78rem;">Tip: drag any time up (earlier) or down (later) to anchor a step — the rest of the schedule shifts with it. Tap a time for exact entry.</p>`;
     }
     // minmax(0, 1fr) keeps every column an equal width even when one cell holds a long
     // unbreakable line — otherwise a 1fr (= minmax(auto,1fr)) column grows to its content
@@ -16126,7 +16209,12 @@ ${notesHtml}
     renderSchedule();
     renderTotals();
   });
+  // Drag a step's time up/down to anchor it; a plain tap falls through to the
+  // click handler below (which opens the exact-time modal).
+  document.getElementById('schedule-output').addEventListener('pointerdown', onAnchorPointerDown);
   document.getElementById('schedule-output').addEventListener('click', (e) => {
+    // A drag just committed an anchor — swallow the click it would otherwise fire.
+    if (_suppressNextScheduleClick) { _suppressNextScheduleClick = false; return; }
     // Tap a step (but not its clickable time) to pin the info tooltip — for touch
     // devices that have no hover.
     if (!e.target.closest('.schedule-time-clickable')) {

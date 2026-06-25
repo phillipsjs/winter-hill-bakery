@@ -145,6 +145,7 @@ const exportsTail = `
   __recipes: () => recipes,
   __plan: () => plan,
   __setBakeSheetMobile: (v) => { _bsForceMobile = v; },
+  computeDragAnchorMs, getAnchors, setAnchorForEvent, clearAllAnchors,
 };`;
 
 const factory = new Function(
@@ -2669,6 +2670,30 @@ let mbOk = true;
   for (let k = recs.length - 1; k >= 0; k--) if (drop.has(recs[k].id)) recs.splice(k, 1);
 }
 allOk &= mbOk;
+
+// ---- drag-to-anchor: vertical drag distance → snapped time delta ----
+console.log('\nDrag-to-anchor assertions:');
+let dragOk = true;
+function dg(label, cond) { console.log(`  [drag] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  const base = 1000000000000; // arbitrary ms
+  // 4px per minute, snapped to 5-min steps. Down (positive dy) = later.
+  dragOk &= dg('no movement → no change', api.computeDragAnchorMs(base, 0).newMs === base && api.computeDragAnchorMs(base, 0).deltaMin === 0);
+  dragOk &= dg('drag down ~20px → +5 min (later)', api.computeDragAnchorMs(base, 20).deltaMin === 5);
+  dragOk &= dg('drag up ~20px → -5 min (earlier)', api.computeDragAnchorMs(base, -20).deltaMin === -5);
+  dragOk &= dg('snaps to 5-min steps (38px → +10 min)', api.computeDragAnchorMs(base, 38).deltaMin === 10);
+  dragOk &= dg('tiny drag rounds to nearest 5 → 0 (8px → 0 min)', api.computeDragAnchorMs(base, 8).deltaMin === 0);
+  dragOk &= dg('10px crosses the 2.5-min midpoint → +5 min', api.computeDragAnchorMs(base, 10).deltaMin === 5);
+  dragOk &= dg('newMs reflects the minute delta', api.computeDragAnchorMs(base, 20).newMs === base + 5 * 60000);
+  // Drag commits an anchor exactly like the modal would.
+  api.clearAllAnchors();
+  const { newMs } = api.computeDragAnchorMs(base, 60);
+  api.setAnchorForEvent('Mix dough', newMs);
+  const a = api.getAnchors().find(x => x.eventId === 'Mix dough');
+  dragOk &= dg('setAnchorForEvent stores the dragged time', !!a && a.actualTimeMs === newMs);
+  api.clearAllAnchors();
+}
+allOk &= dragOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
