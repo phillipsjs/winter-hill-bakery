@@ -14309,23 +14309,43 @@ ${notesHtml}
     // times. They ALWAYS share prep (one mix/fold/bulk/shape), independent of the
     // combine toggle and the window width — warn-but-allow if the gap is too wide.
     const splitSigs = new Set(recipes.filter(r => r.__sharePrep && (plan[r.id] || 0) > 0).map(ratioSignature));
-    // Units start one-per-deadline-group; merge groups that share a split or a
-    // combine-flagged dough signature into a single combined staggered unit.
+    // Units start one-per-deadline-group.
     let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, window: g.window, combined: false }));
-    if (combineSigs.size || splitSigs.size) {
+    // SPLIT bakes: pull each split signature's portions OUT of their deadline groups into a
+    // single shared-prep unit, leaving every OTHER dough in its own group (own mix/fold/columns;
+    // it still deck-packs with its deadline-mates). Splitting one dough must NOT fold an unrelated
+    // same-deadline dough (e.g. boules baked alongside split batards) into its combined unit —
+    // that would make them share a mix/fold and over-span the schedule columns.
+    if (splitSigs.size) {
+      splitSigs.forEach(sig => {
+        const taken = []; let minMs = null, win = null;
+        units.forEach(u => {
+          const keep = [];
+          u.recipes.forEach(r => {
+            if (ratioSignature(r) === sig) { taken.push(r); if (minMs == null || (u.ms || 0) < minMs) minMs = u.ms || 0; if (!win) win = u.window; }
+            else keep.push(r);
+          });
+          u.recipes = keep;
+        });
+        if (taken.length) units.push({ recipes: taken, ms: minMs, window: win || groupWindow(taken), combined: true, splitUnit: true });
+      });
+      units = units.filter(u => u.recipes.length);
+    }
+    // COMBINE toggle: merge whole units that share a combine-flagged dough into one staggered
+    // unit (manual control). Never folds into a split unit (those are already shared-prep).
+    if (combineSigs.size) {
       let changed = true;
       while (changed) {
         changed = false;
         for (let i = 0; i < units.length && !changed; i++) {
+          if (units[i].splitUnit) continue;
           for (let j = i + 1; j < units.length; j++) {
+            if (units[j].splitUnit) continue;
             const sharedSigs = units[i].recipes.map(ratioSignature).filter(s => units[j].recipes.some(r => ratioSignature(r) === s));
             if (!sharedSigs.length) continue;
-            let doMerge = sharedSigs.some(s => splitSigs.has(s)); // splits: always
-            if (!doMerge) {
-              const combShared = sharedSigs.some(s => combineSigs.has(s));
-              doMerge = combShared && windowWidthHr > 0 && sameWindow(units[i].window, units[j].window)
-                && Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 <= windowWidthHr;
-            }
+            const combShared = sharedSigs.some(s => combineSigs.has(s));
+            const doMerge = combShared && windowWidthHr > 0 && sameWindow(units[i].window, units[j].window)
+              && Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 <= windowWidthHr;
             if (!doMerge) continue;
             units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), window: units[i].window, combined: true };
             units.splice(j, 1); changed = true; break;
@@ -14446,8 +14466,13 @@ ${notesHtml}
           // Namespace the per-dough column keys. For a single-dough group, also pull the
           // aggregated steps (weigh/mill/autolyse/mix/fold — no columnKey) into that
           // group's one column so they don't render shared/full-width across both groups.
+          // Namespace per-dough column keys with the group prefix. Aggregated steps
+          // (weigh/mill/autolyse/mix/fold — no columnKey) get the bare `g#~loaf` key: for a
+          // single-dough group that's the group's one real column (routed there); for a
+          // multi-dough group it's a non-column key that the renderer scopes to THIS group's
+          // columns only (so a split's shared mix spans its own columns, not a neighbour dough's).
           if (e.columnKey) e.columnKey = prefix + e.columnKey;
-          else if (singleDough) e.columnKey = prefix + 'loaf';
+          else e.columnKey = prefix + 'loaf';
         }
         if (e.colDetails) {
           const cd = {};
@@ -15115,7 +15140,14 @@ ${notesHtml}
     // (no colDetails → whole-dough step) every loaf column. Returns presentCols indices.
     const loafInvolvedIdxs = (ev) => {
       let keys = ev.colDetails ? Object.keys(ev.colDetails).filter(k => loafColKeys.includes(k)) : [];
-      if (!keys.length) keys = loafColKeys;
+      if (!keys.length) {
+        // No per-column breakdown: scope to the columns of this step's OWN deadline/split group
+        // (its `g#~` prefix) rather than every loaf column — so e.g. a split batard's shared mix
+        // spans only the batard columns, not an unrelated boule baked at the same time.
+        const m = /^g\d+~/.exec(colKeyOf(ev));
+        keys = m ? loafColKeys.filter(k => k.startsWith(m[0])) : [];
+        if (!keys.length) keys = loafColKeys;
+      }
       const idxs = keys.map(k => presentCols.indexOf(k)).filter(i => i >= 0);
       return idxs.length ? idxs : loafColKeys.map(k => presentCols.indexOf(k));
     };
