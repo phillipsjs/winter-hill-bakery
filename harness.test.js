@@ -3027,6 +3027,12 @@ function runDiffDough(split) {
   const loafBakes = sr.events.filter(e => /^Bake \d+ of/.test(e.title) && e.process === 'loaf');
   const bakeTimes = [...new Set(loafBakes.map(e => Math.round(e.time.getTime() / 3600000)))];
   sdOk &= sd('16/4 split: still two distinct bake times (the 4 bake later)', bakeTimes.length === 2);
+  // Each batch gets its OWN "ready for sale" at its real ready time (not one early marker).
+  const ready = sr.events.filter(e => /ready for sale/.test(e.title) && e.process === 'loaf').sort((a, b) => a.time - b.time);
+  sdOk &= sd('16/4 split: two "ready for sale" markers (16 then 4), each after its own bake',
+    ready.length === 2 && /16 loaves/.test(ready[0].title) && /4 loaves/.test(ready[1].title) && ready[1].time > ready[0].time);
+  sdOk &= sd('16/4 split: the later "ready" lands AFTER the later bake (not hanging early)',
+    ready[1] && loafBakes.every(b => !(b.time > ready[1].time)) && ready[1].time > Math.max(...loafBakes.map(b => b.time.getTime())) - 1);
   api.__setContainers([]); api.saveBakeInstances({});
 }
 // Preheat consolidation: bakes that run back-to-back on one oven share ONE "turn on oven";

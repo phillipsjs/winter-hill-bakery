@@ -14195,7 +14195,12 @@ ${notesHtml}
     plan = prepPlan;
     const cw = unit.window ? { loafColdProofHours: unit.window.min, loafColdProofMaxHr: unit.window.max } : {};
     const prepRes = buildSchedule({ ...baseOpts, ...cw, loafDeadline: rd[sorted[0].id] || baseOpts.loafDeadline });
-    const events = prepRes.events.filter(ev => !isLoafBake(ev)); // shared prep, no loaf bakes
+    // The prep bakes the whole unit at the EARLIEST deadline, so its "ready for sale" marker is
+    // at the wrong time for a split (the later portion isn't ready until its own bake). Drop the
+    // prep's loaf/shared ready marker; we re-emit one per portion ready-time below. (Non-loaf
+    // "Muffins/Bagels ready" markers stay.)
+    const isLoafReady = (ev) => /^(Package & ready for sale|Loaves ready for sale)$/.test(ev.title || '') && (ev.process === 'loaf' || ev.process === 'shared');
+    const events = prepRes.events.filter(ev => !isLoafBake(ev) && !isLoafReady(ev)); // shared prep, no loaf bakes/ready
     // The dough goes into the fridge once (shared prep, at the EARLIEST deadline), but each
     // recipe bakes at its own time — so later portions cold-proof longer. The "Into fridge"
     // label reflects the earliest bake; track the spread so we can note the longer proof.
@@ -14219,8 +14224,11 @@ ${notesHtml}
       br.events.forEach(ev => { if (isLoafBake(ev)) { if (splitLoafView) ev.columnKey = `loaf::${r.id}`; pEvents.push(ev); } });
       const pClaims = (br.equipClaims || []).filter(c => c.pool === 'oven');
       const starts = pClaims.map(c => c.startMs), ends = pClaims.map(c => c.endMs);
+      const readyEv = br.events.find(ev => isLoafReady(ev));
       portions.push({
         events: pEvents, claims: pClaims, name: r.name, sig: ratioSignature(r), // group the staggered dough
+        count: fullPlan[r.id] || 0,
+        readyMs: readyEv && readyEv.time ? readyEv.time.getTime() : null,
         ovenName: pClaims.length ? pClaims[0].name : null,
         startMs: starts.length ? Math.min(...starts) : null,
         endMs: ends.length ? Math.max(...ends) : null,
@@ -14286,6 +14294,19 @@ ${notesHtml}
       events.forEach(ev => {
         if (/^Into fridge/.test(ev.title) && names.some(n => ev.title.includes(n))) ev.detail = `${ev.detail} · last batch proofs ${extra} longer (staggered bakes)`;
       });
+    });
+    // Re-emit the loaf "ready for sale" marker per portion ready-time (we dropped the prep's
+    // single early one). Portions ready within a minute collapse into one marker (sum their
+    // loaves); a split's later batch gets its own marker at its real ready time.
+    const readyBuckets = [];
+    portions.filter(p => p.readyMs != null && p.count > 0).sort((a, b) => a.readyMs - b.readyMs).forEach(p => {
+      const last = readyBuckets[readyBuckets.length - 1];
+      if (last && p.readyMs - last.ms <= 60000) { last.count += p.count; }
+      else readyBuckets.push({ ms: p.readyMs, count: p.count });
+    });
+    readyBuckets.forEach(b => {
+      const label = readyBuckets.length > 1 ? `${b.count} ${b.count === 1 ? 'loaf' : 'loaves'} ready for sale` : 'Loaves ready for sale';
+      events.push({ time: new Date(b.ms), title: label, detail: '', process: 'loaf' });
     });
     // Keep the prep's container/banneton claims but DROP its oven claims — the prep
     // buildSchedule baked the whole unit at the earliest deadline (we discarded those
