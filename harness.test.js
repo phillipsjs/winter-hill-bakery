@@ -2742,6 +2742,20 @@ function sp(label, cond) { console.log(`  [split] ${cond ? 'PASS' : 'FAIL'} — 
   spOk &= sp('shows the one-dough split info', (sr.warnings || []).some(w => w.issue === 'same-dough-combined' && /split across bake times/.test(w.msg)));
   spOk &= sp('no false oven double-book for staggered split bakes',
     !(sr.warnings || []).some(w => w.issue === 'equip-conflict' && /double-booked/.test(w.msg)));
+  spOk &= sp('split reads as ONE batch — no "— split bake" recipe label leaks into steps',
+    !sr.events.some(e => /split bake/i.test(`${e.title} ${e.detail || ''} ${JSON.stringify(e.equip || '')} ${Object.values(e.colDetails || {}).join(' ')}`)));
+  // Close bake times on ONE oven: portions must be sequenced (no overlap), not double-booked.
+  const close = new Date(far); close.setMinutes(far.getMinutes() + 30);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(close));
+  api.renderSchedule(); sr = api.__sr();
+  spOk &= sp('close split (30 min apart) sequences on one oven — no double-book',
+    !(sr.warnings || []).some(w => w.issue === 'equip-conflict' && /double-booked/.test(w.msg)));
+  {
+    const bakeMs = sr.events.filter(e => /^Bake \d+ of/.test(e.title) && e.time).map(e => e.time.getTime()).sort((a, b) => a - b);
+    spOk &= sp('close split: two bake starts are staggered (not stacked at the same instant)',
+      bakeMs.length === 2 && bakeMs[1] - bakeMs[0] >= 30 * 60000);
+  }
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
   // Over-window: a gap wider than the cold-proof window warns (but still schedules).
   const farLate = new Date(far); farLate.setHours(far.getHours() + 12);
   api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(farLate));

@@ -7324,7 +7324,10 @@ ${notesHtml}
       let shareSum = 0;
       (store[r.id] || []).forEach((inst, k) => {
         synth.push({ ...r, id: inst.id,
-          name: inst.share ? `${r.name} — split bake` : `${r.name} — batch ${k + 2}`,
+          // A split shares ONE dough/ingredients with the base — keep the base name so it
+          // reads as the same batch (just baked later), not a separate recipe. Extra
+          // batches ("Add another batch") ARE separate production, so they keep a label.
+          name: inst.share ? r.name : `${r.name} — batch ${k + 2}`,
           __instanceOf: r.id, __instanceDeadline: inst.deadline || '', __sharePrep: !!inst.share });
         const c = Math.max(0, Math.floor(Number(inst.count) || 0));
         exPlan[inst.id] = c;
@@ -14131,16 +14134,48 @@ ${notesHtml}
     // label reflects the earliest bake; track the spread so we can note the longer proof.
     const firstBakeTimes = [];
     const bakeOvenClaims = []; // each portion bakes at its own time → keep its oven claims
+    // Build each portion independently (its own deadline), but COLLECT its bake-side events
+    // and oven claims first so we can sequence portions that share an oven. Each portion's
+    // buildSchedule assigns the oven assuming full availability, so two portions baking close
+    // together would otherwise grab the same oven at once → a false "oven double-booked".
+    const portions = [];
     sorted.forEach(r => {
       const bp = {}; bp[r.id] = fullPlan[r.id] || 0;
       plan = bp;
       const br = buildSchedule({ ...baseOpts, ...cw, loafDeadline: rd[r.id] || baseOpts.loafDeadline });
-      let recBake = null;
-      br.events.forEach(ev => {
-        if (isLoafBake(ev)) { events.push(ev); if (getEventStage(ev) === 'bake' && (!recBake || ev.time < recBake)) recBake = ev.time; }
+      const pEvents = [];
+      br.events.forEach(ev => { if (isLoafBake(ev)) pEvents.push(ev); });
+      const pClaims = (br.equipClaims || []).filter(c => c.pool === 'oven');
+      const starts = pClaims.map(c => c.startMs), ends = pClaims.map(c => c.endMs);
+      portions.push({
+        events: pEvents, claims: pClaims,
+        ovenName: pClaims.length ? pClaims[0].name : null,
+        startMs: starts.length ? Math.min(...starts) : null,
+        endMs: ends.length ? Math.max(...ends) : null,
       });
-      (br.equipClaims || []).forEach(c => { if (c.pool === 'oven') bakeOvenClaims.push(c); });
-      if (recBake) firstBakeTimes.push(recBake);
+    });
+    // Sequence portions that share one oven: anchor the latest portion (it's deadline-pinned
+    // = freshest) and pull each earlier portion EARLIER so its bake finishes before the next
+    // one starts. An earlier portion baking a bit sooner just cools a little longer — far
+    // better than a phantom double-book. Portions on different ovens don't interfere.
+    const byOven = new Map();
+    portions.forEach(p => { if (p.startMs == null) return; const k = p.ovenName || '__single__'; if (!byOven.has(k)) byOven.set(k, []); byOven.get(k).push(p); });
+    byOven.forEach(list => {
+      list.sort((a, b) => a.startMs - b.startMs);
+      for (let i = list.length - 2; i >= 0; i--) {
+        const cur = list[i], next = list[i + 1];
+        if (cur.endMs > next.startMs) {
+          const shift = cur.endMs - next.startMs; // ms to move this portion EARLIER
+          cur.events.forEach(e => { if (e.time) e.time = new Date(e.time.getTime() - shift); });
+          cur.claims.forEach(c => { c.startMs -= shift; c.endMs -= shift; });
+          cur.startMs -= shift; cur.endMs -= shift;
+        }
+      }
+    });
+    portions.forEach(p => {
+      p.events.forEach(ev => events.push(ev));
+      p.claims.forEach(c => bakeOvenClaims.push(c));
+      if (p.startMs != null) firstBakeTimes.push(new Date(p.startMs));
     });
     if (firstBakeTimes.length > 1) {
       const ms = firstBakeTimes.map(t => t.getTime());
