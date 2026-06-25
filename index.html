@@ -8699,6 +8699,15 @@ ${notesHtml}
     (contents || []).forEach(l => byName.set(l.recipe, (byName.get(l.recipe) || 0) + l.count));
     return [...byName.entries()].map(([recipe, count]) => `${count} × ${recipe}`).join(' + ');
   }
+  // Same as aggregateContents but returns the merged {recipe, count} list. A split bake keeps
+  // its two portions as separate parts inside one container (so the shared shape step can span
+  // both split columns), but for weighing/mixing that single tub is ONE dough — sum same-recipe
+  // parts so a per-container batch reads "20 × Batard", not "16 ×" + "4 ×".
+  function aggregateContentsList(contents) {
+    const byName = new Map();
+    (contents || []).forEach(l => byName.set(l.recipe, (byName.get(l.recipe) || 0) + l.count));
+    return [...byName.entries()].map(([recipe, count]) => ({ recipe, count }));
+  }
   function planDoughContainers(loafRecipes, planMap, capacity, userCont) {
     // Simple bakes don't bulk-ferment, but a chilled simple dough (cookies/scones with
     // a chill window) still needs a container in the fridge.
@@ -12635,7 +12644,8 @@ ${notesHtml}
     const loafBatchContents = numContainers > 1
       ? containerInfo.map((c, i) => ({
           label: (c.containerName ? `${c.containerName} ` : 'Container ') + `${i + 1} of ${numContainers}`,
-          contents: (c.contents || []).map(x => ({ recipe: x.recipe, count: x.count })),
+          // Merge a split's two portions (same dough, one tub) into a single combined row.
+          contents: aggregateContentsList(c.contents),
         }))
       : null;
     // Oven naming for the bake sheet's Equipment column. A single-oven kitchen

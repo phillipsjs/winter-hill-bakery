@@ -3020,6 +3020,37 @@ function runDiffDough(split) {
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
+// Split in ONE big tub alongside a neighbour (boule) → numContainers > 1, so the weigh step
+// builds per-container batch contents. The split's two portions share that single tub, so its
+// batch row must combine to "20 × Batard" — not list 16 × + 4 × (the per-container hover bug).
+{
+  api.__setOvens([]);
+  api.__setContainers([{ id: 'big', name: 'Big tub', maxDoughGrams: 40000, quantity: 4, processTag: 'any' }]);
+  localStorageStub.setItem('whb-split-loaf-cols-v1', '1');
+  api.saveBakeInstances({});
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 15 }); seedPlan({ [SEED.batard]: 20, [SEED.boule]: 15 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setBakeInstanceField(SEED.batard, inst.id, 'count', 4);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const weigh = api.__sr().events.find(e => e.process === 'loaf' && /(Weigh|Gather) ingredients/.test(e.title));
+  const batches = weigh && weigh.mixBatchContents || [];
+  const batardBatch = batches.find(b => (b.contents || []).some(c => /Batard/.test(c.recipe)));
+  const batardRows = batardBatch ? batardBatch.contents.filter(c => /Batard/.test(c.recipe)) : [];
+  sdOk &= sd('split in one tub: the tub batch has a SINGLE batard row (not 16 + 4)', batardRows.length === 1);
+  sdOk &= sd('split in one tub: that row is the combined count (20)', batardRows.length === 1 && batardRows[0].count === 20);
+  // Restore the container state the following blocks inherit (a 20 L tub that fits 20 batards
+  // in one container — required for the shared-shape-spans-both-columns assertions below).
+  api.__setContainers([{ id: 'c1', name: 'Tub', maxDoughGrams: 20000, quantity: 4, processTag: 'any' }]);
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  api.saveBakeInstances({});
+}
 // Same dough, different shapes (batard + boule share a formula): split one, per-recipe columns.
 // Each bake must confine to its own column, and the UN-split shape must not read "(staggered)".
 {
