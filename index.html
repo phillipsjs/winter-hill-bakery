@@ -15632,10 +15632,26 @@ ${notesHtml}
     const BUFFER = 1.10;
     const ratios = effectiveLevainRatios();
 
+    // A split bake (a share=true instance) is ONE dough mixed together in a single container,
+    // then divided at shaping for staggered bakes — so its ingredient weights must reflect the
+    // COMBINED count under the base recipe, not show as two separate weigh/ingredient blocks.
+    // Fold each split clone's count into its base. (Non-split extra batches keep their own
+    // entry: they're independently mixed with their own deadline.)
+    const splitCountByBase = {};
+    recipes.forEach(r => {
+      if (r.__instanceOf && r.__sharePrep && (plan[r.id] || 0) > 0) {
+        splitCountByBase[r.__instanceOf] = (splitCountByBase[r.__instanceOf] || 0) + (plan[r.id] || 0);
+      }
+    });
+
     const byRecipe = recipes
-      .filter(r => isInPlan(r.id) && (plan[r.id] || 0) > 0)
+      .filter(r => {
+        if (r.__instanceOf && r.__sharePrep) return false; // folded into its base below
+        if (!isInPlan(r.id)) return false;
+        return (plan[r.id] || 0) > 0 || (splitCountByBase[r.id] || 0) > 0;
+      })
       .map(r => {
-        const count = plan[r.id];
+        const count = (plan[r.id] || 0) + (splitCountByBase[r.id] || 0);
         const sumPct = (r.ingredients || []).reduce((s, i) => s + (Number(i.pct) || 0), 0);
         const flourWeight = sumPct > 0 ? (r.loafWeight * count) / (doughSumPct(r) / 100) : 0;
         return {

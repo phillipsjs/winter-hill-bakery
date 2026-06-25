@@ -2988,6 +2988,38 @@ function runDiffDough(split) {
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
+// Split bake ingredient weights: a split is one dough mixed in a single container, so the
+// weigh/ingredient block must show the COMBINED count — not two separate per-portion blocks
+// (the bug showed in the EXPANDED schedule-hover context, where the clone is a live recipe).
+{
+  api.__setOvens([]);
+  localStorageStub.setItem('whb-split-loaf-cols-v1', '1');
+  api.saveBakeInstances({});
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 15 }); seedPlan({ [SEED.batard]: 20, [SEED.boule]: 15 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setBakeInstanceField(SEED.batard, inst.id, 'count', 4); // bake-2 = 4, base bake-1 = 16
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  api.withExpandedPlan(() => {
+    const H = api.buildBakeSheetHelpers();
+    const batard = H.ingData.byRecipe.filter(r => /Batard/.test(r.name));
+    sdOk &= sd('split ingredients: ONE combined batard block (not split per-portion)', batard.length === 1);
+    sdOk &= sd('split ingredients: combined block sums to the full count (16+4=20)', batard.length === 1 && batard[0].count === 20);
+    sdOk &= sd('split ingredients: a neighbour recipe (boule) stays its own block', H.ingData.byRecipe.some(r => /Boule/.test(r.name) && r.count === 15));
+    const weigh = api.__sr().events.find(e => e.process === 'loaf' && /(Weigh|Gather) ingredients/.test(e.title));
+    const ing = H.getEventIngredients(weigh);
+    const batBlocks = ing && ing.recipes ? ing.recipes.filter(r => /Batard/.test(r.name)) : [];
+    sdOk &= sd('split ingredients: the Weigh step lists batard once with combined weights', batBlocks.length === 1 && batBlocks[0].count === 20);
+  });
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  api.saveBakeInstances({});
+}
 // Same dough, different shapes (batard + boule share a formula): split one, per-recipe columns.
 // Each bake must confine to its own column, and the UN-split shape must not read "(staggered)".
 {
