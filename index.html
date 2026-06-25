@@ -14247,7 +14247,7 @@ ${notesHtml}
       const starts = pClaims.map(c => c.startMs), ends = pClaims.map(c => c.endMs);
       const readyEv = br.events.find(ev => isLoafReady(ev));
       portions.push({
-        events: pEvents, claims: pClaims, name: r.name, sig: ratioSignature(r), // group the staggered dough
+        events: pEvents, claims: pClaims, name: r.name, sig: ratioSignature(r), id: r.id, // group the staggered dough
         count: fullPlan[r.id] || 0,
         readyMs: readyEv && readyEv.time ? readyEv.time.getTime() : null,
         ovenName: pClaims.length ? pClaims[0].name : null,
@@ -14322,12 +14322,21 @@ ${notesHtml}
     const readyBuckets = [];
     portions.filter(p => p.readyMs != null && p.count > 0).sort((a, b) => a.readyMs - b.readyMs).forEach(p => {
       const last = readyBuckets[readyBuckets.length - 1];
-      if (last && p.readyMs - last.ms <= 60000) { last.count += p.count; }
-      else readyBuckets.push({ ms: p.readyMs, count: p.count });
+      if (last && p.readyMs - last.ms <= 60000) { last.count += p.count; last.cols.add(`loaf::${p.id}`); }
+      else readyBuckets.push({ ms: p.readyMs, count: p.count, cols: new Set([`loaf::${p.id}`]) });
     });
     readyBuckets.forEach(b => {
       const label = readyBuckets.length > 1 ? `${b.count} ${b.count === 1 ? 'loaf' : 'loaves'} ready for sale` : 'Loaves ready for sale';
-      events.push({ time: new Date(b.ms), title: label, detail: '', process: 'loaf' });
+      const ev = { time: new Date(b.ms), title: label, detail: '', process: 'loaf' };
+      // In the per-recipe column view, scope the marker to the columns whose loaves it covers
+      // (e.g. boules + the first batard batch, vs only the split's later batch). One column →
+      // confine via columnKey; several → colDetails so the renderer spans just those columns.
+      if (splitLoafView) {
+        const cols = [...b.cols];
+        if (cols.length === 1) ev.columnKey = cols[0];
+        else { ev.colDetails = {}; cols.forEach(k => { ev.colDetails[k] = ''; }); }
+      }
+      events.push(ev);
     });
     // Keep the prep's container/banneton claims but DROP its oven claims — the prep
     // buildSchedule baked the whole unit at the earliest deadline (we discarded those

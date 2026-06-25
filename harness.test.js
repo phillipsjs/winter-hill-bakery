@@ -3043,6 +3043,35 @@ function runDiffDough(split) {
     ready[1] && loafBakes.every(b => !(b.time > ready[1].time)) && ready[1].time > Math.max(...loafBakes.map(b => b.time.getTime())) - 1);
   api.__setContainers([]); api.saveBakeInstances({});
 }
+// "Ready for sale" markers span only the columns they cover: the first batch (boules + first
+// batard batch) spans those columns; the split's later batch confines to its own column.
+{
+  api.__setOvens([]); api.__setBannetons([]);
+  api.__setContainers([{ id: 'big', name: 'Big tub', maxDoughGrams: 30000, quantity: 6, processTag: 'any' }]);
+  localStorageStub.setItem('whb-split-loaf-cols-v1', '1'); // per-recipe columns
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.saveBakeInstances({});
+  api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 15 }); seedPlan({ [SEED.batard]: 20, [SEED.boule]: 15 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setSplitShareCount(SEED.batard, inst.id, 4);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const ready = sr.events.filter(e => /ready for sale/.test(e.title)).sort((a, b) => a.time - b.time);
+  const colsOf = (e) => e.colDetails ? Object.keys(e.colDetails) : (e.columnKey ? [e.columnKey] : []);
+  const first = ready[0], last = ready[ready.length - 1];
+  sdOk &= sd('ready marker (first batch): spans the batard-base + boule columns, NOT the split column',
+    first && colsOf(first).some(k => /batard$/.test(k)) && colsOf(first).some(k => /boule/.test(k)) && !colsOf(first).some(k => /batard~b1/.test(k)));
+  sdOk &= sd('ready marker (later split batch): confines to the split column only',
+    last && colsOf(last).length === 1 && /batard~b1/.test(colsOf(last)[0]));
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  api.__setContainers([]); api.saveBakeInstances({});
+}
 // Preheat consolidation: bakes that run back-to-back on one oven share ONE "turn on oven";
 // a split's later bake (after a cooldown gap) gets its own. Not one preheat per portion.
 {
