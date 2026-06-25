@@ -938,8 +938,14 @@
   /* On screen the bake sheet is a list of step cards (mobile + desktop); print
      uses the dense table instead. Cap card width so it reads well on wide screens. */
   .bs-cards { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
-  .bs-card { border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; background: var(--card);
-    transition: opacity 0.15s ease, background 0.15s ease; }
+  .bs-card { position: relative; border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; background: var(--card);
+    transition: opacity 0.15s ease, background 0.15s ease, transform 0.15s ease; }
+  /* Swipe-right-to-complete (touch): card follows the finger, tints green once
+     past the commit threshold, and a ✓ hint sits at the left edge it reveals. */
+  .bs-card-swiping { transition: opacity 0.15s ease, background 0.15s ease; touch-action: pan-y; }
+  .bs-card-swiping::before { content: '✓'; position: absolute; left: -2px; top: 50%; transform: translate(-100%, -50%);
+    color: var(--accent); font-weight: 700; font-size: 1.1rem; }
+  .bs-card-swipe-armed { background: #e7f1e7; border-color: var(--accent); }
   .bs-card-head { display: flex; align-items: center; gap: 8px; }
   .bs-check { flex: 0 0 auto; display: inline-flex; align-items: center; cursor: pointer; }
   .bs-check input { width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent); margin: 0; }
@@ -2626,6 +2632,57 @@
     }
   }
   function onStepDoneToggle(input, key) { setStepDone(key, input.checked, input); }
+
+  // Swipe a bake-sheet card right to toggle it done (TOUCH only — desktop uses the
+  // checkbox). Engages only when the gesture is clearly horizontal, so vertical
+  // scrolling is untouched. Wired by delegation on #bakesheet-content.
+  const CARD_SWIPE_COMMIT = 80;   // px of rightward travel to toggle
+  const CARD_SWIPE_DECIDE = 8;    // px before we decide swipe vs scroll
+  let _cardSwipe = null;
+  function onCardSwipeDown(e) {
+    if (e.pointerType !== 'touch') return;
+    if (e.target.closest && e.target.closest('input, button, a, select, textarea, label')) return;
+    const card = e.target.closest && e.target.closest('.bs-card');
+    if (!card || !card.dataset.doneKey) return;
+    _cardSwipe = { card, key: card.dataset.doneKey, startX: e.clientX, startY: e.clientY,
+      dx: 0, decided: false, engaged: false, pointerId: e.pointerId };
+    card.addEventListener('pointermove', onCardSwipeMove);
+    card.addEventListener('pointerup', onCardSwipeUp);
+    card.addEventListener('pointercancel', onCardSwipeUp);
+  }
+  function onCardSwipeMove(e) {
+    const s = _cardSwipe;
+    if (!s) return;
+    const dx = e.clientX - s.startX, dy = e.clientY - s.startY;
+    if (!s.decided) {
+      if (Math.abs(dx) < CARD_SWIPE_DECIDE && Math.abs(dy) < CARD_SWIPE_DECIDE) return;
+      s.decided = true;
+      s.engaged = Math.abs(dx) > Math.abs(dy);   // horizontal = swipe; vertical = let it scroll
+      if (s.engaged) { try { s.card.setPointerCapture(e.pointerId); } catch (_) {} s.card.classList.add('bs-card-swiping'); }
+      else { cleanupCardSwipe(s); return; }
+    }
+    if (!s.engaged) return;
+    e.preventDefault();
+    s.dx = Math.max(0, dx);                       // rightward only
+    s.card.style.transform = `translateX(${Math.min(s.dx, 120)}px)`;
+    s.card.classList.toggle('bs-card-swipe-armed', s.dx >= CARD_SWIPE_COMMIT);
+  }
+  function onCardSwipeUp() {
+    const s = _cardSwipe;
+    if (!s) return;
+    const commit = s.engaged && s.dx >= CARD_SWIPE_COMMIT;
+    cleanupCardSwipe(s);
+    if (commit) setStepDone(s.key, !loadDoneSteps().has(s.key), s.card);
+  }
+  function cleanupCardSwipe(s) {
+    s.card.removeEventListener('pointermove', onCardSwipeMove);
+    s.card.removeEventListener('pointerup', onCardSwipeUp);
+    s.card.removeEventListener('pointercancel', onCardSwipeUp);
+    try { s.card.releasePointerCapture(s.pointerId); } catch (_) {}
+    s.card.classList.remove('bs-card-swiping', 'bs-card-swipe-armed');
+    s.card.style.transform = '';                  // animates back via the base transition
+    if (_cardSwipe === s) _cardSwipe = null;
+  }
   function getStepNoteFor(ev) { const n = loadStepNotes()[stepNoteKey(ev)]; return typeof n === 'string' ? n : ''; }
   function setStepNote(key, text) {
     const notes = loadStepNotes();
@@ -15488,6 +15545,13 @@ ${notesHtml}
       renderBakeSheet._printBound = true;
       window.addEventListener('beforeprint', () => { _bsPrintMode = true; renderBakeSheet(); });
       window.addEventListener('afterprint', () => { _bsPrintMode = false; renderBakeSheet(); });
+    }
+    // Touch swipe-right on a card toggles it done (delegated; bind once). The
+    // touchmove is non-passive so an engaged horizontal swipe can stop scrolling.
+    if (!renderBakeSheet._swipeBound) {
+      renderBakeSheet._swipeBound = true;
+      content.addEventListener('pointerdown', onCardSwipeDown);
+      content.addEventListener('touchmove', (e) => { if (_cardSwipe && _cardSwipe.engaged) e.preventDefault(); }, { passive: false });
     }
 
     const printBar = document.getElementById('bakesheet-print-bar');
