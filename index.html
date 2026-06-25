@@ -14332,43 +14332,26 @@ ${notesHtml}
     // times. They ALWAYS share prep (one mix/fold/bulk/shape), independent of the
     // combine toggle and the window width — warn-but-allow if the gap is too wide.
     const splitSigs = new Set(recipes.filter(r => r.__sharePrep && (plan[r.id] || 0) > 0).map(ratioSignature));
-    // Units start one-per-deadline-group.
+    // Units start one-per-deadline-group; merge groups that share a SPLIT dough (always — a split
+    // shares all prep through bulk/shape, so the whole same-deadline unit rides along, keeping ONE
+    // levain + shared prep; only the cold proof + bake diverge) or a combine-flagged dough (manual
+    // toggle, gated on the cold-proof window). Per-recipe column/container/bake attribution (by id)
+    // keeps the merged unit's steps confined to their own columns despite sharing the unit.
     let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, window: g.window, combined: false }));
-    // SPLIT bakes: pull each split signature's portions OUT of their deadline groups into a
-    // single shared-prep unit, leaving every OTHER dough in its own group (own mix/fold/columns;
-    // it still deck-packs with its deadline-mates). Splitting one dough must NOT fold an unrelated
-    // same-deadline dough (e.g. boules baked alongside split batards) into its combined unit —
-    // that would make them share a mix/fold and over-span the schedule columns.
-    if (splitSigs.size) {
-      splitSigs.forEach(sig => {
-        const taken = []; let minMs = null, win = null;
-        units.forEach(u => {
-          const keep = [];
-          u.recipes.forEach(r => {
-            if (ratioSignature(r) === sig) { taken.push(r); if (minMs == null || (u.ms || 0) < minMs) minMs = u.ms || 0; if (!win) win = u.window; }
-            else keep.push(r);
-          });
-          u.recipes = keep;
-        });
-        if (taken.length) units.push({ recipes: taken, ms: minMs, window: win || groupWindow(taken), combined: true, splitUnit: true });
-      });
-      units = units.filter(u => u.recipes.length);
-    }
-    // COMBINE toggle: merge whole units that share a combine-flagged dough into one staggered
-    // unit (manual control). Never folds into a split unit (those are already shared-prep).
-    if (combineSigs.size) {
+    if (combineSigs.size || splitSigs.size) {
       let changed = true;
       while (changed) {
         changed = false;
         for (let i = 0; i < units.length && !changed; i++) {
-          if (units[i].splitUnit) continue;
           for (let j = i + 1; j < units.length; j++) {
-            if (units[j].splitUnit) continue;
             const sharedSigs = units[i].recipes.map(ratioSignature).filter(s => units[j].recipes.some(r => ratioSignature(r) === s));
             if (!sharedSigs.length) continue;
-            const combShared = sharedSigs.some(s => combineSigs.has(s));
-            const doMerge = combShared && windowWidthHr > 0 && sameWindow(units[i].window, units[j].window)
-              && Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 <= windowWidthHr;
+            let doMerge = sharedSigs.some(s => splitSigs.has(s)); // splits: always share prep
+            if (!doMerge) {
+              const combShared = sharedSigs.some(s => combineSigs.has(s));
+              doMerge = combShared && windowWidthHr > 0 && sameWindow(units[i].window, units[j].window)
+                && Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 <= windowWidthHr;
+            }
             if (!doMerge) continue;
             units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), window: units[i].window, combined: true };
             units.splice(j, 1); changed = true; break;

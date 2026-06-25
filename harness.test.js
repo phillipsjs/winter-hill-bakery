@@ -2873,15 +2873,18 @@ function runSplitOven(seedId) {
 api.__setOvens([]); api.saveBakeInstances({});
 allOk &= soOk;
 
-// ---- Splitting one of two DISTINCT doughs must not fold the other into its shared prep ----
+// ---- A split must not change anything PRIOR to the cold proof: the same-deadline dough(s)
+//      keep ONE shared levain + prep; only the split portion's cold proof + bake diverge. ----
 console.log('\nSplit alongside a different dough:');
 let sdOk = true;
 function sd(label, cond) { console.log(`  [split-dough] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
-{
+function runDiffDough(split) {
   api.__setOvens([]);
-  // Make boule a genuinely different dough so it can't share batard's mix.
+  const bat = api.__recipes().find(r => r.id === SEED.batard);
   const bou = api.__recipes().find(r => r.id === SEED.boule);
-  const water = bou.ingredients.find(i => /water/i.test(i.name)); const savedPct = water.pct; water.pct = 80;
+  // A genuinely different dough (different water %) baked alongside the batards.
+  bou.ingredients = bat.ingredients.map(i => ({ ...i }));
+  bou.ingredients.find(i => /water/i.test(i.name)).pct = 80;
   localStorageStub.setItem('whb-split-loaf-cols-v1', '1'); // per-recipe column view
   api.saveBakeInstances({});
   const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
@@ -2890,25 +2893,32 @@ function sd(label, cond) { console.log(`  [split-dough] ${cond ? 'PASS' : 'FAIL'
   ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
   localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
   api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 8 }); seedPlan({ [SEED.batard]: 20, [SEED.boule]: 8 });
-  api.addBakeInstance(SEED.batard, true);
-  const inst = api.loadBakeInstances()[SEED.batard][0];
-  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  if (split) {
+    api.addBakeInstance(SEED.batard, true);
+    const inst = api.loadBakeInstances()[SEED.batard][0];
+    api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  }
   api.renderSchedule();
-  const sr = api.__sr();
-  const cols = (sr.loafColumns || []).map(c => c.key);
-  const grpOf = (k) => (/^g\d+~/.exec(k) || [''])[0];
-  const batardCols = cols.filter(k => /batard/.test(k));
-  const bouleCol = cols.find(k => !/batard/.test(k)); // boule's single-dough column = "g#~loaf"
-  sdOk &= sd('boule and batard land in DIFFERENT groups (separate prep units)',
-    bouleCol && batardCols.length === 2 && batardCols.every(k => grpOf(k) !== grpOf(bouleCol)));
-  // The batard mix is shared across its split, scoped to the batard group — NOT boule's.
-  const mixes = sr.events.filter(e => e.process === 'loaf' && e.title === 'Mix in salt + ripe levain');
-  sdOk &= sd('two separate mixes (one per dough), not one shared mix', mixes.length === 2);
-  const batardGrp = grpOf(batardCols[0]);
-  const batardMix = mixes.find(e => grpOf(e.columnKey || '') === batardGrp);
-  sdOk &= sd('the batard shared mix is keyed to the batard group (scopes its span to batard columns)',
-    batardMix && grpOf(batardMix.columnKey) === batardGrp && grpOf(batardMix.columnKey) !== grpOf(bouleCol));
-  water.pct = savedPct; // restore the seed
+  return api.__sr();
+}
+{
+  const prep = (sr) => ({
+    levain: sr.events.filter(e => /Levain Build/i.test(e.title)).length,
+    mix: sr.events.filter(e => e.title === 'Mix in salt + ripe levain').length,
+    gather: sr.events.filter(e => /Gather ingredients/i.test(e.title)).length,
+  });
+  const base = prep(runDiffDough(false));
+  const srSplit = runDiffDough(true);
+  const split = prep(srSplit);
+  sdOk &= sd('split leaves the pre-cold-proof prep IDENTICAL to no-split (one shared levain, same mix/gather)',
+    base.levain > 0 && split.levain === base.levain && split.mix === base.mix && split.gather === base.gather);
+  // Despite sharing the prep, per-recipe steps still confine to their own columns (no over-span).
+  const shapeSteps = srSplit.events.filter(e => e.process === 'loaf' && /^Start preshape/.test(e.title));
+  sdOk &= sd('shared-prep split: every shape step still confines to ONE recipe column (no span)',
+    shapeSteps.length > 0 && shapeSteps.every(e => !e.colDetails && /loaf::/.test(e.columnKey || '')));
+  const bakeCols = new Set(srSplit.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title)).map(e => e.columnKey));
+  sdOk &= sd('shared-prep split: bakes attribute to batard, split, and boule columns distinctly',
+    [...bakeCols].filter(k => /batard/.test(k || '')).length === 2 && [...bakeCols].some(k => /boule/.test(k || '')));
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
