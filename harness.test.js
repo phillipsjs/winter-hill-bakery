@@ -2956,6 +2956,36 @@ function sd(label, cond) { console.log(`  [split-dough] ${cond ? 'PASS' : 'FAIL'
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
+// Banneton eligibility: a split's clone shares the base recipe's bannetons (it IS that recipe),
+// and a recipe-restricted banneton pool isn't leaked to other recipes.
+{
+  api.__setOvens([]);
+  api.__setBannetons([
+    { name: 'batard ban', quantity: 20, recipeIds: [SEED.batard] },
+    { name: 'boule ban', quantity: 8, recipeIds: [SEED.boule] },
+  ]);
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.saveBakeInstances({});
+  api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 8 }); seedPlan({ [SEED.batard]: 20, [SEED.boule]: 8 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const banClaims = (sr.equipClaims || []).filter(c => c.pool === 'banneton');
+  const batardClaims = banClaims.filter(c => /batard ban/.test(c.name));
+  sdOk &= sd('split: both batard portions claim the batard banneton pool (cap 20, not leaked to all 28)',
+    batardClaims.length === 2 && batardClaims.every(c => c.capacity === 20));
+  sdOk &= sd('split: boule keeps its own banneton pool (cap 8)',
+    banClaims.some(c => /boule ban/.test(c.name) && c.capacity === 8));
+  sdOk &= sd('split: no false "not enough bannetons" warning when the pools suffice',
+    !(sr.warnings || []).some(w => /banneton/i.test(w.msg || '')));
+  api.__setBannetons([]); api.saveBakeInstances({});
+}
 allOk &= sdOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');

@@ -13213,8 +13213,18 @@ ${notesHtml}
     // when the user has configured eligible ones, else a generic label) plus the loaves
     // going into them (keeping per-container recipe tags intact).
     const loafNameToId = new Map(loafRecipes.map(r => [r.name, r.id]));
+    // A container entry's recipe id for banneton eligibility. Prefer the explicit recipeId
+    // (a split's base + clone share a NAME, so a name lookup collapses them onto one id and a
+    // base-restricted banneton would wrongly miss a portion → false "not enough"); then resolve
+    // a clone to its BASE recipe, since the same recipe's bannetons apply to both portions.
+    const contentRecipeId = (l) => {
+      const id = l.recipeId || loafNameToId.get(l.recipe);
+      if (!id) return null;
+      const rec = recipes.find(r => r.id === id);
+      return (rec && rec.__instanceOf) ? rec.__instanceOf : id;
+    };
     const bannetonLabelFor = (contents) => {
-      const ids = new Set((contents || []).map(l => loafNameToId.get(l.recipe)).filter(Boolean));
+      const ids = new Set((contents || []).map(contentRecipeId).filter(Boolean));
       const names = [...new Set(userBannetons
         .filter(b => !b.recipeIds || b.recipeIds.length === 0 || b.recipeIds.some(id => ids.has(id)))
         .map(b => b.name))];
@@ -13304,7 +13314,7 @@ ${notesHtml}
         // bannetons ELIGIBLE for this container's recipes (same recipeIds filter the labels use),
         // not the whole pool — so loaves restricted to a few bannetons are checked against those.
         // (containerInfo stores the per-container loaf count as `loaves`, not `totalLoaves`.)
-        const bannetonIds = new Set((c.contents || []).map(l => loafNameToId.get(l.recipe)).filter(Boolean));
+        const bannetonIds = new Set((c.contents || []).map(contentRecipeId).filter(Boolean));
         const eligibleBannetons = userBannetons.filter(b => !b.recipeIds || b.recipeIds.length === 0 || b.recipeIds.some(id => bannetonIds.has(id)));
         const eligibleBannetonCap = eligibleBannetons.reduce((a, b) => a + (b.quantity || 0), 0);
         // Pool/group key: the full pool reads "(bannetons)"; a restricted subset keys by its
