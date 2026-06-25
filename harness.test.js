@@ -2912,10 +2912,16 @@ function runDiffDough(split) {
   const split = prep(srSplit);
   sdOk &= sd('split leaves the pre-cold-proof prep IDENTICAL to no-split (one shared levain, same mix/gather)',
     base.levain > 0 && split.levain === base.levain && split.mix === base.mix && split.gather === base.gather);
-  // Despite sharing the prep, per-recipe steps still confine to their own columns (no over-span).
+  // The shared shaping spans the SPLIT dough's two columns, but never bleeds onto a DIFFERENT
+  // dough (boule). A neighbour dough's shape stays single-column.
   const shapeSteps = srSplit.events.filter(e => e.process === 'loaf' && /^Start preshape/.test(e.title));
-  sdOk &= sd('shared-prep split: every shape step still confines to ONE recipe column (no span)',
-    shapeSteps.length > 0 && shapeSteps.every(e => !e.colDetails && /loaf::/.test(e.columnKey || '')));
+  const colsOf = (e) => e.colDetails ? Object.keys(e.colDetails) : (e.columnKey ? [e.columnKey] : []);
+  const isBatard = (k) => /batard/.test(k || ''), isBoule = (k) => /boule/.test(k || '');
+  sdOk &= sd('shared-prep split: no shape step mixes different doughs (batard with boule)',
+    shapeSteps.length > 0 && shapeSteps.every(e => { const cs = colsOf(e); return !(cs.some(isBatard) && cs.some(isBoule)); }));
+  const batardShape = shapeSteps.find(e => colsOf(e).some(isBatard));
+  sdOk &= sd('shared-prep split: the shared batard shaping SPANS both split columns (base + clone)',
+    !!batardShape && colsOf(batardShape).filter(isBatard).length === 2);
   const bakeCols = new Set(srSplit.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title)).map(e => e.columnKey));
   sdOk &= sd('shared-prep split: bakes attribute to batard, split, and boule columns distinctly',
     [...bakeCols].filter(k => /batard/.test(k || '')).length === 2 && [...bakeCols].some(k => /boule/.test(k || '')));
@@ -2956,15 +2962,17 @@ function runDiffDough(split) {
   // Containers must NOT mix recipes (boule packed with batard), and each container's shape step
   // confines to ONE column (no colDetails span). Base and clone get DIFFERENT columns.
   const shapeSteps = sr.events.filter(e => e.process === 'loaf' && /^Start preshape/.test(e.title));
-  sdOk &= sd('no container mixes recipes — every shape step is single-column (no span)',
-    shapeSteps.length > 0 && shapeSteps.every(e => !e.colDetails && /loaf::/.test(e.columnKey || '')));
-  sdOk &= sd('no shape step title lists two recipes in one container (no "A + B")',
+  const colsOf = (e) => e.colDetails ? Object.keys(e.colDetails) : (e.columnKey ? [e.columnKey] : []);
+  const isBat = (k) => /batard/.test(k || ''), isBou = (k) => /boule/.test(k || '');
+  sdOk &= sd('no container mixes DIFFERENT doughs — no shape step spans batard + boule',
+    shapeSteps.length > 0 && shapeSteps.every(e => { const cs = colsOf(e); return !(cs.some(isBat) && cs.some(isBou)); }));
+  sdOk &= sd('shared-container title sums same-name parts (no "16 × … + 4 × …")',
     !sr.events.some(e => /^(Start preshape|Into fridge)/.test(e.title) && /×.+\+.+×/.test(e.title)));
-  const shapeCols = new Set(shapeSteps.map(e => e.columnKey));
-  // A split bulk-ferments + shapes as ONE dough (merged into the base container/column — like the
-  // Bake Plan); only the BAKE diverges to base (Bake 1) + clone (Bake 2) columns.
-  sdOk &= sd('split portions share ONE batard container set (shape keyed to base column), boule separate',
-    shapeCols.has('g0~loaf::seed-sourdough-batard') && shapeCols.has('g0~loaf::seed-sourdough-boule') && !shapeCols.has('g0~loaf::seed-sourdough-batard~b1'));
+  const batShape = shapeSteps.find(e => colsOf(e).some(isBat));
+  // A split shapes ONE dough but for both bake times → the shared shaping SPANS both split columns;
+  // boule (a different dough) stays in its own single column.
+  sdOk &= sd('split: batard shaping spans BOTH split columns; boule shapes separately',
+    !!batShape && colsOf(batShape).filter(isBat).length === 2 && shapeSteps.some(e => { const cs = colsOf(e); return cs.length === 1 && isBou(cs[0]); }));
   const bakeCols2 = new Set(sr.events.filter(e => /^Bake \d+ of/.test(e.title)).map(e => e.columnKey));
   sdOk &= sd('split: bakes still diverge to base + clone columns despite shared prep/container',
     bakeCols2.has('g0~loaf::seed-sourdough-batard') && bakeCols2.has('g0~loaf::seed-sourdough-batard~b1'));

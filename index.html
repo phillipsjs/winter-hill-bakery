@@ -8639,6 +8639,13 @@ ${notesHtml}
     };
   }
 
+  // "N × Recipe + M × Other" label for a container's loaves, summing by recipe NAME so a split's
+  // two same-name parts read as one count (e.g. "20 × Sourdough Batard", not "16 × … + 4 × …").
+  function aggregateContents(contents) {
+    const byName = new Map();
+    (contents || []).forEach(l => byName.set(l.recipe, (byName.get(l.recipe) || 0) + l.count));
+    return [...byName.entries()].map(([recipe, count]) => `${count} × ${recipe}`).join(' + ');
+  }
   function planDoughContainers(loafRecipes, planMap, capacity, userCont) {
     // Simple bakes don't bulk-ferment, but a chilled simple dough (cookies/scones with
     // a chill window) still needs a container in the fridge.
@@ -8654,11 +8661,14 @@ ${notesHtml}
     const byBaseId = new Map();
     activeRaw.forEach(a => {
       const baseId = a.recipe.__instanceOf || a.recipe.id;
+      // Keep each portion as a "part" (its own recipe id) so a shared container can still list
+      // both halves — the shaping is shared, so its step spans both split columns.
+      const part = { recipe: a.recipe.name, recipeId: a.recipe.id, count: a.count, dough: a.dough };
       const existing = byBaseId.get(baseId);
-      if (existing) { existing.count += a.count; existing.dough += a.dough; return; }
+      if (existing) { existing.count += a.count; existing.dough += a.dough; existing.parts.push(part); return; }
       // Prefer the base recipe object when this entry is a clone (so labels/prefs read the base).
       const baseRec = a.recipe.__instanceOf ? (loafRecipes.find(r => r.id === a.recipe.__instanceOf) || a.recipe) : a.recipe;
-      const entry = { recipe: baseRec, count: a.count, dough: a.dough };
+      const entry = { recipe: baseRec, count: a.count, dough: a.dough, parts: [part] };
       byBaseId.set(baseId, entry); active.push(entry);
     });
     if (active.length === 0) return [];
@@ -8739,6 +8749,17 @@ ${notesHtml}
         containers = [];
         for (const item of items) {
           const recipeContainers = Math.ceil(item.dough / effectiveCapacity);
+          // A split's portions share ONE container when they fit — list BOTH parts so the shared
+          // shaping step spans both split columns (each part keeps its own recipe id).
+          if (item.parts && item.parts.length > 1 && recipeContainers === 1) {
+            containers.push({
+              loaves: item.parts.map(p => ({ recipe: p.recipe, recipeId: p.recipeId, count: p.count, dough: p.dough })),
+              totalLoaves: item.count,
+              totalDough: item.dough,
+              containerName,
+            });
+            continue;
+          }
           const loavesPerContainer = splitEvenly(item.count, recipeContainers);
           for (const loaves of loavesPerContainer) {
             containers.push({
@@ -13162,7 +13183,7 @@ ${notesHtml}
       // bulk, anchored to its own shape start — so different cold proofs/bulks stay independent.
       containerInfo.forEach((c, ci) => {
         const t = ctTimeline[ci];
-        const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+        const contentsLabel = aggregateContents(c.contents);
         const cLabel = c.containerName
           ? (numContainers > 1 ? `${c.containerName} ${ci + 1} of ${numContainers}` : c.containerName)
           : `container ${ci + 1} of ${numContainers}`;
@@ -13243,7 +13264,7 @@ ${notesHtml}
       const names = [...new Set(userBannetons
         .filter(b => !b.recipeIds || b.recipeIds.length === 0 || b.recipeIds.some(id => ids.has(id)))
         .map(b => b.name))];
-      const contentsLabel = (contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+      const contentsLabel = aggregateContents(contents);
       const head = names.length ? names.join(' / ') : 'Bannetons';
       return contentsLabel ? `${head}: ${contentsLabel}` : head;
     };
@@ -13260,7 +13281,7 @@ ${notesHtml}
       const containerEndT = addMinutes(finalShapeStartT, shape.finalShapeMin);
       containerFridgeInTimes.push(containerEndT);
 
-      const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+      const contentsLabel = aggregateContents(c.contents);
       const containerLabel = c.containerName
         ? (numContainers > 1 ? `${c.containerName} ${i + 1} of ${numContainers}` : c.containerName)
         : `container ${i + 1} of ${numContainers}`;
@@ -13314,7 +13335,7 @@ ${notesHtml}
           : firstBakeStart;
         const cpMs = bakeStart - fridgeTime;
         containerColdProofMs.push(cpMs);
-        const contentsLabel = (c.contents || []).map(l => `${l.count} × ${l.recipe}`).join(' + ');
+        const contentsLabel = aggregateContents(c.contents);
         const containerLabel = c.containerName
           ? (numContainers > 1 ? `${c.containerName} ${i + 1} of ${numContainers}` : c.containerName)
           : `container ${i + 1} of ${numContainers}`;
