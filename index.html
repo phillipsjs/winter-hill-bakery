@@ -7291,6 +7291,9 @@ ${notesHtml}
   const _anchorDragFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
   function onAnchorPointerDown(e) {
     if (e.button != null && e.button > 0) return;
+    // Fresh press: clear any suppress flag left over from a touch gesture whose
+    // synthetic click never fired (so a later real tap isn't wrongly swallowed).
+    _suppressNextScheduleClick = false;
     // Leave presses on interactive children (note button, links, inputs) alone.
     if (e.target.closest && e.target.closest('button, a, input, select, textarea')) return;
     const stepEl = e.target.closest && e.target.closest('.schedule-row, .schedule-event');
@@ -7311,6 +7314,10 @@ ${notesHtml}
   function activateStepDrag(d) {
     if (_stepDrag !== d) return;
     d.activated = true;
+    // Picking a step up is a drag, not a tap — hide any pinned tooltip and make
+    // sure the press doesn't also fire the tap handler when the finger lifts.
+    if (typeof hideScheduleTooltip === 'function') hideScheduleTooltip();
+    _suppressNextScheduleClick = true;
     d.stepEl.classList.add('schedule-step-dragging');
     try { d.stepEl.setPointerCapture(d.pointerId); } catch (_) {}
     if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
@@ -16241,9 +16248,15 @@ ${notesHtml}
     renderSchedule();
     renderTotals();
   });
-  // Drag a step's time up/down to anchor it; a plain tap falls through to the
-  // click handler below (which opens the exact-time modal).
+  // Long-press a step then slide to anchor it; a plain tap falls through to the
+  // click handler below (tooltip / exact-time modal).
   document.getElementById('schedule-output').addEventListener('pointerdown', onAnchorPointerDown);
+  // While a drag is ACTIVE, swallow touchmove so the page doesn't scroll and
+  // cancel the gesture. Must be non-passive for preventDefault to take effect;
+  // when not dragging it's a no-op so normal scrolling is untouched.
+  document.getElementById('schedule-output').addEventListener('touchmove', (e) => {
+    if (_stepDrag && _stepDrag.activated) e.preventDefault();
+  }, { passive: false });
   document.getElementById('schedule-output').addEventListener('click', (e) => {
     // A drag just committed an anchor — swallow the click it would otherwise fire.
     if (_suppressNextScheduleClick) { _suppressNextScheduleClick = false; return; }
@@ -16310,6 +16323,9 @@ ${notesHtml}
     const out = document.getElementById('schedule-output');
     out.addEventListener('mouseover', (e) => {
       if (_scheduleTooltipPinned) return;
+      // A touch press synthesizes a mouseover — don't let a long-press (drag) or
+      // any touch press pop the hover tooltip; the tap handler shows it on a short press.
+      if (_stepDrag || e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) return;
       const row = e.target.closest('[data-hover]');
       if (!row) return;
       const id = row.getAttribute('data-hover');
