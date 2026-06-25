@@ -144,6 +144,7 @@ const exportsTail = `
   loadBakeInstances, saveBakeInstances, addBakeInstance, setBakeInstanceField, removeBakeInstance,
   __recipes: () => recipes,
   __plan: () => plan,
+  __setBakeSheetMobile: (v) => { _bsForceMobile = v; },
 };`;
 
 const factory = new Function(
@@ -1818,6 +1819,19 @@ hvOk &= hv('loaf cooling step carries no oven equip (inferable from the bake)',
 api.showTab('bakesheet');
 const bsHtml = getEl('bakesheet-content').innerHTML;
 hvOk &= hv('time range uses wrap-safe bs-tspan spans', /bs-tspan/.test(bsHtml));
+// Mobile: the bake sheet renders stacked cards (no <table>), with labeled
+// Equipment/Ingredients sections; desktop keeps the table.
+api.__setBakeSheetMobile(true);
+api.renderBakeSheet();
+const bsMobile = getEl('bakesheet-content').innerHTML;
+hvOk &= hv('mobile bake sheet renders stacked cards, not a table',
+  /class="bs-cards"/.test(bsMobile) && /class="bs-card"/.test(bsMobile) && !/bakesheet-table/.test(bsMobile));
+hvOk &= hv('mobile cards label the Equipment and Ingredients sections',
+  /bs-card-lbl">Equipment</.test(bsMobile) && /bs-card-lbl">Ingredients</.test(bsMobile));
+api.__setBakeSheetMobile(false);
+api.renderBakeSheet();
+hvOk &= hv('desktop bake sheet still renders the table', /bakesheet-table/.test(getEl('bakesheet-content').innerHTML));
+api.__setBakeSheetMobile(null);
 // pickDoughContainer honors a preference (so the bagel/muffin picker actually takes effect).
 api.__setContainers([
   { id: 'small', name: 'Small tub', maxDoughGrams: 3000, processTag: 'loaf' },

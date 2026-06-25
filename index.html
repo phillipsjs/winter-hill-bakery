@@ -906,6 +906,29 @@
     text-transform: uppercase;
     color: #666;
   }
+  /* Bake sheet — mobile stacked cards (one per step). Only emitted on phones
+     (renderDayCards), so these rules need no media gate. */
+  .bs-cards { display: flex; flex-direction: column; gap: 10px; }
+  .bs-card { border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; background: var(--card); }
+  .bs-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .bs-card-time { font-weight: 600; color: var(--accent-dark); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  .bs-card-stage { flex: 0 0 auto; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #5a6b5e; background: #eef2ee; border: 1px solid #d6e0d6;
+    border-radius: 999px; padding: 1px 7px; }
+  .bs-card-title { margin-top: 3px; }
+  .bs-card-title strong { font-size: 0.95rem; }
+  .bs-card .bs-detail { margin-top: 3px; }
+  .bs-card-section { margin-top: 9px; }
+  .bs-card-lbl { display: block; font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--muted); margin-bottom: 3px; }
+  .bs-card-section .bs-equip-edit { margin-top: 4px; }
+  .bs-card .bp-equip-select, .bs-card select { width: 100%; max-width: 100%; font-size: 16px; padding-top: 7px; padding-bottom: 7px; }
+  .bs-card .bs-equip-row { flex-wrap: wrap; }
+  .bs-card-batch { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .bs-card-batch-equip { font-size: 0.8rem; color: var(--muted); white-space: pre-line; margin-bottom: 4px; }
+  .bs-card-foot { margin-top: 9px; }
+  .bs-card .bs-recipes { margin-top: 6px; }
+
   .bakesheet-notes { margin-top: 24px; }
   .bakesheet-notes-header { font-size: 0.95rem; font-weight: 600; margin: 0 0 6px;
     padding: 5px 0; border-bottom: 2px solid var(--border); }
@@ -1008,6 +1031,48 @@
     .bakesheet-day-header { color: #333 !important; }
     .bs-time { color: #333 !important; }
     .schedule-tooltip { display: none !important; }
+  }
+
+  /* ============================================================
+     Mobile (phones). Foundations: full-width controls, stacked
+     form rows, comfortable tap targets. Bake-sheet cards + table
+     fallbacks live further down in their own blocks.
+     ============================================================ */
+  @media (max-width: 640px) {
+    header { padding: 16px 14px 6px; }
+    header h1 { font-size: 1.4rem; }
+    main { padding: 10px 12px 56px; }
+    .card { padding: 13px; border-radius: 9px; }
+    nav.tabs button { padding: 10px 12px; }
+
+    /* No control may overflow its container. 16px font avoids focus-zoom. */
+    input, select, textarea, .settings-select, .bp-equip-select {
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    input[type="text"], input[type="number"], input[type="date"],
+    input[type="datetime-local"], input[type="time"], select, textarea, .settings-select {
+      font-size: 16px;
+    }
+
+    /* Fields go full-width and wrap below their label, without flipping every
+       row to a column (which would stack button groups awkwardly). Inline
+       fixed-width labels (style="width:120px") are neutralized; inputs take a
+       100% flex-basis so they drop onto their own full-width line. */
+    .card .row > label { width: auto !important; min-width: 0 !important; }
+    .card .row > input[type="text"], .card .row > input[type="number"],
+    .card .row > input[type="date"], .card .row > input[type="datetime-local"],
+    .card .row > input[type="time"], .card .row > select,
+    .card .row > textarea, .card .row > .settings-select {
+      flex: 1 1 100%; width: 100%;
+    }
+
+    /* Larger tap targets for the small inline buttons + nav. */
+    nav.tabs button, .hamburger-btn, #hamburger-menu button { min-height: 42px; }
+    button.tiny, .tiny { min-height: 34px; }
+
+    /* Bake-plan recipe rows: keep name + count on one line but let it wrap. */
+    .bake-recipe-compact { gap: 8px; }
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
@@ -15154,9 +15219,25 @@ ${notesHtml}
     return { ingData, ingTableHtml, getEventIngredients, recipeBlockHtml, batchedBlocks, renderIngCol, getEventContainer, getEventEquipment, bsTitle, allRecipeNames, getEventRecipes, bsDetail, getEventBatchRows, getEventEquipPicker };
   }
 
+  // The bake sheet renders as stacked cards on phones and a dense table on
+  // wider screens. _bsForceMobile lets the test harness pin the mode (matchMedia
+  // isn't available there); null = follow the viewport.
+  let _bsForceMobile = null;
+  function isBakeSheetMobile() {
+    if (_bsForceMobile !== null) return _bsForceMobile;
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      && window.matchMedia('(max-width: 640px)').matches;
+  }
   function renderBakeSheet() {
     const content = document.getElementById('bakesheet-content');
     if (!content) return;
+    // Re-render once when the phone/desktop breakpoint is crossed (bind once).
+    if (typeof window !== 'undefined' && window.matchMedia && !renderBakeSheet._mqBound) {
+      renderBakeSheet._mqBound = true;
+      const mq = window.matchMedia('(max-width: 640px)');
+      const cb = () => rerenderBakeSheetIfVisible();
+      mq.addEventListener ? mq.addEventListener('change', cb) : mq.addListener(cb);
+    }
 
     const printBar = document.getElementById('bakesheet-print-bar');
     if (!_scheduleResult || !_scheduleResult.events || _scheduleResult.events.length === 0) {
@@ -15175,6 +15256,9 @@ ${notesHtml}
 
     const H = buildBakeSheetHelpers();
     const { ingData, renderIngCol, getEventEquipment, getEventContainer, getEventRecipes, getEventBatchRows, bsTitle, bsDetail, allRecipeNames, getEventEquipPicker } = H;
+    // A dough sits in the same vessel through autolyse → mix → folds → bulk, so the
+    // container is shown once and suppressed on the following same-vessel steps.
+    const CONTAINER_CARRY = ['autolyse', 'mix', 'fold', 'bulk', 'proof', 'chill'];
 
     // Group events by day (same display order as the schedule tab — same-recipe steps
     // at the same clock time stay contiguous).
@@ -15192,17 +15276,80 @@ ${notesHtml}
     const summaryParts = ingData.byRecipe.map(r => `${r.count} &times; ${escapeHtml(r.name)}`);
     const totalUnits = ingData.byRecipe.reduce((s, r) => s + r.count, 0);
 
-    const daysHtml = groups.map((g, gi) => {
+    // Per-event derived display parts, shared by the desktop table and the mobile
+    // cards so both read identically. prevContainerRef.v carries the dough-vessel
+    // suppression state across a day's events.
+    const eventParts = (ev, prevContainerRef) => {
+      const titleText = bsTitle(ev);
+      const detailText = bsDetail(ev);
+      const stype = eventStageType(ev);
+      const detailHtml = detailText
+        ? ((stype === 'shape' || stype === 'preshape') ? boldUnitWeightHtml(escapeHtml(detailText)) : escapeHtml(detailText))
+        : '';
+      const recipeNames = getEventRecipes(ev);
+      const recipesLabel = (allRecipeNames.length > 1 && recipeNames.length)
+        ? `<div class="bs-recipes">${recipeNames.map(n => `<span class="bs-recipe-tag">${escapeHtml(n)}</span>`).join('')}</div>`
+        : '';
+      const noteKey = stepNoteKey(ev);
+      const noteText = getStepNoteFor(ev);
+      const recipeNotesHtml = recipeStageNotesHtml(ev, H);
+      const noteTextHtml = noteText ? `<div class="bs-note-wrap"><div class="bs-note">📝 ${escapeHtml(noteText)}</div></div>` : '';
+      const noteBtnHtml = `<button type="button" class="bs-note-btn no-print" data-note-key="${escapeAttr(noteKey)}" onclick="editStepNote(this.dataset.noteKey)">${noteText ? 'Edit note' : '+ Add note'}</button>`;
+      const carries = CONTAINER_CARRY.includes(stype);
+      const contRaw = getEventContainer(ev);
+      const isRepeat = !!contRaw && carries && contRaw === prevContainerRef.v;
+      const showCont = !!contRaw && contRaw !== 'a container' && !isRepeat;
+      prevContainerRef.v = carries ? (contRaw || prevContainerRef.v) : null;
+      return { titleText, detailHtml, recipesLabel, recipeNotesHtml, noteTextHtml, noteBtnHtml, showCont };
+    };
+
+    const renderDayCards = (g, gi) => {
+      const prevContainerRef = { v: null };
+      const cards = g.events.map(ev => {
+        const batches = getEventBatchRows(ev);
+        const p = eventParts(ev, prevContainerRef);
+        const stage = getEventStage(ev);
+        const head = `<div class="bs-card-head">
+            <span class="bs-card-time">${fmtRange(ev)}</span>
+            ${stage ? `<span class="bs-card-stage">${escapeHtml(stage)}</span>` : ''}
+          </div>
+          <div class="bs-card-title"><strong>${escapeHtml(p.titleText)}</strong></div>
+          ${p.detailHtml ? `<div class="bs-detail">${p.detailHtml}</div>` : ''}
+          ${p.recipesLabel}${p.recipeNotesHtml}${p.noteTextHtml}`;
+        // Equipment + Ingredients sections (only when there's something to show).
+        let body = '';
+        if (!batches) {
+          const equipText = getEventEquipment(ev, { skipContainer: !p.showCont });
+          const picker = getEventEquipPicker(ev, { includeContainer: p.showCont });
+          const equipInner = `${escapeHtml(equipText)}${picker}`;
+          if (equipInner.trim()) body += `<div class="bs-card-section"><span class="bs-card-lbl">Equipment</span>${equipInner}</div>`;
+          const ing = renderIngCol(ev);
+          if (ing && ing.trim()) body += `<div class="bs-card-section"><span class="bs-card-lbl">Ingredients</span>${ing}</div>`;
+        } else {
+          prevContainerRef.v = null; // distinct per-batch vessels break the carry
+          const picker = getEventEquipPicker(ev);
+          if (picker.trim()) body += `<div class="bs-card-section"><span class="bs-card-lbl">Equipment</span>${picker}</div>`;
+          body += batches.map(b => `<div class="bs-card-batch">
+            <div class="bs-card-batch-equip">${b.equipHtml}</div>
+            <div class="bs-card-section"><span class="bs-card-lbl">Ingredients</span>${b.ingHtml}</div>
+          </div>`).join('');
+        }
+        return `<div class="bs-card">${head}${body}<div class="bs-card-foot no-print">${p.noteBtnHtml}</div></div>`;
+      }).join('');
+      return `
+        <div class="bakesheet-day">
+          <div class="bakesheet-day-header">Day ${gi + 1} &mdash; ${dayFmt.format(g.date)}</div>
+          <div class="bs-cards">${cards}</div>
+        </div>`;
+    };
+
+    const renderDayTable = (g, gi) => {
       // Each event renders as one row, except a per-container mixing step, which
       // renders one row per batch (so its container lines up with its ingredients).
       const eventRows = g.events.map(ev => {
         const batches = getEventBatchRows(ev);
         return { ev, batches, rowCount: batches ? batches.length : 1 };
       });
-      // A dough sits in the same vessel through autolyse → mix → folds → bulk, so
-      // the container is shown once and suppressed on the immediately-following
-      // same-vessel steps. Reset each day. Stage types where the vessel carries over:
-      const CONTAINER_CARRY = ['autolyse', 'mix', 'fold', 'bulk', 'proof', 'chill'];
       let prevContainer = null;
       // Stage cell spans a run of consecutive same-stage events; with multi-row
       // events the rowspan is the SUM of their row counts. Emitted in the run's
@@ -15297,7 +15444,12 @@ ${notesHtml}
             <tbody>${rowsHtml}</tbody>
           </table>
         </div>`;
-    }).join('');
+    };
+
+    // Phones get stacked cards (no horizontal squeeze / dropdown overflow);
+    // wider screens keep the dense table. Print always uses the table.
+    const renderDay = isBakeSheetMobile() ? renderDayCards : renderDayTable;
+    const daysHtml = groups.map((g, gi) => renderDay(g, gi)).join('');
 
     content.innerHTML = `
       <div class="bakesheet-print-area">
