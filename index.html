@@ -8643,9 +8643,24 @@ ${notesHtml}
     // Simple bakes don't bulk-ferment, but a chilled simple dough (cookies/scones with
     // a chill window) still needs a container in the fridge.
     const simpleChills = r => getProcessType(r) === 'simple' && r.chillWindow && r.chillWindow !== '';
-    const active = loafRecipes
+    const activeRaw = loafRecipes
       .filter(r => (planMap[r.id] || 0) > 0 && (getProcessType(r) !== 'simple' || simpleChills(r)))
       .map(r => ({ recipe: r, count: planMap[r.id], dough: r.loafWeight * planMap[r.id] }));
+    // A split bake's portions (a clone + its base) are the SAME dough — they bulk-ferment and
+    // shape together in ONE container; only the cold proof + bake diverge (handled downstream by
+    // per-portion bakes). Merge a clone into its base so the container packing matches the Bake
+    // Plan (e.g. 20 batards split 16/4 stay in one tub, not two). Other recipes stay distinct.
+    const active = [];
+    const byBaseId = new Map();
+    activeRaw.forEach(a => {
+      const baseId = a.recipe.__instanceOf || a.recipe.id;
+      const existing = byBaseId.get(baseId);
+      if (existing) { existing.count += a.count; existing.dough += a.dough; return; }
+      // Prefer the base recipe object when this entry is a clone (so labels/prefs read the base).
+      const baseRec = a.recipe.__instanceOf ? (loafRecipes.find(r => r.id === a.recipe.__instanceOf) || a.recipe) : a.recipe;
+      const entry = { recipe: baseRec, count: a.count, dough: a.dough };
+      byBaseId.set(baseId, entry); active.push(entry);
+    });
     if (active.length === 0) return [];
     // Group by dough with a tolerance (sameDough) rather than an exact signature, so a few
     // hundredths of a percent of ratio drift — e.g. from re-rounding grams when one recipe's
@@ -14205,7 +14220,7 @@ ${notesHtml}
       const pClaims = (br.equipClaims || []).filter(c => c.pool === 'oven');
       const starts = pClaims.map(c => c.startMs), ends = pClaims.map(c => c.endMs);
       portions.push({
-        events: pEvents, claims: pClaims,
+        events: pEvents, claims: pClaims, name: r.name, sig: ratioSignature(r), // group the staggered dough
         ovenName: pClaims.length ? pClaims[0].name : null,
         startMs: starts.length ? Math.min(...starts) : null,
         endMs: ends.length ? Math.max(...ends) : null,
@@ -14250,16 +14265,28 @@ ${notesHtml}
       p.claims.forEach(c => bakeOvenClaims.push(c));
       if (p.startMs != null) firstBakeTimes.push(new Date(p.startMs));
     });
-    if (firstBakeTimes.length > 1) {
-      const ms = firstBakeTimes.map(t => t.getTime());
-      const spreadHr = (Math.max(...ms) - Math.min(...ms)) / 3600000;
-      if (spreadHr >= 0.5) {
-        const extra = spreadHr < 1 ? 'under an hour' : `~${Math.round(spreadHr)} hr`;
-        events.forEach(ev => {
-          if (/^Into fridge/.test(ev.title)) ev.detail = `${ev.detail} · last batch proofs ${extra} longer (staggered bakes)`;
-        });
-      }
-    }
+    // "Last batch proofs longer" applies only to the DOUGH actually staggered across bake times
+    // — a split's portions, or combine-toggled same-dough recipes — not a neighbour (e.g. boules)
+    // that merely shares this unit's prep and bakes once. Group bake times by dough signature;
+    // note only the doughs whose own bakes are spread out, on just their "Into fridge" steps
+    // (matched by the dough's recipe name(s) in the step title).
+    const doughGroups = new Map(); // sig -> { times: [], names: Set }
+    portions.forEach(p => {
+      if (p.startMs == null) return;
+      if (!doughGroups.has(p.sig)) doughGroups.set(p.sig, { times: [], names: new Set() });
+      const g = doughGroups.get(p.sig);
+      g.times.push(p.startMs); g.names.add(p.name);
+    });
+    doughGroups.forEach(g => {
+      if (g.times.length < 2) return;
+      const spreadHr = (Math.max(...g.times) - Math.min(...g.times)) / 3600000;
+      if (spreadHr < 0.5) return;
+      const extra = spreadHr < 1 ? 'under an hour' : `~${Math.round(spreadHr)} hr`;
+      const names = [...g.names];
+      events.forEach(ev => {
+        if (/^Into fridge/.test(ev.title) && names.some(n => ev.title.includes(n))) ev.detail = `${ev.detail} · last batch proofs ${extra} longer (staggered bakes)`;
+      });
+    });
     // Keep the prep's container/banneton claims but DROP its oven claims — the prep
     // buildSchedule baked the whole unit at the earliest deadline (we discarded those
     // bake events); the real per-portion bakes carry their own oven claims below.

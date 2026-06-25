@@ -2961,8 +2961,13 @@ function runDiffDough(split) {
   sdOk &= sd('no shape step title lists two recipes in one container (no "A + B")',
     !sr.events.some(e => /^(Start preshape|Into fridge)/.test(e.title) && /×.+\+.+×/.test(e.title)));
   const shapeCols = new Set(shapeSteps.map(e => e.columnKey));
-  sdOk &= sd('split batard portions shape into their OWN columns (base ≠ clone), boule separate',
-    shapeCols.has('g0~loaf::seed-sourdough-batard') && shapeCols.has('g0~loaf::seed-sourdough-batard~b1') && shapeCols.has('g0~loaf::seed-sourdough-boule'));
+  // A split bulk-ferments + shapes as ONE dough (merged into the base container/column — like the
+  // Bake Plan); only the BAKE diverges to base (Bake 1) + clone (Bake 2) columns.
+  sdOk &= sd('split portions share ONE batard container set (shape keyed to base column), boule separate',
+    shapeCols.has('g0~loaf::seed-sourdough-batard') && shapeCols.has('g0~loaf::seed-sourdough-boule') && !shapeCols.has('g0~loaf::seed-sourdough-batard~b1'));
+  const bakeCols2 = new Set(sr.events.filter(e => /^Bake \d+ of/.test(e.title)).map(e => e.columnKey));
+  sdOk &= sd('split: bakes still diverge to base + clone columns despite shared prep/container',
+    bakeCols2.has('g0~loaf::seed-sourdough-batard') && bakeCols2.has('g0~loaf::seed-sourdough-batard~b1'));
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
@@ -2988,13 +2993,41 @@ function runDiffDough(split) {
   const sr = api.__sr();
   const banClaims = (sr.equipClaims || []).filter(c => c.pool === 'banneton');
   const batardClaims = banClaims.filter(c => /batard ban/.test(c.name));
-  sdOk &= sd('split: both batard portions claim the batard banneton pool (cap 20, not leaked to all 28)',
-    batardClaims.length === 2 && batardClaims.every(c => c.capacity === 20));
+  sdOk &= sd('split: batard portions claim the batard banneton pool (total 20, cap 20, not leaked to all 28)',
+    batardClaims.length >= 1 && batardClaims.every(c => c.capacity === 20) && batardClaims.reduce((s, c) => s + c.count, 0) === 20);
   sdOk &= sd('split: boule keeps its own banneton pool (cap 8)',
     banClaims.some(c => /boule ban/.test(c.name) && c.capacity === 8));
   sdOk &= sd('split: no false "not enough bannetons" warning when the pools suffice',
     !(sr.warnings || []).some(w => /banneton/i.test(w.msg || '')));
   api.__setBannetons([]); api.saveBakeInstances({});
+}
+// A split's two halves bulk/proof in ONE container (matching the Bake Plan), even an uneven
+// 16/4 split — they're the same dough; only the bake time diverges.
+{
+  api.__setOvens([]); api.__setBannetons([]);
+  api.__setContainers([{ id: 'big', name: 'Big tub', maxDoughGrams: 30000, quantity: 4, processTag: 'any' }]);
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.saveBakeInstances({});
+  api.__setPlan({ [SEED.batard]: 20 }); seedPlan({ [SEED.batard]: 20 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setSplitShareCount(SEED.batard, inst.id, 4); // 16 / 4
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const preshapes = sr.events.filter(e => /^Start preshape/.test(e.title));
+  sdOk &= sd('16/4 split: all 20 batards bulk/shape in ONE tub (not 16 + 4 separate)',
+    preshapes.length === 1 && /20 × Sourdough Batard/.test(preshapes[0].title) &&
+    !sr.events.some(e => /^Start preshape/.test(e.title) && /\b(16|4) × Sourdough Batard/.test(e.title)));
+  const loafBakes = sr.events.filter(e => /^Bake \d+ of/.test(e.title) && e.process === 'loaf');
+  const bakeTimes = [...new Set(loafBakes.map(e => Math.round(e.time.getTime() / 3600000)))];
+  sdOk &= sd('16/4 split: still two distinct bake times (the 4 bake later)', bakeTimes.length === 2);
+  api.__setContainers([]); api.saveBakeInstances({});
 }
 allOk &= sdOk;
 
