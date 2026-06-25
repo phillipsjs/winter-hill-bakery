@@ -609,6 +609,7 @@
     padding: 4px 9px; border-radius: 7px; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.28);
   }
   .anchor-drag-bubble .adb-delta { font-weight: 400; opacity: 0.85; margin-left: 5px; }
+  .anchor-drag-bubble .adb-day { font-weight: 700; margin-right: 6px; padding-right: 6px; border-right: 1px solid rgba(255, 255, 255, 0.35); }
   .schedule-time-anchored {
     color: var(--accent);
     font-weight: 700;
@@ -7297,6 +7298,7 @@ ${notesHtml}
   let _stepDrag = null;
   let _suppressNextScheduleClick = false;
   const _anchorDragFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+  const _anchorDayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   function onAnchorPointerDown(e) {
     if (e.button != null && e.button > 0) return;
     // Fresh press: clear any suppress flag left over from a touch gesture whose
@@ -7356,9 +7358,12 @@ ${notesHtml}
     const { newMs, deltaMin } = computeDragAnchorMs(d.scheduledMs, dyDoc);
     d.newMs = newMs;
     d.stepEl.style.transform = `translateY(${dyDoc}px) scale(1.015)`;
-    const timeStr = _anchorDragFmt.format(roundToFiveMin(new Date(newMs)));
+    const newDate = new Date(newMs);
+    const timeStr = _anchorDragFmt.format(roundToFiveMin(newDate));
     d.chip.textContent = timeStr;
-    showAnchorDragBubble(d.lastClientX, d.lastClientY, timeStr, deltaMin);
+    // Surface the new day only when the drag crosses into a different one.
+    const dayChanged = newDate.toDateString() !== new Date(d.scheduledMs).toDateString();
+    showAnchorDragBubble(d.lastClientX, d.lastClientY, timeStr, deltaMin, dayChanged ? _anchorDayFmt.format(newDate) : '');
   }
   // When the finger nears the top/bottom of the screen, scroll the page (like a
   // calendar) so the step can be dragged past the visible range. Runs each frame
@@ -7419,14 +7424,21 @@ ${notesHtml}
   function clearShiftPreview() {
     document.querySelectorAll('.schedule-step-willshift').forEach(el => el.classList.remove('schedule-step-willshift'));
   }
-  function showAnchorDragBubble(x, y, timeStr, deltaMin) {
+  function showAnchorDragBubble(x, y, timeStr, deltaMin, dayLabel) {
     let b = document.getElementById('anchor-drag-bubble');
     if (!b) { b = document.createElement('div'); b.id = 'anchor-drag-bubble'; b.className = 'anchor-drag-bubble'; document.body.appendChild(b); }
     const delta = deltaMin > 0 ? `+${deltaMin} min` : (deltaMin < 0 ? `${deltaMin} min` : 'no change');
-    b.innerHTML = `⚓ ${escapeHtml(timeStr)}<span class="adb-delta">${delta}</span>`;
-    b.style.left = (x + 14) + 'px';
-    b.style.top = (y - 12) + 'px';
+    b.innerHTML = `⚓ ${dayLabel ? `<span class="adb-day">${escapeHtml(dayLabel)}</span>` : ''}${escapeHtml(timeStr)}<span class="adb-delta">${delta}</span>`;
     b.style.display = 'block';
+    // Float it ABOVE the finger (and clamp on-screen) so the thumb never covers it.
+    const rect = b.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth;
+    let top = y - 30 - rect.height;
+    if (top < 8) top = y + 38;                       // no room above → drop just below
+    let left = x - rect.width / 2;                   // centered over the finger
+    left = Math.max(8, Math.min(left, vw - rect.width - 8));
+    b.style.left = left + 'px';
+    b.style.top = top + 'px';
   }
   function hideAnchorDragBubble() {
     const b = document.getElementById('anchor-drag-bubble');
