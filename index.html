@@ -214,6 +214,14 @@
   }
   table.ingredients th { color: var(--muted); font-weight: 500; font-size: 0.85rem; }
   table.ingredients td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  /* Prices "Cost link" column holds a <select> that would otherwise size to its
+     widest option and push the table past its card. Fixed layout + a capped
+     column (and a shrinkable select) keeps it inside the box. */
+  .prices-ing-table { table-layout: fixed; width: 100%; }
+  .prices-ing-table th:nth-child(2) { width: 44px; }
+  .prices-ing-table th:last-child { width: 42%; }
+  .prices-ing-table td { overflow-wrap: anywhere; }
+  .prices-ing-table .prices-pantry { width: 100%; min-width: 0; max-width: 100%; }
   .ingredient-edit-row {
     display: flex;
     flex-direction: column;
@@ -964,7 +972,9 @@
   .bs-card-lbl { display: block; font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; color: var(--muted); margin-bottom: 3px; }
   .bs-card-section .bs-equip-edit { margin-top: 4px; }
-  .bs-card .bp-equip-select, .bs-card select { width: 100%; max-width: 100%; font-size: 16px; padding-top: 7px; padding-bottom: 7px; }
+  .bs-card .bp-equip-select, .bs-card select { width: 100%; max-width: 100%; min-width: 0; font-size: 16px; padding-top: 7px; padding-bottom: 7px; }
+  /* min-width:0 on the flex chain so a long-option select shrinks to the card. */
+  .bs-card .bs-equip-edit, .bs-card .bs-equip-row { min-width: 0; max-width: 100%; }
   .bs-card .bs-equip-row { flex-wrap: wrap; }
   .bs-card-batch { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
   .bs-card-batch-equip { font-size: 0.8rem; color: var(--muted); white-space: pre-line; margin-bottom: 4px; }
@@ -1087,9 +1097,12 @@
     .card { padding: 13px; border-radius: 9px; }
     nav.tabs button { padding: 10px 12px; }
 
-    /* No control may overflow its container. 16px font avoids focus-zoom. */
+    /* No control may overflow its container. min-width:0 lets a <select> shrink
+       below its longest option (otherwise it sizes to that and pushes its
+       flex/table container past the card). 16px font avoids focus-zoom. */
     input, select, textarea, .settings-select, .bp-equip-select {
       max-width: 100%;
+      min-width: 0;
       box-sizing: border-box;
     }
     input[type="text"], input[type="number"], input[type="date"],
@@ -9569,7 +9582,7 @@ ${notesHtml}
           </div>
         </div>
         <div class="recipe-details" style="display:none">
-          <table class="ingredients" style="margin-bottom:12px;margin-top:12px">
+          <table class="ingredients prices-ing-table" style="margin-bottom:12px;margin-top:12px">
             <thead><tr><th>Ingredient</th><th class="num">%</th><th>Cost link</th></tr></thead>
             <tbody>${ingRows}</tbody>
           </table>
