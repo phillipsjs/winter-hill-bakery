@@ -15250,6 +15250,14 @@ ${notesHtml}
       const cb = () => rerenderBakeSheetIfVisible();
       mq.addEventListener ? mq.addEventListener('change', cb) : mq.addListener(cb);
     }
+    // Printing always uses the dense table (the print stylesheet targets it).
+    // Force it for the print, then restore the on-screen layout afterward.
+    if (typeof window !== 'undefined' && window.addEventListener && !renderBakeSheet._printBound) {
+      renderBakeSheet._printBound = true;
+      let savedForce;
+      window.addEventListener('beforeprint', () => { savedForce = _bsForceMobile; _bsForceMobile = false; renderBakeSheet(); });
+      window.addEventListener('afterprint', () => { _bsForceMobile = savedForce; renderBakeSheet(); });
+    }
 
     const printBar = document.getElementById('bakesheet-print-bar');
     if (!_scheduleResult || !_scheduleResult.events || _scheduleResult.events.length === 0) {
