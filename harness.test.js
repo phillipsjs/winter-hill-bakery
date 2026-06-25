@@ -3029,6 +3029,38 @@ function runDiffDough(split) {
   sdOk &= sd('16/4 split: still two distinct bake times (the 4 bake later)', bakeTimes.length === 2);
   api.__setContainers([]); api.saveBakeInstances({});
 }
+// Preheat consolidation: bakes that run back-to-back on one oven share ONE "turn on oven";
+// a split's later bake (after a cooldown gap) gets its own. Not one preheat per portion.
+{
+  api.__setOvens([]); api.__setBannetons([]);
+  api.__setContainers([{ id: 'big', name: 'Big tub', maxDoughGrams: 30000, quantity: 6, processTag: 'any' }]);
+  localStorageStub.removeItem('whb-split-loaf-cols-v1');
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0); // ~6 hr later → its own oven session
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.saveBakeInstances({});
+  api.__setPlan({ [SEED.batard]: 20, [SEED.boule]: 15, [SEED.muffin]: 48 });
+  seedPlan({ [SEED.batard]: 20, [SEED.boule]: 15, [SEED.muffin]: 48 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setSplitShareCount(SEED.batard, inst.id, 4);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const turnons = sr.events.filter(e => /^Turn on oven/.test(e.title)).sort((a, b) => a.time - b.time);
+  const loafMuffinBakes = sr.events.filter(e => /^Bake \d+ of/.test(e.title));
+  // Derive the number of oven sessions from the bake oven-claims (gap > cool-gap → new session).
+  const ovenClaims = (sr.equipClaims || []).filter(c => c.pool === 'oven').sort((a, b) => a.startMs - b.startMs);
+  let sessions = ovenClaims.length ? 1 : 0;
+  for (let i = 1; i < ovenClaims.length; i++) if (ovenClaims[i].startMs - ovenClaims[i - 1].endMs > 90 * 60000) sessions++;
+  sdOk &= sd('split + muffins: several back-to-back bakes share one preheat (one "turn on" per oven session)',
+    loafMuffinBakes.length >= 4 && turnons.length === sessions && sessions === 2);
+  sdOk &= sd('preheat consolidation: the surviving preheat is genericized (no per-process "(bread)")',
+    turnons.every(e => !/\((bread|muffins|bagels)\)/.test(e.title)));
+  api.__setContainers([]); api.saveBakeInstances({});
+}
 allOk &= sdOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');

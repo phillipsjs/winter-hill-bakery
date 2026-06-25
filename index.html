@@ -14466,7 +14466,65 @@ ${notesHtml}
       }
     });
     insertToppingSteps(merged.events);
+    merged.events = consolidateOvenPreheats(merged.events, merged.equipClaims);
     return merged;
+  }
+
+  // One "Turn on oven" per continuous oven SESSION. A split (and combine) schedules each portion
+  // independently, so each emits its own preheat — but bakes that run back-to-back on one oven
+  // (gap ≤ the cool-gap) share a single warm-up. Group the oven's bake claims into sessions, then
+  // for the preheats landing before each session keep only the EARLIEST (it has the real lead
+  // time; the rest fire after the oven's already hot) and drop the others. Bakes separated by a
+  // real cooldown (e.g. a split's later day) keep their own preheat. Single-oven-agnostic: with
+  // one oven all bakes pool together; with several, match preheat→oven by name.
+  function consolidateOvenPreheats(events, claims) {
+    const ovenClaims = (claims || []).filter(c => c.pool === 'oven' && Number.isFinite(c.startMs));
+    if (ovenClaims.length < 2) return events;
+    const gapMs = getOvenCoolGapMin() * 60000;
+    const ovenKeys = [...new Set(ovenClaims.map(c => c.name || ''))];
+    const singleOven = ovenKeys.length <= 1;
+    const sessionsFor = (oven) => {
+      const cls = ovenClaims.filter(c => singleOven || (c.name || '') === oven).sort((a, b) => a.startMs - b.startMs);
+      const sessions = [];
+      cls.forEach(c => {
+        const last = sessions[sessions.length - 1];
+        if (last && c.startMs - last.end <= gapMs) last.end = Math.max(last.end, c.endMs);
+        else sessions.push({ start: c.startMs, end: c.endMs });
+      });
+      return sessions;
+    };
+    const sessionCache = new Map();
+    const remove = new Set();
+    const preheats = events.filter(e => /^Turn on oven/.test(e.title || '') && e.time);
+    const byOven = new Map();
+    preheats.forEach(e => {
+      const oven = singleOven ? ovenKeys[0] : ((e.equip && e.equip[0]) || ovenKeys[0]);
+      if (!byOven.has(oven)) byOven.set(oven, []);
+      byOven.get(oven).push(e);
+    });
+    byOven.forEach((phs, oven) => {
+      if (!sessionCache.has(oven)) sessionCache.set(oven, sessionsFor(oven));
+      const sessions = sessionCache.get(oven);
+      if (!sessions.length) return;
+      const bySession = new Map();
+      phs.forEach(e => {
+        const t = e.time.getTime();
+        // The session this preheat warms up for = the first whose first bake starts at/after it.
+        let si = sessions.findIndex(s => s.start >= t);
+        if (si < 0) si = sessions.length - 1;
+        if (!bySession.has(si)) bySession.set(si, []);
+        bySession.get(si).push(e);
+      });
+      bySession.forEach(list => {
+        list.sort((a, b) => a.time - b.time);
+        // Keep the earliest (real lead time); genericize its label since it now serves the whole
+        // session (possibly multiple processes). Drop the rest.
+        const keep = list[0];
+        keep.title = keep.title.replace(/^Turn on oven \((?:bread|muffins|bagels)\) to/, 'Turn on oven to');
+        list.slice(1).forEach(e => remove.add(e));
+      });
+    });
+    return remove.size ? events.filter(e => !remove.has(e)) : events;
   }
 
   // Merge per-loaf-group schedule results into one. Loaf column keys + loaf event
