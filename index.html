@@ -9389,7 +9389,6 @@ ${notesHtml}
             <strong style="font-size:1rem">${escapeHtml(r.name)}</strong>
             <div class="recipe-summary">${r.ingredients.length} ingredients${pricesSummary}</div>
           </div>
-          <button onclick="savePrices('${rid}')">Save prices</button>
         </div>
         <div class="recipe-details" style="display:none">
           <table class="ingredients" style="margin-bottom:12px;margin-top:12px">
@@ -9399,6 +9398,9 @@ ${notesHtml}
           ${packagingRow}
           ${pricingRows}
           <div id="prices-msg-${rid}" style="font-size:0.85rem;color:var(--accent);margin-top:6px"></div>
+          <div class="row" style="justify-content:flex-end;margin-top:10px">
+            <button onclick="savePrices('${rid}')">Save prices</button>
+          </div>
         </div>
       `;
       list.appendChild(card);
