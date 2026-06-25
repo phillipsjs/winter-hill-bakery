@@ -600,6 +600,8 @@
     border-radius: 8px; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28); opacity: 0.97;
     will-change: transform;
   }
+  /* Steps that will move with the picked-up step (everything at/after its time). */
+  .schedule-step-willshift { opacity: 0.4; transition: opacity 0.12s ease; }
   /* Floating preview while dragging a step's time. */
   .anchor-drag-bubble {
     position: fixed; z-index: 2000; pointer-events: none; white-space: nowrap;
@@ -7278,14 +7280,20 @@ ${notesHtml}
   }
 
   // ---- long-press a step, then slide up/down to anchor its time ----
-  // Vertical slide distance → minutes, snapped to 5. Pure so it can be unit-tested.
+  // Slide distance is measured in DOCUMENT space (finger move + how far the page
+  // has auto-scrolled), so the lifted step stays glued to the finger and the
+  // reachable range extends across the whole day. → minutes, snapped to 5.
+  // computeDragAnchorMs is pure so it can be unit-tested.
   const ANCHOR_DRAG_PX_PER_MIN = 4;        // ~20px of slide per 5-minute step
   const ANCHOR_LONGPRESS_MS = 380;         // hold this long to pick a step up
   const ANCHOR_LONGPRESS_CANCEL_PX = 10;   // moving more than this first = a scroll, not a press
+  const ANCHOR_AUTOSCROLL_EDGE = 72;       // px from a screen edge where auto-scroll starts
+  const ANCHOR_AUTOSCROLL_MAX = 16;        // px/frame at the very edge
   function computeDragAnchorMs(scheduledMs, dyPx) {
     const deltaMin = Math.round((dyPx / ANCHOR_DRAG_PX_PER_MIN) / 5) * 5;
     return { newMs: scheduledMs + deltaMin * 60000, deltaMin };
   }
+  function scheduleScrollY() { return window.pageYOffset || document.documentElement.scrollTop || 0; }
   let _stepDrag = null;
   let _suppressNextScheduleClick = false;
   const _anchorDragFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -7303,8 +7311,10 @@ ${notesHtml}
     const title = chip.dataset.eventTitle;
     const scheduledMs = Number(chip.dataset.eventTime);
     if (!title || !Number.isFinite(scheduledMs)) return;
-    const d = { stepEl, chip, title, scheduledMs, startX: e.clientX, startY: e.clientY,
-      pointerId: e.pointerId, activated: false, newMs: scheduledMs, timer: null };
+    const d = { stepEl, chip, title, scheduledMs,
+      startClientX: e.clientX, startClientY: e.clientY, startScrollY: scheduleScrollY(),
+      lastClientX: e.clientX, lastClientY: e.clientY,
+      pointerId: e.pointerId, activated: false, newMs: scheduledMs, timer: null, rafId: null };
     d.timer = setTimeout(() => activateStepDrag(d), ANCHOR_LONGPRESS_MS);
     _stepDrag = d;
     stepEl.addEventListener('pointermove', onAnchorPointerMove);
@@ -7319,27 +7329,57 @@ ${notesHtml}
     if (typeof hideScheduleTooltip === 'function') hideScheduleTooltip();
     _suppressNextScheduleClick = true;
     d.stepEl.classList.add('schedule-step-dragging');
+    markShiftPreview(d);
     try { d.stepEl.setPointerCapture(d.pointerId); } catch (_) {}
     if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
-    const timeStr = _anchorDragFmt.format(roundToFiveMin(new Date(d.scheduledMs)));
-    showAnchorDragBubble(d.startX, d.startY, timeStr, 0);
+    updateDragVisual(d);
+    startAnchorAutoScroll(d);
   }
   function onAnchorPointerMove(e) {
     const d = _stepDrag;
     if (!d) return;
-    const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
     if (!d.activated) {
       // Moved before the long-press fired → it's a scroll/swipe; let the page have it.
+      const dx = e.clientX - d.startClientX, dy = e.clientY - d.startClientY;
       if (Math.abs(dx) > ANCHOR_LONGPRESS_CANCEL_PX || Math.abs(dy) > ANCHOR_LONGPRESS_CANCEL_PX) finishStepDrag(d);
       return;
     }
     e.preventDefault();
-    const { newMs, deltaMin } = computeDragAnchorMs(d.scheduledMs, dy);
+    d.lastClientX = e.clientX;
+    d.lastClientY = e.clientY;
+    updateDragVisual(d);
+  }
+  // Document-space vertical delta = finger move + how far the page auto-scrolled.
+  // Keeps the lifted step under the finger AND lets edge auto-scroll reach any time.
+  function updateDragVisual(d) {
+    const dyDoc = (d.lastClientY - d.startClientY) + (scheduleScrollY() - d.startScrollY);
+    const { newMs, deltaMin } = computeDragAnchorMs(d.scheduledMs, dyDoc);
     d.newMs = newMs;
-    d.stepEl.style.transform = `translateY(${dy}px) scale(1.015)`;
+    d.stepEl.style.transform = `translateY(${dyDoc}px) scale(1.015)`;
     const timeStr = _anchorDragFmt.format(roundToFiveMin(new Date(newMs)));
     d.chip.textContent = timeStr;
-    showAnchorDragBubble(e.clientX, e.clientY, timeStr, deltaMin);
+    showAnchorDragBubble(d.lastClientX, d.lastClientY, timeStr, deltaMin);
+  }
+  // When the finger nears the top/bottom of the screen, scroll the page (like a
+  // calendar) so the step can be dragged past the visible range. Runs each frame
+  // while the drag is active; velocity ramps up toward the edge.
+  function startAnchorAutoScroll(d) {
+    if (d.rafId) return;
+    const tick = () => {
+      if (_stepDrag !== d || !d.activated) { d.rafId = null; return; }
+      const vh = window.innerHeight || document.documentElement.clientHeight;
+      const y = d.lastClientY;
+      let v = 0;
+      if (y < ANCHOR_AUTOSCROLL_EDGE) v = -ANCHOR_AUTOSCROLL_MAX * (1 - y / ANCHOR_AUTOSCROLL_EDGE);
+      else if (y > vh - ANCHOR_AUTOSCROLL_EDGE) v = ANCHOR_AUTOSCROLL_MAX * (1 - (vh - y) / ANCHOR_AUTOSCROLL_EDGE);
+      if (v !== 0) {
+        const before = scheduleScrollY();
+        window.scrollBy(0, v);
+        if (scheduleScrollY() !== before) updateDragVisual(d); // page moved → time keeps changing
+      }
+      d.rafId = requestAnimationFrame(tick);
+    };
+    d.rafId = requestAnimationFrame(tick);
   }
   function onAnchorPointerUp(e) {
     const d = _stepDrag;
@@ -7354,14 +7394,30 @@ ${notesHtml}
   }
   function finishStepDrag(d) {
     if (d.timer) { clearTimeout(d.timer); d.timer = null; }
+    if (d.rafId) { cancelAnimationFrame(d.rafId); d.rafId = null; }
     d.stepEl.removeEventListener('pointermove', onAnchorPointerMove);
     d.stepEl.removeEventListener('pointerup', onAnchorPointerUp);
     d.stepEl.removeEventListener('pointercancel', onAnchorPointerUp);
     try { d.stepEl.releasePointerCapture(d.pointerId); } catch (_) {}
     d.stepEl.classList.remove('schedule-step-dragging');
     d.stepEl.style.transform = '';
+    clearShiftPreview();
     hideAnchorDragBubble();
     if (_stepDrag === d) _stepDrag = null;
+  }
+  // Anchoring shifts every step at or after the picked-up step's time, so fade
+  // those steps while it's held to preview what will move with it.
+  function markShiftPreview(d) {
+    const steps = document.querySelectorAll('#schedule-output .schedule-row, #schedule-output .schedule-event');
+    steps.forEach(el => {
+      if (el === d.stepEl) return;
+      const c = el.querySelector('.schedule-time-clickable');
+      const ms = c ? Number(c.dataset.eventTime) : NaN;
+      if (Number.isFinite(ms) && ms > d.scheduledMs) el.classList.add('schedule-step-willshift');
+    });
+  }
+  function clearShiftPreview() {
+    document.querySelectorAll('.schedule-step-willshift').forEach(el => el.classList.remove('schedule-step-willshift'));
   }
   function showAnchorDragBubble(x, y, timeStr, deltaMin) {
     let b = document.getElementById('anchor-drag-bubble');
