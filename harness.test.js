@@ -2823,5 +2823,55 @@ function runSplit(seedId) {
 }
 allOk &= nsOk;
 
+// ---- Per-split preferred oven: each portion can bake on its own oven ----
+console.log('\nPer-split oven assignment:');
+let soOk = true;
+function so(label, cond) { console.log(`  [split-oven] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+function runSplitOven(seedId) {
+  api.__setOvens([{ id: 'o1', name: 'Deck A', decks: 3 }, { id: 'o2', name: 'Rack B', decks: 3 }]);
+  api.saveBakeInstances({});
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setMinutes(30); // close enough to collide on ONE oven
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [seedId]: 20 }); seedPlan({ [seedId]: 20 });
+  const base = api.__recipes().find(r => r.id === seedId); api.setRecipePreferredOven(base, 'o1');
+  api.addBakeInstance(seedId, true);
+  const inst = api.loadBakeInstances()[seedId][0];
+  api.setBakeInstanceField(seedId, inst.id, 'deadline', fmtLocal(far2));
+  api.setBakeInstanceField(seedId, inst.id, 'ovenId', 'o2');
+  api.renderSchedule();
+  return api.__sr();
+}
+{
+  // expandPlan applies the per-instance oven without mutating the base recipe's prefs.
+  api.__setOvens([{ id: 'o1', name: 'Deck A' }, { id: 'o2', name: 'Rack B' }]);
+  api.saveBakeInstances({});
+  api.__setPlan({ [SEED.batard]: 20 }); seedPlan({ [SEED.batard]: 20 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setBakeInstanceField(SEED.batard, inst.id, 'ovenId', 'o2');
+  const exp = api.expandPlan();
+  const clone = exp.recipes.find(r => r.id === inst.id);
+  const base = api.__recipes().find(r => r.id === SEED.batard);
+  soOk &= so('clone carries the split oven preference', clone && clone.preferredOvenId === 'o2');
+  soOk &= so('base recipe prefs untouched by the split oven', !base.preferredOvenId && (!base.ovenPrefs || !base.ovenPrefs.o2));
+  api.saveBakeInstances({});
+}
+[['loaf', SEED.batard, 'into oven'], ['muffin', SEED.muffin, 'muffins into oven'], ['bagel', SEED.bagel, 'bagels into oven']].forEach(([kind, seed, mark]) => {
+  const sr = runSplitOven(seed);
+  const bakes = sr.events.filter(e => /^Bake /.test(e.title) && (e.title.includes(mark) || e.process === (kind === 'muffin' ? 'muffin' : kind === 'bagel' ? 'bagel' : 'loaf')));
+  const equipStr = (e) => JSON.stringify(e.equip || []);
+  const onRack = bakes.filter(e => /Rack B/.test(equipStr(e)));
+  const onDeckA = bakes.filter(e => /Deck A/.test(equipStr(e)) && !/Rack B/.test(equipStr(e)));
+  soOk &= so(`${kind} split: the split portion's bake shows its chosen oven (Rack B)`, onRack.length === 1);
+  soOk &= so(`${kind} split: Bake 1 stays on the base oven (Deck A)`, onDeckA.length === 1);
+  soOk &= so(`${kind} split: portions on different ovens → no double-book`,
+    !(sr.warnings || []).some(w => w.issue === 'equip-conflict' && /double-booked/.test(w.msg)));
+});
+api.__setOvens([]); api.saveBakeInstances({});
+allOk &= soOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

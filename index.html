@@ -276,6 +276,7 @@
   .bake-batch-row input[type="number"] { width: 72px; }
   .bake-batch-row input[type="datetime-local"] { flex: 0 1 210px; min-width: 156px; max-width: 220px; }
   .bake-batch-unit { font-size: 0.85rem; color: var(--muted); min-width: 46px; }
+  .bake-oven-select { font-size: 0.8rem; padding: 2px 4px; max-width: 130px; min-width: 0; }
   .bake-add-row { display: flex; flex-wrap: wrap; gap: 6px 16px; }
   .bake-add-btn { background: none; border: none; color: #8a5a2b; cursor: pointer; font-size: 0.82rem; padding: 4px 0; text-align: left; }
   .bake-add-btn:hover { text-decoration: underline; }
@@ -6248,6 +6249,14 @@ ${notesHtml}
     if (ovenId) next[ovenId] = 'preferred';
     applyOvenPrefs(r, next);
   }
+  // Compact oven dropdown for the Bake-Plan split rows: "Any oven" + one option per oven.
+  // Only meaningful with 2+ ovens (otherwise there's nothing to choose) → returns '' for <2.
+  function splitOvenSelectHtml(currentOvenId, onchangeJs) {
+    if (!userOvens || userOvens.length < 2) return '';
+    const opts = ['<option value="">Any oven</option>'].concat(
+      userOvens.map(o => `<option value="${escapeAttr(o.id)}"${o.id === currentOvenId ? ' selected' : ''}>${escapeHtml(o.name)}</option>`));
+    return `<select class="bake-oven-select" onchange="${onchangeJs}" title="Which oven this portion bakes in" aria-label="oven">${opts.join('')}</select>`;
+  }
   // Which of `availableIds` a recipe may bake in: if it marks any oven 'required', only those
   // (that still exist); otherwise all except the ones marked 'avoid'. May be empty (infeasible).
   function allowedOvenIds(r, availableIds) {
@@ -7272,6 +7281,7 @@ ${notesHtml}
     const map = loadBakeInstances();
     const inst = (map[baseId] || []).find(i => i.id === instId); if (!inst) return;
     if (field === 'count') inst.count = Math.max(0, Math.floor(Number(val) || 0));
+    else if (field === 'ovenId') { if (val) inst.ovenId = val; else delete inst.ovenId; }
     else inst.deadline = val || '';
     saveBakeInstances(map);
     renderTotals(); renderSchedule();
@@ -7323,12 +7333,22 @@ ${notesHtml}
     base.forEach(r => {
       let shareSum = 0;
       (store[r.id] || []).forEach((inst, k) => {
-        synth.push({ ...r, id: inst.id,
+        const clone = { ...r, id: inst.id,
           // A split shares ONE dough/ingredients with the base — keep the base name so it
           // reads as the same batch (just baked later), not a separate recipe. Extra
           // batches ("Add another batch") ARE separate production, so they keep a label.
           name: inst.share ? r.name : `${r.name} — batch ${k + 2}`,
-          __instanceOf: r.id, __instanceDeadline: inst.deadline || '', __sharePrep: !!inst.share });
+          __instanceOf: r.id, __instanceDeadline: inst.deadline || '', __sharePrep: !!inst.share };
+        // A split portion can prefer its OWN oven (so two halves bake in parallel on
+        // different ovens). Build a fresh prefs object — never mutate the base recipe's.
+        if (inst.ovenId) {
+          const prefs = {}; const cur = getRecipeOvenPrefs(r);
+          Object.keys(cur).forEach(id => { if (cur[id] === 'avoid') prefs[id] = 'avoid'; });
+          prefs[inst.ovenId] = 'preferred';
+          clone.ovenPrefs = prefs;
+          clone.preferredOvenId = inst.ovenId;
+        }
+        synth.push(clone);
         const c = Math.max(0, Math.floor(Number(inst.count) || 0));
         exPlan[inst.id] = c;
         if (inst.share) shareSum += c;
@@ -7869,6 +7889,11 @@ ${notesHtml}
         const bake1CountHtml = hasSplit
           ? `<input type="number" min="0" step="1" value="${bake1Count > 0 ? bake1Count : ''}" onchange="setSplitBake1Count('${r.id}', this.value)" aria-label="Bake 1 count" title="How many bake at this first time (the rest split to later times)" /><span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>`
           : '';
+        // Per-split oven pickers (2+ ovens only): Bake 1 sets the base recipe's preferred
+        // oven, each split sets its own — so the halves can bake in parallel on different ovens.
+        const bake1OvenHtml = hasSplit
+          ? splitOvenSelectHtml(legacyPreferredOvenId(getRecipeOvenPrefs(r)), `setBakePlanEquip('${r.id}', 'oven', this.value)`)
+          : '';
         detHtml += `<div class="bake-recipe">
           <div class="bake-recipe-firstline">
             <div class="bake-recipe-head"><strong>${escapeHtml(r.name)}</strong></div>
@@ -7876,6 +7901,7 @@ ${notesHtml}
               <span class="bake-batch-label">${firstLabel}</span>
               ${bake1CountHtml}
               <input type="datetime-local" value="${rd[r.id] || defaultDl}" onchange="setPlanDeadline('${r.id}', this.value)" aria-label="deadline" title="Deadline for this batch (blank = default)" />
+              ${bake1OvenHtml}
             </div>
           </div>`;
         insts.forEach((inst, k) => {
@@ -7883,12 +7909,14 @@ ${notesHtml}
           const label = inst.share ? `🔗 Bake ${n}` : `Batch ${n}`;
           const lblTitle = inst.share ? 'Split bake — same dough, baked at this time (shares mixing/folding/shaping with the rest)' : '';
           const cntChange = inst.share ? `setSplitShareCount('${r.id}', '${inst.id}', this.value)` : `setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)`;
+          const ovenHtml = inst.share ? splitOvenSelectHtml(inst.ovenId || '', `setBakeInstanceField('${r.id}', '${inst.id}', 'ovenId', this.value)`) : '';
           detHtml += `<div class="bake-batch-row bake-batch-extra-row">
               <button class="bake-batch-remove" onclick="removeBakeInstance('${r.id}', '${inst.id}')" title="Remove this batch" aria-label="Remove this batch">✕</button>
               <span class="bake-batch-label"${lblTitle ? ` title="${escapeAttr(lblTitle)}"` : ''}>${label}</span>
               <input type="number" min="0" step="1" value="${inst.count > 0 ? inst.count : ''}" onchange="${cntChange}" aria-label="count" />
               <span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>
               <input type="datetime-local" value="${inst.deadline || defaultDl}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)" aria-label="deadline" title="${inst.share ? 'When this split portion bakes' : 'Deadline for this batch (blank = default)'}" />
+              ${ovenHtml}
             </div>`;
         });
         const splitBtn = ['sourdough-loaf', 'sourdough-muffin', 'bagel'].includes(getProcessType(r))
@@ -13328,7 +13356,7 @@ ${notesHtml}
         title: `Turn on oven (muffins) to ${fmtTemp(gTemp)}`,
         detail: fmtPreheat(gPreheat, gTemp),
         process: 'muffin', columnKey: g.key,
-        equip: ovenNamesFromPlan(g.ovenPlan),
+        equip: ((g.splitHost || g.splitRider) && g.slot.ovenName) ? [g.slot.ovenName] : ovenNamesFromPlan(g.ovenPlan),
       });
     });
     // Bagel oven preheat (per deadline group): the first bagel bake is one boil+top cycle
@@ -13403,9 +13431,15 @@ ${notesHtml}
         const bakeStart = addMinutes(g.slot.firstBakeStart, muffinCumOffset);
         const reheatSuffix = b < g.batches - 1 ? ` · ${SCHED.REHEAT_MIN} min reheat after` : '';
         const plan_b = g.ovenPlan[b];
-        const deckEquip = plan_b
+        let deckEquip = plan_b
           ? plan_b.map((deck, di) => `${deckLabelFor(di)}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
           : [];
+        // Split portions can prefer their own oven; deck labels pack from oven 1, so rewrite
+        // the oven prefix to the group's actually-assigned oven (only for split groups, so
+        // non-split muffin bakes stay byte-identical).
+        if ((g.splitHost || g.splitRider) && muffinOvenName) {
+          deckEquip = deckEquip.map(s => s.replace(/^.*? · Deck /, `${muffinOvenName} · Deck `));
+        }
         const planLines = deckEquip.length ? '\n' + deckEquip.join('\n') : '';
         events.push({
           time: bakeStart,
@@ -14173,7 +14207,23 @@ ${notesHtml}
       }
     });
     portions.forEach(p => {
-      p.events.forEach(ev => events.push(ev));
+      const ov = p.ovenName;
+      p.events.forEach(ev => {
+        // Loaf bake decks are labelled from the deck index (which packs from oven 1), so a
+        // portion sent to another oven would still READ "<oven 1> · Deck N". Rewrite the oven
+        // prefix to the portion's actually-assigned oven so the split shows its real oven.
+        // (Plain oven-name equip like the "loaves out" step has no " · Deck" and is left as-is —
+        // it already uses the assigned oven.)
+        if (ov && Array.isArray(ev.equip)) {
+          ev.equip = ev.equip.map(s => (typeof s === 'string' ? s.replace(/^.*? · Deck /, `${ov} · Deck `) : s));
+        }
+        if (ov && ev.colDetails) {
+          const cd = {};
+          Object.keys(ev.colDetails).forEach(k => { cd[k] = String(ev.colDetails[k]).replace(/\([^()·]*? · Deck /g, `(${ov} · Deck `); });
+          ev.colDetails = cd;
+        }
+        events.push(ev);
+      });
       p.claims.forEach(c => bakeOvenClaims.push(c));
       if (p.startMs != null) firstBakeTimes.push(new Date(p.startMs));
     });
