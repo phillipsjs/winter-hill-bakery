@@ -218,9 +218,10 @@
      widest option and push the table past its card. Fixed layout + a capped
      column (and a shrinkable select) keeps it inside the box. */
   .prices-ing-table { table-layout: fixed; width: 100%; }
-  .prices-ing-table th:nth-child(2) { width: 44px; }
-  .prices-ing-table th:last-child { width: 42%; }
+  .prices-ing-table th:nth-child(2) { width: 58px; }
+  .prices-ing-table th:last-child { width: 38%; }
   .prices-ing-table td { overflow-wrap: anywhere; }
+  .prices-ing-table td.num { white-space: nowrap; overflow-wrap: normal; }  /* keep "100%" on one line */
   .prices-ing-table .prices-pantry { width: 100%; min-width: 0; max-width: 100%; }
   .ingredient-edit-row {
     display: flex;
