@@ -2695,7 +2695,7 @@ console.log('\nDrag-to-anchor assertions:');
 let dragOk = true;
 function dg(label, cond) { console.log(`  [drag] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
 {
-  const base = 1000000000000; // arbitrary ms
+  const base = 999999900000; // arbitrary ms, on a 5-min boundary (committed time snaps to 5 min)
   // 4px per minute, snapped to 5-min steps. Down (positive dy) = later.
   dragOk &= dg('no movement → no change', api.computeDragAnchorMs(base, 0).newMs === base && api.computeDragAnchorMs(base, 0).deltaMin === 0);
   dragOk &= dg('drag down ~20px → +5 min (later)', api.computeDragAnchorMs(base, 20).deltaMin === 5);
@@ -2704,6 +2704,16 @@ function dg(label, cond) { console.log(`  [drag] ${cond ? 'PASS' : 'FAIL'} — $
   dragOk &= dg('tiny drag rounds to nearest 5 → 0 (8px → 0 min)', api.computeDragAnchorMs(base, 8).deltaMin === 0);
   dragOk &= dg('10px crosses the 2.5-min midpoint → +5 min', api.computeDragAnchorMs(base, 10).deltaMin === 5);
   dragOk &= dg('newMs reflects the minute delta', api.computeDragAnchorMs(base, 20).newMs === base + 5 * 60000);
+  // Committed time snaps to a 5-min boundary so it equals the displayed (rounded) chip,
+  // even when the scheduled time sits between 5-min marks.
+  {
+    const off = base + 2 * 60000 + 37 * 1000; // 2 min 37 s past a 5-min mark
+    const fiveMin = 5 * 60000;
+    dragOk &= dg('off-boundary base: no move snaps to nearest 5 min',
+      api.computeDragAnchorMs(off, 0).newMs === Math.round(off / fiveMin) * fiveMin);
+    dragOk &= dg('off-boundary base: committed time lands on a 5-min boundary',
+      api.computeDragAnchorMs(off, 20).newMs % fiveMin === 0);
+  }
   // Drag commits an anchor exactly like the modal would.
   api.clearAllAnchors();
   const { newMs } = api.computeDragAnchorMs(base, 60);

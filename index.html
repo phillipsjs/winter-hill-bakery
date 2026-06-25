@@ -7492,7 +7492,12 @@ ${notesHtml}
   const ANCHOR_AUTOSCROLL_MAX = 16;        // px/frame at the very edge
   function computeDragAnchorMs(scheduledMs, dyPx) {
     const deltaMin = Math.round((dyPx / ANCHOR_DRAG_PX_PER_MIN) / 5) * 5;
-    return { newMs: scheduledMs + deltaMin * 60000, deltaMin };
+    // Snap the committed time to the same 5-min boundary the chip displays
+    // (roundToFiveMin) so the saved anchor equals the time the user actually saw,
+    // rather than the raw (sub-5-min) scheduled time + delta.
+    const fiveMin = 5 * 60000;
+    const newMs = Math.round((scheduledMs + deltaMin * 60000) / fiveMin) * fiveMin;
+    return { newMs, deltaMin };
   }
   function scheduleScrollY() { return window.pageYOffset || document.documentElement.scrollTop || 0; }
   let _stepDrag = null;
@@ -7516,7 +7521,8 @@ ${notesHtml}
     const d = { stepEl, chip, title, scheduledMs,
       startClientX: e.clientX, startClientY: e.clientY, startScrollY: scheduleScrollY(),
       lastClientX: e.clientX, lastClientY: e.clientY,
-      pointerId: e.pointerId, activated: false, newMs: scheduledMs, timer: null, rafId: null };
+      pointerId: e.pointerId, activated: false, newMs: scheduledMs, timer: null, rafId: null,
+      autoScrollArmed: false };
     d.timer = setTimeout(() => activateStepDrag(d), ANCHOR_LONGPRESS_MS);
     _stepDrag = d;
     stepEl.addEventListener('pointermove', onAnchorPointerMove);
@@ -7574,9 +7580,17 @@ ${notesHtml}
       if (_stepDrag !== d || !d.activated) { d.rafId = null; return; }
       const vh = window.innerHeight || document.documentElement.clientHeight;
       const y = d.lastClientY;
+      const inEdge = y < ANCHOR_AUTOSCROLL_EDGE || y > vh - ANCHOR_AUTOSCROLL_EDGE;
+      // Don't auto-scroll just because the step was picked up near a screen edge —
+      // that would race the time away while the finger is essentially still. Only
+      // arm once the finger has first reached the safe middle zone; after that,
+      // returning to an edge scrolls (intentional, to reach far times).
+      if (!inEdge) d.autoScrollArmed = true;
       let v = 0;
-      if (y < ANCHOR_AUTOSCROLL_EDGE) v = -ANCHOR_AUTOSCROLL_MAX * (1 - y / ANCHOR_AUTOSCROLL_EDGE);
-      else if (y > vh - ANCHOR_AUTOSCROLL_EDGE) v = ANCHOR_AUTOSCROLL_MAX * (1 - (vh - y) / ANCHOR_AUTOSCROLL_EDGE);
+      if (d.autoScrollArmed) {
+        if (y < ANCHOR_AUTOSCROLL_EDGE) v = -ANCHOR_AUTOSCROLL_MAX * (1 - y / ANCHOR_AUTOSCROLL_EDGE);
+        else if (y > vh - ANCHOR_AUTOSCROLL_EDGE) v = ANCHOR_AUTOSCROLL_MAX * (1 - (vh - y) / ANCHOR_AUTOSCROLL_EDGE);
+      }
       if (v !== 0) {
         const before = scheduleScrollY();
         window.scrollBy(0, v);
