@@ -2750,5 +2750,42 @@ function sp(label, cond) { console.log(`  [split] ${cond ? 'PASS' : 'FAIL'} — 
 }
 allOk &= spOk;
 
+// ---- Split bake generalized to muffin + bagel (shared prep, diverge at cold proof) ----
+console.log('\nNon-loaf split-bake assertions:');
+let nsOk = true;
+function ns(label, cond) { console.log(`  [split2] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+function runSplit(seedId) {
+  api.saveBakeInstances({});
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [seedId]: 20 }); seedPlan({ [seedId]: 20 });
+  api.addBakeInstance(seedId, true);
+  const inst = api.loadBakeInstances()[seedId][0];
+  api.setBakeInstanceField(seedId, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  return api.__sr();
+}
+{
+  let sr = runSplit(SEED.muffin);
+  const mShape = sr.events.find(e => /^Shape muffins/.test(e.title));
+  nsOk &= ns('muffin split: ONE mix (shared prep)', sr.events.filter(e => e.title === 'Mix muffin dough').length === 1);
+  nsOk &= ns('muffin split: ONE shape for the combined 20 count', sr.events.filter(e => /^Shape muffins/.test(e.title)).length === 1 && /× 20 muffins/.test((mShape || {}).detail || ''));
+  nsOk &= ns('muffin split: two bakes (one per portion)', sr.events.filter(e => e.process === 'muffin' && /^Bake /.test(e.title)).length === 2);
+  nsOk &= ns('muffin split: later half cold-proofs longer', sr.events.some(e => /Muffins into fridge/.test(e.title) && /later split/.test(e.detail || '')));
+  nsOk &= ns('muffin split: no false oven double-book', !(sr.warnings || []).some(w => w.issue === 'equip-conflict' && /double-booked/.test(w.msg)));
+
+  sr = runSplit(SEED.bagel);
+  const bShape = sr.events.find(e => /^Shape bagels/.test(e.title));
+  nsOk &= ns('bagel split: ONE mix (shared prep)', sr.events.filter(e => e.title === 'Mix bagel dough').length === 1);
+  nsOk &= ns('bagel split: ONE shape for the combined 20 count', sr.events.filter(e => /^Shape bagels/.test(e.title)).length === 1 && /× 20 bagels/.test((bShape || {}).detail || ''));
+  nsOk &= ns('bagel split: two boil+bake cycles', sr.events.filter(e => e.process === 'bagel' && /^Bake /.test(e.title)).length === 2);
+  nsOk &= ns('bagel split: later half cold-proofs longer', sr.events.some(e => /Bagels into fridge/.test(e.title) && /later split/.test(e.detail || '')));
+  api.saveBakeInstances({});
+}
+allOk &= nsOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

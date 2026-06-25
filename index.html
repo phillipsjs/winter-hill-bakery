@@ -7821,7 +7821,7 @@ ${notesHtml}
               <button class="bake-batch-remove" onclick="removeBakeInstance('${r.id}', '${inst.id}')" title="Remove this batch" aria-label="Remove this batch">✕</button>
             </div>`;
         });
-        const splitBtn = getProcessType(r) === 'sourdough-loaf'
+        const splitBtn = ['sourdough-loaf', 'sourdough-muffin', 'bagel'].includes(getProcessType(r))
           ? `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}', true)" title="Bake some of this dough at a different time — one mix &amp; bulk, the later portion just cold-proofs longer">+ Split bake across times</button>`
           : '';
         detHtml += `<div class="bake-add-row"><button class="bake-add-btn" onclick="addBakeInstance('${r.id}')">+ Add another batch (different deadline)</button>${splitBtn}</div></div>`;
@@ -12482,6 +12482,43 @@ ${notesHtml}
         g.mixStart = g.timeline.reduce((m, t) => (t.mixStart < m ? t.mixStart : m), g.timeline[0].mixStart);
       }
     });
+    // SPLIT bakes: same-dough muffin portions the baker split across bake times share
+    // ONE mix/bulk/shape. The earliest group is the "host" — it preps the COMBINED count
+    // and shapes once; later "rider" groups skip prep and just fridge + bake (cold-proofing
+    // longer, anchored to the host's shared shape end). Only single-recipe groups join.
+    muffinGroups.forEach(g => {
+      g.splitHost = false; g.splitRider = false; g.splitTotalCount = g.total;
+      g.splitTotalShapeMin = g.totalShapeMin; g.splitMixBatches = g.mixBatches;
+    });
+    {
+      const bySig = new Map();
+      muffinGroups.forEach(g => {
+        if (!g.slot || g.recipes.length !== 1) return;
+        const sig = ratioSignature(g.recipes[0]);
+        if (!bySig.has(sig)) bySig.set(sig, []);
+        bySig.get(sig).push(g);
+      });
+      bySig.forEach(gs => {
+        if (gs.length < 2 || !gs.some(g => g.recipes[0].__sharePrep)) return;
+        gs.sort((a, b) => a.slot.firstBakeStart - b.slot.firstBakeStart);
+        const host = gs[0];
+        const sharedShapeEnd = host.times.muffinFridgeIn;        // host bake − warmup − host cold proof
+        const totalCount = gs.reduce((s, g) => s + (plan[g.recipes[0].id] || 0), 0);
+        const totalShapeMin = gs.reduce((s, g) => s + g.totalShapeMin, 0);
+        host.splitHost = true; host.splitGroups = gs;
+        host.splitTotalCount = totalCount; host.splitTotalShapeMin = totalShapeMin;
+        host.splitMixBatches = totalCount > 0 ? Math.ceil(totalCount / SCHED.MUFFIN_MIXER_CAPACITY) : 0;
+        host.times.muffinShapeStart = addMinutes(sharedShapeEnd, -totalShapeMin);
+        host.times.muffinBulkStart = addMinutes(host.times.muffinShapeStart, -host.agg.bulkMin);
+        host.mixStart = addMinutes(host.times.muffinBulkStart, -SCHED.MUFFIN_MIX_ACTIVE_MIN);
+        gs.forEach(g => {
+          if (g === host) return;
+          g.splitRider = true;
+          g.times.muffinFridgeIn = sharedShapeEnd;              // all portions fridge after the shared shape
+          g.mixStart = host.mixStart;                            // ride the host's mix (for the levain anchor)
+        });
+      });
+    }
     // Shared levain anchors to the EARLIEST muffin mix across deadline groups.
     const muffinMixStart = muffinGroups.reduce((m, g) => (g.mixStart && (!m || g.mixStart < m) ? g.mixStart : m), null);
 
@@ -12519,6 +12556,42 @@ ${notesHtml}
         g.mixStart = g.timeline.reduce((m, t) => (t.mixStart < m ? t.mixStart : m), g.timeline[0].mixStart);
       }
     });
+    // SPLIT bakes (same as muffins): same-dough bagel portions split across bake times
+    // share one mix/bulk/shape — the earliest "host" group preps the combined count, later
+    // "rider" groups only fridge + boil/bake, cold-proofing longer. Single-recipe groups only.
+    bagelGroups.forEach(g => {
+      g.splitHost = false; g.splitRider = false; g.splitTotalCount = g.total;
+      g.splitTotalShapeMin = g.totalShapeMin; g.splitMixBatches = g.mixBatches;
+    });
+    {
+      const bySig = new Map();
+      bagelGroups.forEach(g => {
+        if (!g.slot || g.recipes.length !== 1) return;
+        const sig = ratioSignature(g.recipes[0]);
+        if (!bySig.has(sig)) bySig.set(sig, []);
+        bySig.get(sig).push(g);
+      });
+      bySig.forEach(gs => {
+        if (gs.length < 2 || !gs.some(g => g.recipes[0].__sharePrep)) return;
+        gs.sort((a, b) => a.slot.firstBakeStart - b.slot.firstBakeStart);
+        const host = gs[0];
+        const sharedShapeEnd = host.times.bagelFridgeIn;          // host first boil − host cold proof
+        const totalCount = gs.reduce((s, g) => s + (plan[g.recipes[0].id] || 0), 0);
+        const totalShapeMin = gs.reduce((s, g) => s + g.totalShapeMin, 0);
+        host.splitHost = true; host.splitGroups = gs;
+        host.splitTotalCount = totalCount; host.splitTotalShapeMin = totalShapeMin;
+        host.splitMixBatches = totalCount > 0 ? Math.ceil(totalCount / SCHED.BAGEL_MIXER_CAPACITY) : 0;
+        host.times.bagelShapeStart = addMinutes(sharedShapeEnd, -totalShapeMin);
+        host.times.bagelBulkStart = addMinutes(host.times.bagelShapeStart, -host.agg.bulkMin);
+        host.mixStart = addMinutes(host.times.bagelBulkStart, -host.splitMixBatches * SCHED.BAGEL_MIX_ACTIVE_MIN);
+        gs.forEach(g => {
+          if (g === host) return;
+          g.splitRider = true;
+          g.times.bagelFridgeIn = sharedShapeEnd;
+          g.mixStart = host.mixStart;
+        });
+      });
+    }
     // Shared levain anchors to the EARLIEST bagel mix across deadline groups (later groups ride
     // the earlier-anchored levain; per-group levain is a future refinement).
     const bagelMixStart = bagelGroups.reduce((m, g) => (g.mixStart && (!m || g.mixStart < m) ? g.mixStart : m), null);
@@ -13344,6 +13417,12 @@ ${notesHtml}
         }
       });
       } else {
+      // Split host preps the COMBINED count (shared mix/bulk/shape for all portions);
+      // a split rider skips prep entirely and only fridges + bakes (below).
+      const emitCount = g.splitTotalCount;
+      const emitShapeMin = g.splitTotalShapeMin;
+      const emitMixBatches = g.splitMixBatches;
+      if (!g.splitRider) {
       if (g.millingFlours.size > 0) {
         events.push({
           time: addMinutes(g.mixStart, -muffinMillMin),
@@ -13364,19 +13443,19 @@ ${notesHtml}
         detail: (muffinRecs.length > 1
           ? `${muffinWeighDuration} min active · ${muffinRecs.length} recipes`
           : `${muffinWeighDuration} min active`)
-          + (g.mixBatches > 1 ? ` · weigh per batch (${g.mixBatches} mixer loads)` : ''),
+          + (emitMixBatches > 1 ? ` · weigh per batch (${emitMixBatches} mixer loads)` : ''),
         process: 'muffin', columnKey: g.key,
-        mixBatchCount: g.mixBatches > 1 ? g.mixBatches : undefined,
+        mixBatchCount: emitMixBatches > 1 ? emitMixBatches : undefined,
       });
       const muffinBulkHrLabel = (g.agg.bulkMin / 60).toFixed(g.agg.bulkMin % 60 === 0 ? 0 : 1);
       const muffinMixerName = (muffinRecs.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
       const muffinMixerParen = ` (mixer holds max ${SCHED.MUFFIN_MIXER_CAPACITY} muffins; all batches go into the same container)`;
       const muffinLevainNote = useSeparateLevains ? '(uses muffin-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
-      const muffinMixDetail = g.mixBatches > 1
-        ? `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix × ${g.mixBatches} batches = ${SCHED.MUFFIN_MIX_ACTIVE_MIN * g.mixBatches} min active${muffinMixerParen} · ${muffinLevainNote}`
+      const muffinMixDetail = emitMixBatches > 1
+        ? `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix × ${emitMixBatches} batches = ${SCHED.MUFFIN_MIX_ACTIVE_MIN * emitMixBatches} min active${muffinMixerParen} · ${muffinLevainNote}`
         : `${SCHED.MUFFIN_MIX_ACTIVE_MIN} min mix · ${muffinLevainNote}`;
       // Muffin dough bulk-ferments together in one container after mixing.
-      const muffinDoughG = muffinRecs.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
+      const muffinDoughG = g.splitHost ? (muffinRecs[0].loafWeight || 0) * emitCount : muffinRecs.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
       const muffinBulkCont = pickDoughContainer(muffinDoughG, muffinRecs.flatMap(r => r.preferredContainerIds || []));
       const muffinBulkContainer = muffinBulkCont ? muffinBulkCont.name : 'dough tub';
       events.push({
@@ -13384,11 +13463,11 @@ ${notesHtml}
         title: 'Mix muffin dough',
         detail: muffinMixDetail,
         process: 'muffin', columnKey: g.key,
-        mixBatchCount: g.mixBatches > 1 ? g.mixBatches : undefined,
+        mixBatchCount: emitMixBatches > 1 ? emitMixBatches : undefined,
         // Dough is mixed straight into the bulk-ferment container, so surface it here too.
         container: muffinBulkContainer,
         equip: [muffinMixerName],
-        equipStrip: g.mixBatches > 1 ? muffinMixerParen : '',
+        equipStrip: emitMixBatches > 1 ? muffinMixerParen : '',
       });
       const muffinMixEv = events[events.length - 1];
       events.push({
@@ -13402,25 +13481,29 @@ ${notesHtml}
         muffinBulkCont ? { candidates: containerCandidates(['any', 'loaf'], muffinDoughG), relabel: (newName) => { muffinBulkEv.container = newName; muffinMixEv.container = newName; } } : null);
       const muffinWeightStr = perUnitDoughDetail(muffinRecs);
       const muffinShapeDetail = (muffinRecs.length === 1
-        ? `${getRecipeSpec(muffinRecs[0]).shapeMinPerUnit} min × ${g.total} muffins = ${g.totalShapeMin} min total`
+        ? `${getRecipeSpec(muffinRecs[0]).shapeMinPerUnit} min × ${emitCount} muffins = ${emitShapeMin} min total`
         : muffinRecs
             .map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`)
-            .join(' + ') + ` = ${g.totalShapeMin} min total`)
-        + (muffinWeightStr ? ` · ${muffinWeightStr}` : '');
+            .join(' + ') + ` = ${emitShapeMin} min total`)
+        + (muffinWeightStr ? ` · ${muffinWeightStr}` : '')
+        + (g.splitHost ? ' · split across bake times' : '');
       events.push({
         time: g.times.muffinShapeStart,
         title: 'Shape muffins',
         detail: muffinShapeDetail,
         process: 'muffin', columnKey: g.key,
       });
+      }
       if (g.coldProofHours > 0) {
         // Muffins are shaped into their pans, so they cold-proof (and warm up) in the pan.
         const muffinPanNames = panNamesForRecipesG(muffinRecs);
         const muffinContainer = muffinPanNames.length ? muffinPanNames.join(' + ') : 'muffin pan';
+        const realColdMin = Math.round((g.times.muffinOutFridge - g.times.muffinFridgeIn) / 60000);
+        const coldHrLabel = g.splitRider ? (realColdMin / 60).toFixed(realColdMin % 60 === 0 ? 0 : 1) : g.coldProofHours;
         events.push({
           time: g.times.muffinFridgeIn,
           title: 'Muffins into fridge — cold proof',
-          detail: `${g.coldProofHours} hr in fridge`,
+          detail: `${coldHrLabel} hr in fridge${g.splitRider ? ' (later split — proofs longer)' : ''}`,
           process: 'muffin', columnKey: g.key, container: muffinContainer,
         });
         events.push({
@@ -13486,6 +13569,11 @@ ${notesHtml}
         }
       });
       } else {
+      // Split host preps the COMBINED count; a split rider skips prep and only fridges + bakes.
+      const emitCount = g.splitTotalCount;
+      const emitShapeMin = g.splitTotalShapeMin;
+      const emitMixBatches = g.splitMixBatches;
+      if (!g.splitRider) {
       if (g.millingFlours.size > 0) {
         events.push({
           time: addMinutes(g.mixStart, -bagelMillMin),
@@ -13506,20 +13594,20 @@ ${notesHtml}
         detail: (bagelRecs.length > 1
           ? `${bagelWeighDuration} min active · ${bagelRecs.length} recipes`
           : `${bagelWeighDuration} min active`)
-          + (g.mixBatches > 1 ? ` · weigh per batch (${g.mixBatches} mixer loads)` : ''),
+          + (emitMixBatches > 1 ? ` · weigh per batch (${emitMixBatches} mixer loads)` : ''),
         process: 'bagel', columnKey: g.key,
-        mixBatchCount: g.mixBatches > 1 ? g.mixBatches : undefined,
+        mixBatchCount: emitMixBatches > 1 ? emitMixBatches : undefined,
       });
       const bagelBulkHrLabel = (g.agg.bulkMin / 60).toFixed(g.agg.bulkMin % 60 === 0 ? 0 : 1);
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
       const bagelMixerName = (bagelRecs.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
       const bagelMixerParen = ` (mixer holds max ${SCHED.BAGEL_MIXER_CAPACITY} bagels; all batches go into the same container for proofing)`;
-      const bagelMixDetail = g.mixBatches > 1
-        ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${g.mixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * g.mixBatches} min active${bagelMixerParen} ${bagelLevainNote}`
+      const bagelMixDetail = emitMixBatches > 1
+        ? `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix × ${emitMixBatches} batches = ${SCHED.BAGEL_MIX_ACTIVE_MIN * emitMixBatches} min active${bagelMixerParen} ${bagelLevainNote}`
         : `${SCHED.BAGEL_MIX_ACTIVE_MIN} min mix ${bagelLevainNote}`;
       // Dough is mixed straight into the bulk-ferment container, so compute it up front
       // and surface it on both the mix and the bulk-ferment steps.
-      const bagelDoughG = bagelRecs.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
+      const bagelDoughG = g.splitHost ? (bagelRecs[0].loafWeight || 0) * emitCount : bagelRecs.reduce((s, r) => s + (r.loafWeight || 0) * (plan[r.id] || 0), 0);
       const bagelBulkCont = pickDoughContainer(bagelDoughG, bagelRecs.flatMap(r => r.preferredContainerIds || []));
       const bagelBulkContainer = bagelBulkCont ? bagelBulkCont.name : 'dough tub';
       events.push({
@@ -13527,10 +13615,10 @@ ${notesHtml}
         title: 'Mix bagel dough',
         detail: bagelMixDetail,
         process: 'bagel', columnKey: g.key,
-        mixBatchCount: g.mixBatches > 1 ? g.mixBatches : undefined,
+        mixBatchCount: emitMixBatches > 1 ? emitMixBatches : undefined,
         container: bagelBulkContainer,
         equip: [bagelMixerName],
-        equipStrip: g.mixBatches > 1 ? bagelMixerParen : '',
+        equipStrip: emitMixBatches > 1 ? bagelMixerParen : '',
       });
       const bagelMixEv = events[events.length - 1];
       // Bulk ferment as its own (proof-stage) step, between mixing and shaping.
@@ -13548,25 +13636,29 @@ ${notesHtml}
       }
       const bagelWeightStr = perUnitDoughDetail(bagelRecs);
       const bagelShapeDetail = (bagelRecs.length === 1
-        ? `${getRecipeSpec(bagelRecs[0]).shapeMinPerUnit} min × ${g.total} bagels = ${g.totalShapeMin} min total`
+        ? `${getRecipeSpec(bagelRecs[0]).shapeMinPerUnit} min × ${emitCount} bagels = ${emitShapeMin} min total`
         : bagelRecs
             .map(r => `${getRecipeSpec(r).shapeMinPerUnit} min × ${plan[r.id]} ${r.name}`)
-            .join(' + ') + ` = ${g.totalShapeMin} min total`)
-        + (bagelWeightStr ? ` · divide into ${bagelWeightStr}` : '');
+            .join(' + ') + ` = ${emitShapeMin} min total`)
+        + (bagelWeightStr ? ` · divide into ${bagelWeightStr}` : '')
+        + (g.splitHost ? ' · split across bake times' : '');
       events.push({
         time: g.times.bagelShapeStart,
         title: 'Shape bagels',
         detail: bagelShapeDetail,
         process: 'bagel', columnKey: g.key,
       });
+      }
       if (g.coldProofHours > 0) {
         // Bagels cold-proof on a tray/sheet pan after shaping.
         const bagelPanNames = panNamesForRecipesG(bagelRecs);
         const bagelContainer = bagelPanNames.length ? bagelPanNames.join(' + ') : 'sheet tray';
+        const realColdMin = Math.round((g.times.bagelFirstBoil - g.times.bagelFridgeIn) / 60000);
+        const coldHrLabel = g.splitRider ? (realColdMin / 60).toFixed(realColdMin % 60 === 0 ? 0 : 1) : g.coldProofHours;
         events.push({
           time: g.times.bagelFridgeIn,
           title: 'Bagels into fridge — cold proof',
-          detail: `${g.coldProofHours} hr in fridge · boiled straight from cold`,
+          detail: `${coldHrLabel} hr in fridge · boiled straight from cold${g.splitRider ? ' (later split — proofs longer)' : ''}`,
           process: 'bagel', columnKey: g.key, container: bagelContainer,
         });
         if (bagelPanNames.length) {
