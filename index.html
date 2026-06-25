@@ -1073,6 +1073,18 @@
 
     /* Bake-plan recipe rows: keep name + count on one line but let it wrap. */
     .bake-recipe-compact { gap: 8px; }
+
+    /* Recipe editor: the 5-column ingredient grid (~400px of fixed columns)
+       overflows phones — restack it (name full-width, then %/tag/link/remove). */
+    .ingredient-edit-row .ing-main { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .ingredient-edit-row .ing-main .ing-name { flex: 1 1 100%; }
+    .ingredient-edit-row .ing-main .ing-pct { flex: 0 0 70px; width: 70px; }
+    .ingredient-edit-row .ing-main .ing-tag,
+    .ingredient-edit-row .ing-main .ing-pantry { flex: 1 1 40%; min-width: 0; }
+    .ingredient-edit-row .ing-main .danger.tiny { flex: 0 0 auto; margin-left: auto; }
+
+    /* Stage editor rows wrap instead of overflowing. */
+    .stage-row { flex-wrap: wrap; }
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
