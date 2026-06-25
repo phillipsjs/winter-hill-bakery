@@ -273,7 +273,8 @@
   .bake-batch-row input[type="number"] { width: 72px; }
   .bake-batch-row input[type="datetime-local"] { flex: 0 1 210px; min-width: 156px; max-width: 220px; }
   .bake-batch-unit { font-size: 0.85rem; color: var(--muted); min-width: 46px; }
-  .bake-add-btn { background: none; border: none; color: #8a5a2b; cursor: pointer; font-size: 0.82rem; padding: 4px 0; }
+  .bake-add-row { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .bake-add-btn { background: none; border: none; color: #8a5a2b; cursor: pointer; font-size: 0.82rem; padding: 4px 0; text-align: left; }
   .bake-add-btn:hover { text-decoration: underline; }
   .bake-batch-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 4px; }
   .bake-batch-remove:hover { color: #c0392b; }
@@ -7239,13 +7240,24 @@ ${notesHtml}
     else localStorage.removeItem(BAKE_INSTANCES_KEY);
     scheduleSyncToGist();
   }
-  function addBakeInstance(baseId) {
+  // share=true → a SPLIT: the same dough baked at a second time. We move half of
+  // batch 1 into the new portion (total dough unchanged) and mark it __sharePrep so
+  // the scheduler shares one mix/fold/bulk/shape and just bakes the portions apart.
+  // share=false → an extra (separate) batch of dough, scheduled independently.
+  function addBakeInstance(baseId, share) {
     const map = loadBakeInstances();
     const arr = map[baseId] || [];
     const used = new Set(arr.map(i => i.id));
     let n = arr.length + 1, id = `${baseId}~b${n}`;
     while (used.has(id)) { n++; id = `${baseId}~b${n}`; }
-    arr.push({ id, count: plan[baseId] || 0, deadline: '' });
+    if (share) {
+      const cur = plan[baseId] || 0;
+      const portion = Math.floor(cur / 2);
+      if (portion > 0) { plan[baseId] = cur - portion; savePlan(); }
+      arr.push({ id, count: portion, deadline: '', share: true });
+    } else {
+      arr.push({ id, count: plan[baseId] || 0, deadline: '' });
+    }
     map[baseId] = arr; saveBakeInstances(map);
     renderPlan(); renderSchedule();
   }
@@ -7273,7 +7285,9 @@ ${notesHtml}
     base.forEach(r => { if (Object.prototype.hasOwnProperty.call(plan, r.id)) exPlan[r.id] = plan[r.id]; });
     base.forEach(r => {
       (store[r.id] || []).forEach((inst, k) => {
-        synth.push({ ...r, id: inst.id, name: `${r.name} — batch ${k + 2}`, __instanceOf: r.id, __instanceDeadline: inst.deadline || '' });
+        synth.push({ ...r, id: inst.id,
+          name: inst.share ? `${r.name} — split bake` : `${r.name} — batch ${k + 2}`,
+          __instanceOf: r.id, __instanceDeadline: inst.deadline || '', __sharePrep: !!inst.share });
         exPlan[inst.id] = Math.max(0, Math.floor(Number(inst.count) || 0));
       });
     });
@@ -7797,15 +7811,20 @@ ${notesHtml}
             </div>
           </div>`;
         insts.forEach((inst, k) => {
+          const label = inst.share ? '🔗 Split' : `Batch ${k + 2}`;
+          const lblTitle = inst.share ? 'Split bake — same dough, baked at this time (shares mixing/folding/shaping with the rest)' : '';
           detHtml += `<div class="bake-batch-row">
-              <span class="bake-batch-label">Batch ${k + 2}</span>
+              <span class="bake-batch-label"${lblTitle ? ` title="${escapeAttr(lblTitle)}"` : ''}>${label}</span>
               <input type="number" min="0" step="1" value="${inst.count > 0 ? inst.count : ''}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'count', this.value)" aria-label="count" />
               <span class="bake-batch-unit">${escapeHtml(unitPlural)}</span>
-              <input type="datetime-local" value="${inst.deadline || ''}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)" aria-label="deadline" title="Deadline for this batch (blank = default)" />
+              <input type="datetime-local" value="${inst.deadline || ''}" onchange="setBakeInstanceField('${r.id}', '${inst.id}', 'deadline', this.value)" aria-label="deadline" title="${inst.share ? 'When this split portion bakes' : 'Deadline for this batch (blank = default)'}" />
               <button class="bake-batch-remove" onclick="removeBakeInstance('${r.id}', '${inst.id}')" title="Remove this batch" aria-label="Remove this batch">✕</button>
             </div>`;
         });
-        detHtml += `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}')">+ Add another batch (different deadline)</button></div>`;
+        const splitBtn = getProcessType(r) === 'sourdough-loaf'
+          ? `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}', true)" title="Bake some of this dough at a different time — one mix &amp; bulk, the later portion just cold-proofs longer">+ Split bake across times</button>`
+          : '';
+        detHtml += `<div class="bake-add-row"><button class="bake-add-btn" onclick="addBakeInstance('${r.id}')">+ Add another batch (different deadline)</button>${splitBtn}</div></div>`;
       });
       detHtml += '</div>';
       det.innerHTML = detHtml;
@@ -13957,7 +13976,11 @@ ${notesHtml}
         });
       }
     }
-    return { ...prepRes, events, equipClaims: [...(prepRes.equipClaims || []), ...bakeOvenClaims] };
+    // Keep the prep's container/banneton claims but DROP its oven claims — the prep
+    // buildSchedule baked the whole unit at the earliest deadline (we discarded those
+    // bake events); the real per-portion bakes carry their own oven claims below.
+    const prepClaims = (prepRes.equipClaims || []).filter(c => c.pool !== 'oven');
+    return { ...prepRes, events, equipClaims: [...prepClaims, ...bakeOvenClaims] };
   }
 
   // Post-pass: insert a "Top <label>" step just before the first bake of any bread process
@@ -14021,19 +14044,28 @@ ${notesHtml}
 
     const windowWidthHr = Math.max(0, (Number(baseOpts.loafColdProofMaxHr) || 0) - (Number(baseOpts.loafColdProofHours) || 0));
     const combineSigs = loadCombineDoughs();
-    // Units start one-per-deadline-group; merge groups that share a combine-flagged dough
-    // signature (within the cold-proof window) into a single combined staggered unit.
+    // SPLIT bakes (Bake Plan "Split bake"): same dough explicitly split across bake
+    // times. They ALWAYS share prep (one mix/fold/bulk/shape), independent of the
+    // combine toggle and the window width — warn-but-allow if the gap is too wide.
+    const splitSigs = new Set(recipes.filter(r => r.__sharePrep && (plan[r.id] || 0) > 0).map(ratioSignature));
+    // Units start one-per-deadline-group; merge groups that share a split or a
+    // combine-flagged dough signature into a single combined staggered unit.
     let units = groups.map(g => ({ recipes: g.recipes.slice(), ms: g.ms, window: g.window, combined: false }));
-    if (combineSigs.size && windowWidthHr > 0) {
+    if (combineSigs.size || splitSigs.size) {
       let changed = true;
       while (changed) {
         changed = false;
         for (let i = 0; i < units.length && !changed; i++) {
           for (let j = i + 1; j < units.length; j++) {
-            if (!sameWindow(units[i].window, units[j].window)) continue; // only combine the same cold-proof window
-            const flaggedI = new Set(units[i].recipes.map(ratioSignature).filter(s => combineSigs.has(s)));
-            if (!flaggedI.size || !units[j].recipes.some(r => flaggedI.has(ratioSignature(r)))) continue;
-            if (Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 > windowWidthHr) continue;
+            const sharedSigs = units[i].recipes.map(ratioSignature).filter(s => units[j].recipes.some(r => ratioSignature(r) === s));
+            if (!sharedSigs.length) continue;
+            let doMerge = sharedSigs.some(s => splitSigs.has(s)); // splits: always
+            if (!doMerge) {
+              const combShared = sharedSigs.some(s => combineSigs.has(s));
+              doMerge = combShared && windowWidthHr > 0 && sameWindow(units[i].window, units[j].window)
+                && Math.abs((units[i].ms || 0) - (units[j].ms || 0)) / 3600000 <= windowWidthHr;
+            }
+            if (!doMerge) continue;
             units[i] = { recipes: units[i].recipes.concat(units[j].recipes), ms: Math.min(units[i].ms || 0, units[j].ms || 0), window: units[i].window, combined: true };
             units.splice(j, 1); changed = true; break;
           }
@@ -14077,7 +14109,7 @@ ${notesHtml}
         if (diffHr >= warnThresholdHr || !Number.isFinite(diffHr)) continue;
         warnedSigs.add(sharedSig);
         const names = [...new Set([...groups[i].recipes, ...groups[j].recipes].map(r => r.name))].join(' & ');
-        if (combineSigs.has(sharedSig)) continue; // combined: no "separate doughs" warning (info shown below)
+        if (combineSigs.has(sharedSig) || splitSigs.has(sharedSig)) continue; // combined / split: no "separate doughs" warning
         const apart = diffHr < 1 ? 'under an hour' : `~${Math.round(diffHr)} hr`;
         const canCombine = windowWidthHr > 0 && diffHr <= windowWidthHr;
         const tail = canCombine
@@ -14089,14 +14121,35 @@ ${notesHtml}
         });
       }
     }
-    // Info + "separate" toggle for doughs currently combined into one staggered batch.
+    // Info (+ "separate" toggle for toggle-combined doughs) for units baked from
+    // one dough with staggered bakes. Split bakes get their own message (no toggle —
+    // they're controlled from the Bake Plan) plus an over-window warning if too wide.
+    const baseNameOf = (r) => { if (!r.__instanceOf) return r.name; const b = recipes.find(x => x.id === r.__instanceOf); return b ? b.name : r.name.replace(/ — (split bake|batch \d+)$/, ''); };
     units.filter(u => u.combined).forEach(u => {
-      const sig = u.recipes.map(ratioSignature).find(s => combineSigs.has(s));
-      const names = [...new Set(u.recipes.map(r => r.name))].join(' & ');
-      merged.warnings.unshift({
-        msg: `${names} are baked from ONE dough with staggered bakes (shared mix & fold, then each baked at its own deadline).`,
-        issue: 'same-dough-combined', kind: 'loaf', type: 'info', combineSig: sig, combined: true,
-      });
+      const names = [...new Set(u.recipes.map(baseNameOf))].join(' & ');
+      const isSplit = u.recipes.some(r => r.__sharePrep);
+      if (isSplit) {
+        const ms = u.recipes.map(r => dlMs(r)).filter(v => v != null);
+        if (ms.length > 1) {
+          const gapHr = (Math.max(...ms) - Math.min(...ms)) / 3600000;
+          if (Number.isFinite(gapHr) && gapHr > windowWidthHr) {
+            merged.warnings.unshift({
+              msg: `Split bake "${names}": the later portion cold-proofs ~${Math.round(gapHr)} hr after shaping — beyond the ${windowWidthHr || 0}-hr cold-proof window, so it may over-proof. Widen the cold-proof window or move the bake times closer.`,
+              issue: 'split-over-window', kind: 'loaf', type: 'warning',
+            });
+          }
+        }
+        merged.warnings.unshift({
+          msg: `${names}: ONE dough split across bake times — shared mix, fold & bulk; each portion bakes at its own time (the later one cold-proofs longer).`,
+          issue: 'same-dough-combined', kind: 'loaf', type: 'info', combined: true,
+        });
+      } else {
+        const sig = u.recipes.map(ratioSignature).find(s => combineSigs.has(s));
+        merged.warnings.unshift({
+          msg: `${names} are baked from ONE dough with staggered bakes (shared mix & fold, then each baked at its own deadline).`,
+          issue: 'same-dough-combined', kind: 'loaf', type: 'info', combineSig: sig, combined: true,
+        });
+      }
     });
     insertToppingSteps(merged.events);
     return merged;

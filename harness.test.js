@@ -2713,5 +2713,42 @@ function dg(label, cond) { console.log(`  [drag] ${cond ? 'PASS' : 'FAIL'} — $
 }
 allOk &= dragOk;
 
+// ---- Split bake: one dough, two bake times (shared prep, later half proofs longer) ----
+console.log('\nSplit-bake assertions:');
+let spOk = true;
+function sp(label, cond) { console.log(`  [split] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  api.saveBakeInstances({});
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(14, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.batard]: 20 }); seedPlan({ [SEED.batard]: 20 });
+  api.addBakeInstance(SEED.batard, true);                          // split bake
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  spOk &= sp('split moves half of batch 1 into the new portion (20 → 10 + 10)',
+    api.__plan()[SEED.batard] === 10 && inst.count === 10 && inst.share === true);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  let sr = api.__sr();
+  const titles = () => sr.events.map(e => e.title);
+  spOk &= sp('shares ONE prep (single autolyse, not one per portion)', titles().filter(t => /^Start autolyse/.test(t)).length === 1);
+  spOk &= sp('emits a bake for each portion (two bakes)', titles().filter(t => /^Bake \d+ of/.test(t)).length === 2);
+  spOk &= sp('fridge note flags the later half proofing longer',
+    sr.events.some(e => /Into fridge/.test(e.title) && /longer \(staggered bakes\)/.test(e.detail || '')));
+  spOk &= sp('shows the one-dough split info', (sr.warnings || []).some(w => w.issue === 'same-dough-combined' && /split across bake times/.test(w.msg)));
+  spOk &= sp('no false oven double-book for staggered split bakes',
+    !(sr.warnings || []).some(w => w.issue === 'equip-conflict' && /double-booked/.test(w.msg)));
+  // Over-window: a gap wider than the cold-proof window warns (but still schedules).
+  const farLate = new Date(far); farLate.setHours(far.getHours() + 12);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(farLate));
+  api.renderSchedule(); sr = api.__sr();
+  spOk &= sp('warns when the split gap exceeds the cold-proof window', (sr.warnings || []).some(w => w.issue === 'split-over-window'));
+  spOk &= sp('still schedules the split despite the over-window gap (two bakes)', titles().filter(t => /^Bake \d+ of/.test(t)).length === 2);
+  api.saveBakeInstances({});
+}
+allOk &= spOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
