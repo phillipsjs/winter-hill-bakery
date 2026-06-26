@@ -902,9 +902,12 @@
   @media print {
     .bs-recipe-tag { background: #eef2f7 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   }
-  .bs-ings { width: 200px; }
-  .bs-ings table { font-size: 0.78rem; margin: 0; }
-  .bs-ings table td { padding: 1px 4px; border: none; }
+  .bs-ings { width: 236px; }
+  .bs-ings table { font-size: 0.78rem; margin: 0; width: 100%; }
+  .bs-ings table td { padding: 1px 4px; border: none; overflow-wrap: break-word; }
+  /* Keep a weight ("4452 g") on one line — never split the unit onto a new line — and let
+     the ingredient name wrap instead when the column is tight (e.g. on the printed sheet). */
+  .bs-ings table td.num { white-space: nowrap; text-align: right; width: 1%; }
   .bs-ing-temp { color: #2f6f86; font-weight: 600; white-space: nowrap; }
   .bs-ings .bs-recipe-label { font-size: 0.75rem; font-weight: 600;
     color: var(--accent-dark); margin-bottom: 2px; }
@@ -975,6 +978,9 @@
   .bs-card-title strong { font-size: 0.95rem; }
   .bs-card .bs-detail { margin-top: 3px; }
   .bs-card-section { margin-top: 9px; }
+  /* Same as the print sheet: keep a weight ("4452 g") together; let the name wrap instead. */
+  .bs-card-section table { width: 100%; }
+  .bs-card-section table td.num { white-space: nowrap; text-align: right; width: 1%; }
   .bs-card-lbl { display: block; font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; color: var(--muted); margin-bottom: 3px; }
   .bs-card-section .bs-equip-edit { margin-top: 4px; }
@@ -16361,7 +16367,7 @@ ${notesHtml}
               <th style="width:110px">Time</th>
               <th>Step</th>
               <th style="width:116px">Equipment</th>
-              <th style="width:200px">Ingredients</th>
+              <th style="width:236px">Ingredients</th>
               <th style="width:24px"></th>
             </tr></thead>
             <tbody>${rowsHtml}</tbody>
