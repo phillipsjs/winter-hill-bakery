@@ -14915,10 +14915,10 @@ ${notesHtml}
     list.innerHTML = inPlan.map(r => `
       <div class="row" style="align-items:center; gap:10px; margin-bottom:6px">
         <label style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(r.name)}</label>
-        <input type="datetime-local" data-recipe-deadline="${r.id}" value="${saved[r.id] || ''}" />
+        <input type="datetime-local" data-recipe-deadline="${r.id}" value="${saved[r.id] || defaultStr}" />
       </div>`).join('') +
       `<div style="display:flex; align-items:center; gap:10px; margin-top:4px">
-        <span class="muted" style="font-size:12px; flex:1">Blank rows use the default deadline (${escapeHtml(defLabel)}).</span>
+        <span class="muted" style="font-size:12px; flex:1">Rows left at the default deadline (${escapeHtml(defLabel)}) inherit it; change one to give that recipe its own deadline.</span>
         <button type="button" id="clear-recipe-deadlines-btn" class="secondary tiny" style="${hasOverrides ? '' : 'display:none'}">Clear all</button>
       </div>`;
     const clearBtn = document.getElementById('clear-recipe-deadlines-btn');

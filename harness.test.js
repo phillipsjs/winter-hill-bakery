@@ -99,7 +99,7 @@ const exportsTail = `
 ;return {
   renderSchedule, getSelectedLevainRatios, effectiveLevainRatios, deriveScheduleInputs,
   buildScheduleAcrossLoafGroups, getEventStage, renderBakeSheet, getHighlightTitlesForWarning, showTab,
-  setBakePlanEquip, renderTotals, renderProofingPlan, setBakePlanProof,
+  setBakePlanEquip, renderTotals, renderProofingPlan, setBakePlanProof, renderRecipeDeadlines,
   stagesFromRecipe, paramsFromStages, stageTemplateFor, getRecipeSpec, getProcessType,
   processCategory, SEED_RECIPES, STAGE_TEMPLATES,
   recipeUsesMilledFlour, milledFlourNamesFor, stagesForScheduling, stageDurationOf,
@@ -2766,6 +2766,36 @@ function dg(label, cond) { console.log(`  [drag] ${cond ? 'PASS' : 'FAIL'} — $
   api.clearAllAnchors();
 }
 allOk &= dragOk;
+
+// ---- Schedule tab: recipe-specific deadline inputs prefill the default deadline ----
+console.log('\nRecipe-deadline prefill assertions:');
+let rdOk = true;
+function rdg(label, cond) { console.log(`  [rdl] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  const def = fmtLocal(tomorrow8);
+  els['deadline-default-input'].value = def;
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  const planObj = { [SEED.batard]: 8, [SEED.boule]: 6 };
+  api.__setPlan(planObj); seedPlan(planObj);
+  api.renderRecipeDeadlines();
+  const html = els['recipe-deadlines-list'].innerHTML;
+  const vals = (html.match(/data-recipe-deadline="[^"]+" value="([^"]*)"/g) || [])
+    .map(m => (m.match(/value="([^"]*)"/) || [])[1]);
+  rdOk &= rdg('two recipe rows render', vals.length === 2);
+  rdOk &= rdg('blank (no-override) rows prefill the default deadline', vals.length === 2 && vals.every(v => v === def));
+  // An explicit override still wins over the default prefill.
+  localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify({ [SEED.boule]: fmtLocal(new Date(tomorrow8.getTime() + 3600000)) }));
+  api.renderRecipeDeadlines();
+  const html2 = els['recipe-deadlines-list'].innerHTML;
+  const vals2 = (html2.match(/data-recipe-deadline="([^"]+)" value="([^"]*)"/g) || [])
+    .map(m => { const mm = m.match(/data-recipe-deadline="([^"]+)" value="([^"]*)"/); return { id: mm[1], v: mm[2] }; });
+  const bouleRow = vals2.find(x => x.id === SEED.boule);
+  const batardRow = vals2.find(x => x.id === SEED.batard);
+  rdOk &= rdg('an overridden row keeps its own deadline (not the default)', !!bouleRow && bouleRow.v !== def);
+  rdOk &= rdg('a non-overridden row still prefills the default', !!batardRow && batardRow.v === def);
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+}
+allOk &= rdOk;
 
 // ---- Split bake: one dough, two bake times (shared prep, later half proofs longer) ----
 console.log('\nSplit-bake assertions:');
