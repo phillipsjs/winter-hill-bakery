@@ -15382,16 +15382,48 @@ ${notesHtml}
     const buildInput2El = document.getElementById('build2-ratio-input');
 
     const now = new Date();
+    const timeFmtWarn = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     const pastEvents = result.events.filter(ev => ev.time < now);
     if (pastEvents.length) {
       const earliest = pastEvents[0];
-      const timeFmtWarn = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
       result.warnings = result.warnings || [];
       result.warnings.unshift({
         msg: `⚠ Deadline cannot be met — ${pastEvents.length} step${pastEvents.length > 1 ? 's' : ''} (starting with "${earliest.title}" at ${timeFmtWarn.format(earliest.time)}) ${pastEvents.length > 1 ? 'are' : 'is'} already in the past. Move the deadline later to generate a workable schedule.`,
         issue: 'past-deadline',
       });
     }
+
+    // A per-recipe deadline override or an extra-batch (bake-instance) deadline left in the PAST
+    // keeps that batch's steps before "now" even after the DEFAULT deadline is moved later —
+    // surfacing the generic "deadline cannot be met" warning with no clue why (moving the default
+    // doesn't touch these per-recipe dates). Name the stale date(s) so the baker knows exactly
+    // which one to update or clear.
+    const _staleOverrides = loadRecipeDeadlines();
+    Object.keys(_staleOverrides).forEach(id => {
+      if (!isInPlan(id) || (plan[id] || 0) <= 0) return;
+      const when = new Date(_staleOverrides[id]);
+      if (!(when < now)) return;
+      const rec = recipes.find(r => r.id === id);
+      result.warnings = result.warnings || [];
+      result.warnings.unshift({
+        msg: `⚠ ${rec ? rec.name : 'A recipe'} has its own deadline set to ${timeFmtWarn.format(when)}, which is in the past — so its steps stay before now even after you move the default deadline. Update that recipe's date in the Schedule tab's recipe-specific deadlines, or clear it to follow the default.`,
+        issue: 'stale-recipe-deadline',
+      });
+    });
+    const _staleInsts = (typeof loadBakeInstances === 'function') ? loadBakeInstances() : {};
+    Object.keys(_staleInsts).forEach(baseId => {
+      const base = recipes.find(r => r.id === baseId);
+      (_staleInsts[baseId] || []).forEach(inst => {
+        if (!inst || !inst.deadline) return;
+        const when = new Date(inst.deadline);
+        if (!(when < now)) return;
+        result.warnings = result.warnings || [];
+        result.warnings.unshift({
+          msg: `⚠ ${base ? base.name : 'A recipe'}'s ${inst.share ? 'split bake' : 'extra batch'} has a deadline of ${timeFmtWarn.format(when)}, which is in the past — that batch's steps stay before now even after you move the default deadline. Update or remove it in the Bake Plan tab's recipe-specific deadlines.`,
+          issue: 'stale-recipe-deadline',
+        });
+      });
+    });
 
     const equipWarns = detectEquipmentConflicts(result.equipClaims);
     if (equipWarns.length) { result.warnings = result.warnings || []; result.warnings.push(...equipWarns); }

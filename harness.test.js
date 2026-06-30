@@ -2795,6 +2795,32 @@ function rdg(label, cond) { console.log(`  [rdl] ${cond ? 'PASS' : 'FAIL'} — $
   rdOk &= rdg('a non-overridden row still prefills the default', !!batardRow && batardRow.v === def);
   localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
 }
+// Stale per-recipe / extra-batch deadline guard: a deadline left in the PAST keeps producing the
+// generic "deadline cannot be met" warning even after the default is moved later — name the culprit.
+{
+  const future = new Date(); future.setDate(future.getDate() + 5); future.setHours(10, 0, 0, 0);
+  const past = new Date(); past.setDate(past.getDate() - 3); past.setHours(12, 0, 0, 0);
+  const stale = () => (api.__sr().warnings || []).filter(w => w.issue === 'stale-recipe-deadline');
+  els['deadline-default-input'].value = fmtLocal(future);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  const planObj = { [SEED.batard]: 8, [SEED.boule]: 6 };
+  api.__setPlan(planObj); seedPlan(planObj);
+  api.saveBakeInstances({});
+  localStorageStub.setItem(RECIPE_DEADLINES_KEY, JSON.stringify({ [SEED.boule]: fmtLocal(past) }));
+  api.renderSchedule();
+  rdOk &= rdg('past per-recipe override → a NAMED stale-deadline warning (with future default)',
+    stale().some(w => /Boule/.test(w.msg) && /past/.test(w.msg)));
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  rdOk &= rdg('stale-deadline warning clears once the override is removed', stale().length === 0);
+  api.saveBakeInstances({ [SEED.batard]: [{ id: 'i1', count: 4, deadline: fmtLocal(past), share: false }] });
+  api.renderSchedule();
+  rdOk &= rdg('past extra-batch (instance) deadline → a NAMED stale-deadline warning',
+    stale().some(w => /Batard/.test(w.msg) && /extra batch/.test(w.msg)));
+  api.saveBakeInstances({});
+  api.renderSchedule();
+  rdOk &= rdg('stale-deadline warning clears once the instance is removed', stale().length === 0);
+}
 allOk &= rdOk;
 
 // ---- Split bake: one dough, two bake times (shared prep, later half proofs longer) ----
