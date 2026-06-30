@@ -15407,6 +15407,29 @@ ${notesHtml}
       });
     }
 
+    // Mis-roled flour guard: a flour (anchor/specialty) tagged as a topping or process aid is
+    // excluded from the dough math, so the dough/loaf total silently reads low (the bug that
+    // made 16×900 g boules total 13.9 kg instead of 14.4 kg). Flag any planned recipe with one.
+    const _flourRoleSeen = new Set();
+    recipes.forEach(r => {
+      if (!isInPlan(r.id) || (plan[r.id] || 0) <= 0) return;
+      const baseId = r.__instanceOf || r.id;
+      if (_flourRoleSeen.has(baseId)) return; // split clones share the base's ingredients
+      const tn = toppingIngredientNames(r);
+      const bad = (r.ingredients || []).filter(i =>
+        (i.flourType === 'anchor' || i.flourType === 'specialty') &&
+        ingredientWeightRole(r, i, tn) !== 'dough');
+      if (!bad.length) return;
+      _flourRoleSeen.add(baseId);
+      const baseName = r.__instanceOf ? ((recipes.find(x => x.id === r.__instanceOf) || r).name) : r.name;
+      const plural = bad.length > 1;
+      result.warnings = result.warnings || [];
+      result.warnings.push({
+        msg: `${baseName}: ${plural ? 'the flours' : 'the flour'} ${bad.map(i => i.name).join(', ')} ${plural ? 'are' : 'is'} tagged as a topping/process aid, so ${plural ? "they're" : "it's"} left out of the dough — the dough & loaf totals read low. Open the recipe and set ${plural ? 'them' : 'it'} back to a dough flour unless you really add ${plural ? 'them' : 'it'} after shaping.`,
+        issue: 'flour-mis-roled', kind: 'loaf',
+      });
+    });
+
     let html = '';
     // Split-by-recipe toggle. In the multi-column (split) view it lives in each loaf column
     // header (colHeaderHtml). Only when there's no header row to host it — a single-column
@@ -16566,6 +16589,24 @@ ${notesHtml}
       else if (r.role === 'aid') aidTotal += r.amount;
     });
 
+    // Safeguard: a FLOUR (anchor/specialty) tagged as a topping or process aid is almost always
+    // a mistake — flour is structural dough, so tagged this way it's silently dropped from the
+    // dough weight and the dough/loaf total reads low with no other clue. Warn loudly.
+    const misRoledFlours = rows.filter(r => r.flourType && r.role !== 'dough');
+    let flourRoleWarn = '';
+    if (misRoledFlours.length) {
+      const list = misRoledFlours
+        .map(r => `${escapeHtml(r.name || 'a flour')} (${r.role === 'aid' ? 'process aid' : 'topping'})`)
+        .join(', ');
+      const heading = misRoledFlours.length > 1 ? 'Flours tagged as non-dough:' : 'A flour is tagged as non-dough:';
+      flourRoleWarn =
+        '<div style="margin-top:8px;padding:6px 8px;border:1px solid #e8c879;background:#fdf3da;border-radius:6px">'
+        + '<span style="color:#8a5a00;font-weight:700">⚠ ' + heading + '</span> '
+        + '<strong>' + list + '</strong>'
+        + '<div style="font-size:0.8rem;color:#6b5413;margin-top:3px">Flour belongs in the dough. Tagged as a topping or process aid it’s left OUT of the dough weight, so your dough &amp; loaf totals read low. Untag it (set it back to a dough flour) unless you really add it after shaping.</div>'
+        + '</div>';
+    }
+
     if (recipeEntryMode === 'grams') {
       if (grandTotal === 0) { el.innerHTML = ''; return; }
       const unit = (document.getElementById('r-unit').value || 'unit').trim() || 'unit';
@@ -16584,17 +16625,17 @@ ${notesHtml}
         if (toppingTotal > 0) s += ' · + topping ' + Math.round(toppingTotal / yld) + ' g → <strong>' + Math.round((doughTotal + toppingTotal) / yld) + ' g</strong>/' + escapeHtml(unit);
         if (aidTotal > 0) s += ' · <span class="muted">' + Math.round(aidTotal) + ' g process aid (not in unit)</span>';
       }
-      el.innerHTML = s;
+      el.innerHTML = s + flourRoleWarn;
       return;
     }
 
-    if (flourTotal === 0) { el.innerHTML = ''; return; }
+    if (flourTotal === 0) { el.innerHTML = flourRoleWarn; return; }
     const flourRounded = Math.round(flourTotal * 10) / 10;
     const off = Math.abs(flourTotal - 100) > 0.5;
     let s = 'Flour total: <strong style="color:' + (off ? 'var(--danger)' : 'var(--ok)') + '">' + flourRounded + '%</strong>';
     if (off) s += ' <span style="color:var(--danger)">— flours should sum to 100%</span>';
     if (liquidTotal > 0) s += ' · Hydration: ' + Math.round((liquidTotal / flourTotal) * 100) + '%';
-    el.innerHTML = s;
+    el.innerHTML = s + flourRoleWarn;
   }
 
   // --- Single-unit ⇄ batch view (grams mode) ---

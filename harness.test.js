@@ -716,6 +716,32 @@ api.__recipes().push(milledSimple);
 const ms = renderEvents({ 'mill-simple': 12 }).filter(e => e.process === 'simple');
 millOk &= mk('generic (simple) milled recipe emits a Mill flour step', ms.some(e => /^Mill flour/.test(e.title)));
 
+// Mis-roled flour guard: a FLOUR (anchor/specialty) tagged as a topping/process aid is dropped
+// from the dough math, so the dough/loaf totals read low (the 16×900 boule → 13.9 kg bug).
+{
+  const base = api.SEED_RECIPES.find(r => r.id === 'seed-sourdough-boule');
+  const r = JSON.parse(JSON.stringify(base));
+  r.id = 'misrole-boule'; r.name = 'Misrole Boule'; r.loafWeight = 871; r.pantryId = undefined;
+  r.ingredients = [
+    { name: 'Bread flour', pct: 65, flourType: 'anchor' },
+    { name: 'All purpose flour', pct: 22, flourType: 'anchor' },
+    { name: 'Rye flour', pct: 6.5, flourType: 'specialty' },
+    { name: 'Red wheat (Redeemer)', pct: 6.5, flourType: 'specialty' },
+    { name: 'Water', pct: 73 }, { name: 'Levain', pct: 22 }, { name: 'Salt', pct: 2.5 },
+  ];
+  r.stages = (r.stages || []).map(s => ({ ...s }));
+  r.stages.push({ type: 'topping', ings: ['Red wheat (Redeemer)'], duration: { kind: 'fixed', min: 1 } });
+  api.__recipes().push(r);
+  renderEvents({ 'misrole-boule': 16 });
+  millOk &= mk('flour tagged as a topping triggers a mis-roled-flour warning',
+    (api.__sr().warnings || []).some(w => w.issue === 'flour-mis-roled' && /Red wheat/.test(w.msg)));
+  r.stages = r.stages.filter(s => s.type !== 'topping'); // untag → back in the dough
+  renderEvents({ 'misrole-boule': 16 });
+  millOk &= mk('no mis-roled-flour warning once the flour is a dough flour again',
+    !(api.__sr().warnings || []).some(w => w.issue === 'flour-mis-roled'));
+  const arr = api.__recipes(); const ix = arr.findIndex(x => x.id === 'misrole-boule'); if (ix >= 0) arr.splice(ix, 1);
+}
+
 // Focaccia oven-on / bake reflect the recipe's edited bake temp (not the template default).
 const focOrig = api.__recipes().find(r => r.id === 'seed-focaccia');
 let focTempOk = false;
