@@ -2821,6 +2821,29 @@ function rdg(label, cond) { console.log(`  [rdl] ${cond ? 'PASS' : 'FAIL'} — $
   api.renderSchedule();
   rdOk &= rdg('stale-deadline warning clears once the instance is removed', stale().length === 0);
 }
+// Stale-anchor guard: an anchor pinning a step to a PAST absolute time forces the schedule onto
+// that old date regardless of the deadline — name it and point at "Clear all anchors".
+{
+  const future = new Date(); future.setDate(future.getDate() + 5); future.setHours(10, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(future);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.saveBakeInstances({});
+  api.clearAllAnchors();
+  api.__setPlan({ [SEED.batard]: 8 }); seedPlan({ [SEED.batard]: 8 });
+  api.renderSchedule();
+  const anchorWarn = () => (api.__sr().warnings || []).filter(w => w.issue === 'stale-anchor');
+  rdOk &= rdg('no stale-anchor warning with a clean future schedule', anchorWarn().length === 0);
+  const tgt = api.__sr().events.find(e => /Mix in salt/.test(e.title));
+  const past = new Date(); past.setDate(past.getDate() - 3); past.setHours(8, 0, 0, 0);
+  api.setAnchorForEvent(tgt.title, past.getTime(), tgt._baseMs);
+  api.renderSchedule();
+  rdOk &= rdg('an anchor pinned to the past raises a named stale-anchor warning',
+    anchorWarn().some(w => /anchor/i.test(w.msg) && /past/.test(w.msg) && /Mix in salt/.test(w.msg)));
+  api.clearAllAnchors();
+  api.renderSchedule();
+  rdOk &= rdg('stale-anchor warning clears once anchors are cleared', anchorWarn().length === 0);
+}
 allOk &= rdOk;
 
 // ---- Split bake: one dough, two bake times (shared prep, later half proofs longer) ----

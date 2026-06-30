@@ -15425,6 +15425,22 @@ ${notesHtml}
       });
     });
 
+    // A leftover ANCHOR pins a step to an ABSOLUTE time, overriding whatever the deadline would
+    // produce and dragging every later step with it — so the schedule can show a stale date even
+    // after EVERY deadline is updated. An anchor whose pinned time is now in the past is the
+    // tell-tale: surface it explicitly and point at the existing "Clear all anchors" control,
+    // since the deadline inputs give no clue an anchor is the cause.
+    const _allAnchors = (typeof getAnchors === 'function') ? getAnchors() : [];
+    const _pastAnchors = _allAnchors.filter(a => a && Number.isFinite(Number(a.actualTimeMs)) && Number(a.actualTimeMs) < now.getTime());
+    if (_pastAnchors.length) {
+      const first = _pastAnchors[0];
+      result.warnings = result.warnings || [];
+      result.warnings.unshift({
+        msg: `⚓ ${_pastAnchors.length === 1 ? 'An anchor pins a step' : _pastAnchors.length + ' anchors pin steps'} to a time in the past (e.g. "${first.eventId}" → ${timeFmtWarn.format(new Date(Number(first.actualTimeMs)))}), which forces the schedule onto that old date no matter what deadline you set. Use “Clear all anchors” below to release ${_pastAnchors.length === 1 ? 'it' : 'them'}.`,
+        issue: 'stale-anchor',
+      });
+    }
+
     const equipWarns = detectEquipmentConflicts(result.equipClaims);
     if (equipWarns.length) { result.warnings = result.warnings || []; result.warnings.push(...equipWarns); }
 
