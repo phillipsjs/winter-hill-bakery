@@ -12048,7 +12048,9 @@ ${notesHtml}
     // back off the deadline), warn on slack and late-night starts. postBakeMin = everything
     // between last-bake-end and "ready" (cool, glaze…). lateTail parameterizes the advice
     // tail of the late-night warning so the historical per-process phrasing is preserved.
-    const computeSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind, lateTail) => {
+    // quiet: skip the slack / late-night warnings — used for split-portion slots, whose
+    // warnings the legacy wrapper discarded (portions are pinned to their own deadlines).
+    const computeSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind, lateTail, quiet) => {
       const D = new Date(deadline);
       let firstBakeStart, lastBakeEnd, packageReady;
       const preset = bakeTimePref ? BAKE_TIME_PRESETS[bakeTimePref] : null;
@@ -12069,7 +12071,7 @@ ${notesHtml}
         lastBakeEnd = addMinutes(firstBakeStart, bakeTotalMin);
         packageReady = addMinutes(lastBakeEnd, postBakeMin);
         const slackHr = (D - packageReady) / (1000 * 60 * 60);
-        if (slackHr > 0.1) {
+        if (slackHr > 0.1 && !quiet) {
           warnings.push({ msg: `${kindLabel} will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind });
         }
       } else {
@@ -12077,7 +12079,7 @@ ${notesHtml}
         firstBakeStart = addMinutes(lastBakeEnd, -bakeTotalMin);
         packageReady = D;
       }
-      if (isLateNightHour(firstBakeStart.getHours())) {
+      if (isLateNightHour(firstBakeStart.getHours()) && !quiet) {
         warnings.push({ msg: `${kindLabel} bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or ${lateTail}`, issue: 'bake-late', kind });
       }
       return { firstBakeStart, lastBakeEnd, packageReady };
@@ -12802,6 +12804,26 @@ ${notesHtml}
           x.firstFold = addMinutes(x.lastFold, -(loafAgg.foldsCount - 1) * loafAgg.foldIntervalMin);
           x.mix = addMinutes(x.firstFold, -loafAgg.foldIntervalMin);
           x.autolyse = addMinutes(x.mix, -loafAgg.autolyseMin);
+        });
+      }
+      // Native split portions (G2 scaffolding, inert — nothing consumes these yet): when
+      // this group carries a split bake (base recipe + __sharePrep clones, each with its
+      // own deadline), assemble one portion per recipe with its own deck plan and bake
+      // slot. All prep is shared (the group schedules at the earliest deadline); only the
+      // cold proof and bake diverge per portion. Quiet slots: the legacy wrapper discarded
+      // per-portion slack/late warnings, so the native slots skip them too.
+      if (loafRecipes.some(r => r.__sharePrep)) {
+        gLoaf.portions = loafRecipes.filter(r => (plan[r.id] || 0) > 0).map(r => {
+          const count = plan[r.id] || 0;
+          const pPlan = planOvenLoads([r], { [r.id]: count });
+          const pBatches = pPlan.length;
+          const pTotalMin = pBatches * loafAgg.bakeMin + Math.max(0, pBatches - 1) * SCHED.REHEAT_MIN;
+          const pDeadline = deadlineForRecipe(r, loafDeadline);
+          return {
+            recipe: r, recipeId: r.id, count, deadline: pDeadline,
+            ovenPlan: pPlan, batches: pBatches, bakeTotalMin: pTotalMin,
+            slot: computeSlot(pDeadline, loafBakeTime, pTotalMin, gLoaf.coolMin, 'Bread', 'loaf', 'picking a different bake-time preference.', true),
+          };
         });
       }
       // Attach the group-shaped view the per-group emission blocks read (single group
@@ -14376,6 +14398,7 @@ ${notesHtml}
     const _doughs = buildDoughs(recipes, plan, r => deadlineForRecipe(r, _doughFallbackDl[getProcessType(r)]));
     return {
       _doughs,
+      _loafGroups: loafGroups,
       totalLoaves, totalMuffins, totalBagels, totalFocaccia, totalSimple, totalEnriched, batches, events, warnings,
       sideColumns, bagelColumns, muffinColumns, focacciaColumns, loafColumns,
       build1Opt, build2Opt,

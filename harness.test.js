@@ -3406,5 +3406,43 @@ function da(label, cond) { console.log(`  [dough] ${cond ? 'PASS' : 'FAIL'} — 
 }
 allOk &= daOk;
 
+// ---- Native split portions (G2 scaffolding): the loaf group assembles per-portion
+// slots that must agree with the bake times the legacy wrapper actually emits. ----
+console.log('\nNative portion scaffolding assertions:');
+let npOk = true;
+function np(label, cond) { console.log(`  [portion] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  api.__setOvens([]); api.__setContainers([]); api.saveBakeInstances({});
+  const far = new Date(); far.setDate(far.getDate() + 4); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(15, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.batard]: 20 }); seedPlan({ [SEED.batard]: 20 });
+  api.addBakeInstance(SEED.batard, true);
+  const inst = api.loadBakeInstances()[SEED.batard][0];
+  api.setBakeInstanceField(SEED.batard, inst.id, 'count', 4);
+  api.setBakeInstanceField(SEED.batard, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  const sr = api.__sr();
+  const g = (sr._loafGroups || [])[0];
+  const portions = (g && g.portions) || [];
+  npOk &= np('split plan: the loaf group assembles one portion per recipe', portions.length === 2);
+  npOk &= np('portions carry the split counts (16 + 4)',
+    portions.some(p => p.count === 16) && portions.some(p => p.count === 4));
+  npOk &= np('portions carry their own deadlines (5 hr apart)',
+    portions.length === 2 && Math.abs(portions[1].deadline - portions[0].deadline) === 5 * 3600000);
+  // Fidelity: with no oven overlap, the later portion's scaffold slot must equal the
+  // bake time the wrapper's per-portion engine call actually emitted.
+  const later = portions.find(p => p.count === 4);
+  const bakes = sr.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title)).sort((a, b) => a.time - b.time);
+  npOk &= np('later portion scaffold slot matches the wrapper-emitted later bake time',
+    !!later && bakes.length >= 2 && bakes[bakes.length - 1].time.getTime() === later.slot.firstBakeStart.getTime());
+  npOk &= np('no portion slack/late warnings leak from the scaffold (quiet slots)',
+    !(sr.warnings || []).some(w => w.issue === 'slack' || w.issue === 'bake-late'));
+  api.saveBakeInstances({});
+}
+allOk &= npOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
