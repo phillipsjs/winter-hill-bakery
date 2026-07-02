@@ -4,7 +4,23 @@
   "stage": "bulk"
  },
  {
+  "pattern": "Bagel dough bulk ferment — Onion Bagels",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Bagel dough bulk ferment — Sourdough Bagels",
+  "stage": "bulk"
+ },
+ {
   "pattern": "Bagels into fridge — cold proof",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Bagels into fridge — cold proof — Onion Bagels",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Bagels into fridge — cold proof — Sourdough Bagels",
   "stage": "chill"
  },
  {
@@ -192,6 +208,14 @@
   "stage": "mix"
  },
  {
+  "pattern": "Mix bagel dough — Onion Bagels",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix bagel dough — Sourdough Bagels",
+  "stage": "mix"
+ },
+ {
   "pattern": "Mix focaccia dough",
   "stage": "mix"
  },
@@ -204,7 +228,23 @@
   "stage": "mix"
  },
  {
+  "pattern": "Mix muffin dough — Rye Muffins",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix muffin dough — Sourdough English Muffins",
+  "stage": "mix"
+ },
+ {
   "pattern": "Muffin dough bulk ferment",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Muffin dough bulk ferment — Rye Muffins",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Muffin dough bulk ferment — Sourdough English Muffins",
   "stage": "bulk"
  },
  {
@@ -212,7 +252,23 @@
   "stage": "chill"
  },
  {
+  "pattern": "Muffins into fridge — cold proof — Rye Muffins",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Muffins into fridge — cold proof — Sourdough English Muffins",
+  "stage": "chill"
+ },
+ {
   "pattern": "Muffins out of fridge",
+  "stage": "warmup"
+ },
+ {
+  "pattern": "Muffins out of fridge — Rye Muffins",
+  "stage": "warmup"
+ },
+ {
+  "pattern": "Muffins out of fridge — Sourdough English Muffins",
   "stage": "warmup"
  },
  {
@@ -248,11 +304,27 @@
   "stage": "shape"
  },
  {
+  "pattern": "Shape bagels — Onion Bagels",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Shape bagels — Sourdough Bagels",
+  "stage": "shape"
+ },
+ {
   "pattern": "Shape focaccia — transfer to pans",
   "stage": "shape"
  },
  {
   "pattern": "Shape muffins",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Shape muffins — Rye Muffins",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Shape muffins — Sourdough English Muffins",
   "stage": "shape"
  },
  {

@@ -362,6 +362,33 @@ const FIXTURES = [
     els['bake-time-default-input'].value = 'morning';
     setPlan({ [SEED.batard]: 8 });
   } },
+  { name: 'muffin-divergent', setup() {
+    // Two muffin recipes in ONE deadline group with different proofing profiles →
+    // the divergent per-recipe chain (per-recipe mix→bulk→shape→fridge, suffixed).
+    const base = rec(SEED.muffin);
+    const m2 = deepCopy(base);
+    m2.id = 'fx-muffin2'; m2.name = 'Rye Muffins';
+    m2.coldProofHr = '6'; m2.bulkMin = 90;
+    const water = m2.ingredients.find(i => /water/i.test(i.name));
+    if (water) water.pct = (Number(water.pct) || 70) + 5; // different dough too
+    api.__recipes().push(m2);
+    // Containers + pans so the bulk-container and pan claims (and their relabel path) emit.
+    api.__setContainers([{ id: 'c1', name: 'Cambro', maxDoughGrams: 12000, quantity: 3, processTag: 'any' }]);
+    api.__setPans([{ id: 'p1', name: 'Muffin tin', capacity: 12, quantity: 4, recipeIds: [] }]);
+    setPlan({ [SEED.muffin]: 24, 'fx-muffin2': 12 });
+  } },
+  { name: 'bagel-divergent', setup() {
+    const base = rec(SEED.bagel);
+    const b2 = deepCopy(base);
+    b2.id = 'fx-bagel2'; b2.name = 'Onion Bagels';
+    b2.coldProofHr = '8'; b2.bulkMin = 60;
+    const water = b2.ingredients.find(i => /water/i.test(i.name));
+    if (water) water.pct = (Number(water.pct) || 60) + 5;
+    api.__recipes().push(b2);
+    api.__setContainers([{ id: 'c1', name: 'Cambro', maxDoughGrams: 12000, quantity: 3, processTag: 'any' }]);
+    api.__setPans([{ id: 'p1', name: 'Sheet tray', capacity: 12, quantity: 4, recipeIds: [] }]);
+    setPlan({ [SEED.bagel]: 12, 'fx-bagel2': 12 });
+  } },
   { name: 'stages-vs-flat-diverged', setup() {
     // Stage list says bulk 300 min; flat field left '' (template default). Today the bread
     // engines read the FLAT spec (240); the Phase H stages-first flip changes this fixture.
