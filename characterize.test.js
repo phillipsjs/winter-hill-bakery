@@ -389,6 +389,13 @@ const FIXTURES = [
     api.__setPans([{ id: 'p1', name: 'Sheet tray', capacity: 12, quantity: 4, recipeIds: [] }]);
     setPlan({ [SEED.bagel]: 12, 'fx-bagel2': 12 });
   } },
+  { name: 'loaf-divergent-proofs', setup() {
+    // Two distinct loaf doughs at one deadline with DIFFERENT cold proofs → the
+    // per-container divergent prep path (proofingDivergent + ctTimeline).
+    rec(SEED.batard).coldProofHr = '10';
+    rec(SEED.boule).coldProofHr = '16';
+    setPlan({ [SEED.batard]: 8, [SEED.boule]: 6 });
+  } },
   { name: 'stages-vs-flat-diverged', setup() {
     // Stage list says bulk 300 min; flat field left '' (template default). Today the bread
     // engines read the FLAT spec (240); the Phase H stages-first flip changes this fixture.

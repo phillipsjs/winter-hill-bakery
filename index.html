@@ -13350,50 +13350,81 @@ ${notesHtml}
       mixBatchContents: loafBatchContents,
     });
     const autolyseRestMin = Math.max(0, loafAgg.autolyseMin - SCHED.AUTOLYSE_ACTIVE_MIN);
+    // One loaf prep chain (autolyse → mix → folds → bulk) walked backward from a shape
+    // start by the unified walker; the two presentations (shared aggregate vs per-container
+    // divergent) are expander sets. The fold expander fans out END-anchored (last fold at
+    // bulk start, one interval of rest after the mix); it pushes k-DESCENDING because the
+    // buffer flushes reversed to restore the legacy chronological push order (frozen output).
+    const emitLoafPrepChain = (shapeAnchor, stages, present) => {
+      const buf = [];
+      walkStagesBackward(shapeAnchor, {
+        recipe: loafRecipes[0], batchUnits: 0, batchIndex: 0, numBatches: 1,
+        suffix: '', unitsLabel: '', process: 'loaf', columnKey: undefined,
+        stages,
+        pushEvent: (ev) => buf.push(ev),
+        addClaim, ingsForUnits,
+        expanders: present,
+      });
+      buf.reverse().forEach(ev => events.push(ev));
+    };
+    const loafFoldExpander = (foldTitle, foldDetail) => (s, ev, x) => {
+      for (let k = loafAgg.foldsCount - 1; k >= 0; k--) {
+        const isLast = k === loafAgg.foldsCount - 1;
+        x.pushEvent(Object.assign({ time: addMinutes(x.cursor, -(loafAgg.foldsCount - 1 - k) * loafAgg.foldIntervalMin) }, foldTitle(k, isLast), { detail: foldDetail(isLast) }));
+      }
+      return false;
+    };
     if (!proofingDivergent) {
-    events.push({
-      time: autolyseStart,
-      title: 'Start autolyse — flour + water only',
-      detail: (numContainers > 1
-        ? `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix × ${numContainers} containers = ${SCHED.AUTOLYSE_ACTIVE_MIN * numContainers} min active · then ${autolyseRestMin} min rest`
-        : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`) + sharedContainerStr,
-      process: 'loaf', colDetails: prepColDetails, mixBatchContents: loafBatchContents, equipStrip: sharedContainerStr,
+    // Shared aggregate chain: multi-container active time is folded into the stage
+    // durations (each extra container adds one active burst to autolyse and mix).
+    const sharedActiveStr = numContainers > 1
+      ? `${SCHED.FOLD_ACTIVE_MIN} min × ${numContainers} containers = ${SCHED.FOLD_ACTIVE_MIN * numContainers} min active`
+      : `${SCHED.FOLD_ACTIVE_MIN} min active`;
+    emitLoafPrepChain(shapePhaseStart, [
+      { type: 'autolyse', duration: { kind: 'fixed', min: loafAgg.autolyseMin + (numContainers - 1) * SCHED.AUTOLYSE_ACTIVE_MIN } },
+      { type: 'mix', duration: { kind: 'fixed', min: (numContainers - 1) * SCHED.SALT_LEVAIN_MIX_MIN } },
+      { type: 'fold', duration: { kind: 'countInterval', count: loafAgg.foldsCount, intervalMin: loafAgg.foldIntervalMin } },
+      { type: 'bulk', duration: { kind: 'fixed', min: loafAgg.bulkMin } },
+    ], {
+      autolyse: (s, ev, x) => {
+        x.pushEvent({
+          time: ev.time,
+          title: 'Start autolyse — flour + water only',
+          detail: (numContainers > 1
+            ? `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix × ${numContainers} containers = ${SCHED.AUTOLYSE_ACTIVE_MIN * numContainers} min active · then ${autolyseRestMin} min rest`
+            : `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`) + sharedContainerStr,
+          process: 'loaf', colDetails: prepColDetails, mixBatchContents: loafBatchContents, equipStrip: sharedContainerStr,
+        });
+        return false;
+      },
+      mix: (s, ev, x) => {
+        x.pushEvent({
+          time: ev.time,
+          title: 'Mix in salt + ripe levain',
+          detail: (numContainers > 1
+            ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${loafAgg.foldIntervalMin} min rest before fold 1`
+            : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${loafAgg.foldIntervalMin} min rest before fold 1`) + sharedContainerStr,
+          process: 'loaf', colDetails: prepColDetails, mixBatchContents: loafBatchContents, equipStrip: sharedContainerStr,
+        });
+        return false;
+      },
+      fold: loafFoldExpander(
+        (k, isLast) => ({ title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}`, process: 'loaf', colDetails: prepColDetails, equipStrip: sharedContainerStr }),
+        (isLast) => (isLast ? `${sharedActiveStr} · last fold, then bulk ferment` : `${sharedActiveStr} · next fold in ${loafAgg.foldIntervalMin} min`) + sharedContainerStr,
+      ),
+      bulk: (s, ev, x) => {
+        if (loafAgg.bulkMin > 0) {
+          const loafBulkHrLabel = (loafAgg.bulkMin / 60).toFixed(loafAgg.bulkMin % 60 === 0 ? 0 : 1);
+          x.pushEvent({
+            time: ev.time, timeEnd: x.cursor,
+            title: 'Bulk ferment',
+            detail: `${loafBulkHrLabel} hr warm bulk ferment until ready to shape` + sharedContainerStr,
+            process: 'loaf', stage: 'proof', colDetails: prepColDetails, equipStrip: sharedContainerStr,
+          });
+        }
+        return false;
+      },
     });
-    events.push({
-      time: mixTime,
-      title: 'Mix in salt + ripe levain',
-      detail: (numContainers > 1
-        ? `${SCHED.SALT_LEVAIN_MIX_MIN} min mix × ${numContainers} containers = ${SCHED.SALT_LEVAIN_MIX_MIN * numContainers} min active · ${loafAgg.foldIntervalMin} min rest before fold 1`
-        : `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${loafAgg.foldIntervalMin} min rest before fold 1`) + sharedContainerStr,
-      process: 'loaf', colDetails: prepColDetails, mixBatchContents: loafBatchContents, equipStrip: sharedContainerStr,
-    });
-    for (let k = 0; k < loafAgg.foldsCount; k++) {
-      const foldTime = addMinutes(firstFoldTime, k * loafAgg.foldIntervalMin);
-      const isLast = k === loafAgg.foldsCount - 1;
-      const activeStr = numContainers > 1
-        ? `${SCHED.FOLD_ACTIVE_MIN} min × ${numContainers} containers = ${SCHED.FOLD_ACTIVE_MIN * numContainers} min active`
-        : `${SCHED.FOLD_ACTIVE_MIN} min active`;
-      events.push({
-        time: foldTime,
-        title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}`,
-        detail: (isLast
-          ? `${activeStr} · last fold, then bulk ferment`
-          : `${activeStr} · next fold in ${loafAgg.foldIntervalMin} min`) + sharedContainerStr,
-        process: 'loaf', colDetails: prepColDetails, equipStrip: sharedContainerStr,
-      });
-    }
-    // Bulk ferment as its own (proof-stage) step: the warm rise from the last fold to
-    // shaping. Previously folded into the last fold's detail.
-    if (loafAgg.bulkMin > 0) {
-      const loafBulkHrLabel = (loafAgg.bulkMin / 60).toFixed(loafAgg.bulkMin % 60 === 0 ? 0 : 1);
-      events.push({
-        time: lastFoldTime,
-        timeEnd: shapePhaseStart,
-        title: 'Bulk ferment',
-        detail: `${loafBulkHrLabel} hr warm bulk ferment until ready to shape` + sharedContainerStr,
-        process: 'loaf', stage: 'proof', colDetails: prepColDetails, equipStrip: sharedContainerStr,
-      });
-    }
     } else {
       // Per-dough prep: each container (its own dough/column) gets its own autolyse→mix→folds→
       // bulk, anchored to its own shape start — so different cold proofs/bulks stay independent.
@@ -13405,33 +13436,44 @@ ${notesHtml}
           : `container ${ci + 1} of ${numContainers}`;
         const sfx = ` (${cLabel}: ${contentsLabel})`;
         const attr = loafColAttrFor(c.contents, c.colKey);
-        events.push({
-          time: t.autolyse, title: `Start autolyse — flour + water only${sfx}`,
-          detail: `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`,
-          process: 'loaf', ...attr, equipStripTitle: sfx,
+        emitLoafPrepChain(t.shapeStart, [
+          { type: 'autolyse', duration: { kind: 'fixed', min: loafAgg.autolyseMin } },
+          { type: 'mix', duration: { kind: 'fixed', min: 0 } },
+          { type: 'fold', duration: { kind: 'countInterval', count: loafAgg.foldsCount, intervalMin: loafAgg.foldIntervalMin } },
+          { type: 'bulk', duration: { kind: 'fixed', min: t.bulk } },
+        ], {
+          autolyse: (s, ev, x) => {
+            x.pushEvent({
+              time: ev.time, title: `Start autolyse — flour + water only${sfx}`,
+              detail: `${SCHED.AUTOLYSE_ACTIVE_MIN} min mix · then ${autolyseRestMin} min rest`,
+              process: 'loaf', ...attr, equipStripTitle: sfx,
+            });
+            return false;
+          },
+          mix: (s, ev, x) => {
+            x.pushEvent({
+              time: ev.time, title: `Mix in salt + ripe levain${sfx}`,
+              detail: `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${loafAgg.foldIntervalMin} min rest before fold 1`,
+              process: 'loaf', ...attr, equipStripTitle: sfx,
+            });
+            return false;
+          },
+          fold: loafFoldExpander(
+            (k, isLast) => ({ title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}${sfx}`, process: 'loaf', ...attr, equipStripTitle: sfx }),
+            (isLast) => isLast ? `${SCHED.FOLD_ACTIVE_MIN} min active · last fold, then bulk ferment` : `${SCHED.FOLD_ACTIVE_MIN} min active · next fold in ${loafAgg.foldIntervalMin} min`,
+          ),
+          bulk: (s, ev, x) => {
+            if (t.bulk > 0) {
+              const hrLabel = (t.bulk / 60).toFixed(t.bulk % 60 === 0 ? 0 : 1);
+              x.pushEvent({
+                time: ev.time, timeEnd: x.cursor, title: `Bulk ferment${sfx}`,
+                detail: `${hrLabel} hr warm bulk ferment until ready to shape`,
+                process: 'loaf', stage: 'proof', ...attr, equipStripTitle: sfx,
+              });
+            }
+            return false;
+          },
         });
-        events.push({
-          time: t.mix, title: `Mix in salt + ripe levain${sfx}`,
-          detail: `${SCHED.SALT_LEVAIN_MIX_MIN} min mix · ${loafAgg.foldIntervalMin} min rest before fold 1`,
-          process: 'loaf', ...attr, equipStripTitle: sfx,
-        });
-        for (let k = 0; k < loafAgg.foldsCount; k++) {
-          const isLast = k === loafAgg.foldsCount - 1;
-          events.push({
-            time: addMinutes(t.firstFold, k * loafAgg.foldIntervalMin),
-            title: `Stretch & fold ${k + 1} of ${loafAgg.foldsCount}${isLast ? ' (last)' : ''}${sfx}`,
-            detail: isLast ? `${SCHED.FOLD_ACTIVE_MIN} min active · last fold, then bulk ferment` : `${SCHED.FOLD_ACTIVE_MIN} min active · next fold in ${loafAgg.foldIntervalMin} min`,
-            process: 'loaf', ...attr, equipStripTitle: sfx,
-          });
-        }
-        if (t.bulk > 0) {
-          const hrLabel = (t.bulk / 60).toFixed(t.bulk % 60 === 0 ? 0 : 1);
-          events.push({
-            time: t.lastFold, timeEnd: t.shapeStart, title: `Bulk ferment${sfx}`,
-            detail: `${hrLabel} hr warm bulk ferment until ready to shape`,
-            process: 'loaf', stage: 'proof', ...attr, equipStripTitle: sfx,
-          });
-        }
       });
     }
     } // end if (totalLoaves > 0) loaf prep events

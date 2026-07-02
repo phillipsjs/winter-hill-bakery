@@ -68,6 +68,14 @@
   "stage": "bulk"
  },
  {
+  "pattern": "Bulk ferment (container N of N: N × Sourdough Batard)",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Bulk ferment (container N of N: N × Sourdough Boule)",
+  "stage": "bulk"
+ },
+ {
   "pattern": "Bulk rise — batch N of N",
   "stage": "bulk"
  },
@@ -224,6 +232,14 @@
   "stage": "mix"
  },
  {
+  "pattern": "Mix in salt + ripe levain (container N of N: N × Sourdough Batard)",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix in salt + ripe levain (container N of N: N × Sourdough Boule)",
+  "stage": "mix"
+ },
+ {
   "pattern": "Mix muffin dough",
   "stage": "mix"
  },
@@ -332,6 +348,14 @@
   "stage": "autolyse"
  },
  {
+  "pattern": "Start autolyse — flour + water only (container N of N: N × Sourdough Batard)",
+  "stage": "autolyse"
+ },
+ {
+  "pattern": "Start autolyse — flour + water only (container N of N: N × Sourdough Boule)",
+  "stage": "autolyse"
+ },
+ {
   "pattern": "Start preshape",
   "stage": "preshape"
  },
@@ -356,11 +380,27 @@
   "stage": "fold"
  },
  {
+  "pattern": "Stretch & fold N of N (container N of N: N × Sourdough Batard)",
+  "stage": "fold"
+ },
+ {
+  "pattern": "Stretch & fold N of N (container N of N: N × Sourdough Boule)",
+  "stage": "fold"
+ },
+ {
   "pattern": "Stretch & fold N of N (last)",
   "stage": "fold"
  },
  {
   "pattern": "Stretch & fold N of N (last) — focaccia",
+  "stage": "fold"
+ },
+ {
+  "pattern": "Stretch & fold N of N (last) (container N of N: N × Sourdough Batard)",
+  "stage": "fold"
+ },
+ {
+  "pattern": "Stretch & fold N of N (last) (container N of N: N × Sourdough Boule)",
   "stage": "fold"
  },
  {
