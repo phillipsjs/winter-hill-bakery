@@ -12619,6 +12619,38 @@ ${notesHtml}
         }
       });
 
+      // Deadline-fidelity pass (optimizer): when an oven's sequence still leaves a bake
+      // ending past its deadline, pull the EARLIER bakes earlier instead of pushing the
+      // later ones late — an early bake just cools longer (less fresh but ON TIME), which
+      // beats missing a deadline. Working backward from the last bake, each slot's latest
+      // feasible start is one temp-change buffer before the next bake; a slot already
+      // early enough is untouched, so conflict-free ovens never change.
+      ovenDefs.forEach(o => {
+        const list = assigned[o.id].slice().sort((a, b) => a.desiredFirst - b.desiredFirst);
+        if (!list.some(it => it.deadlineMs != null && it.s.packageReady.getTime() > it.deadlineMs)) return;
+        let nextStartMs = null, nextTemp = null, changed = false;
+        for (let i = list.length - 1; i >= 0; i--) {
+          const it = list[i];
+          let startMs = it.desiredFirst.getTime();
+          if (nextStartMs != null) {
+            const buf = ovenTempChangeMin(it.temp, nextTemp);
+            const latest = nextStartMs - buf * 60000 - it.durationMs;
+            if (startMs > latest) { startMs = latest; changed = true; it._pulledEarlier = true; }
+          }
+          it.desiredFirst = new Date(startMs);
+          nextStartMs = startMs; nextTemp = it.temp;
+        }
+        if (!changed) return;
+        sequenceOven(o.id);
+        list.filter(it => it._pulledEarlier).forEach(it => {
+          const earlyMin = it.deadlineMs != null ? Math.round((it.deadlineMs - it.s.packageReady.getTime()) / 60000) : null;
+          warnings.push({
+            msg: `${recipeLabel(it.kind)} bakes earlier so everything fits in ${multiOven ? ovenName(o.id) : 'the oven'}${earlyMin != null && earlyMin > 0 ? ` — ready ~${earlyMin < 90 ? `${earlyMin} min` : `${(earlyMin / 60).toFixed(1)} hr`} before its deadline` : ''}.`,
+            issue: 'oven-pulled-earlier', kind: it.kind, type: 'info',
+          });
+        });
+      });
+
       // Final conflict warnings, from the committed assignment.
       ovenDefs.forEach(o => {
         const list = assigned[o.id].slice().sort((a, b) => a.s.firstBakeStart - b.s.firstBakeStart);

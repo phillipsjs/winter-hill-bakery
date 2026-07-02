@@ -12,11 +12,11 @@
  },
  "events": [
   {
-   "t": "2026-01-15T14:00:00.000Z",
-   "tEnd": "2026-01-15T17:00:00.000Z",
-   "title": "Levain Build 1 — first refresh (loaves)",
+   "t": "2026-01-15T15:00:00.000Z",
+   "tEnd": "2026-01-15T18:00:00.000Z",
+   "title": "Levain Build 1 — first refresh",
    "detail": "1:1:1 ratio · 2 min mix · ripens in 6–9 hr",
-   "process": "loaf",
+   "process": "shared",
    "columnKey": null,
    "colDetails": null,
    "stage": null,
@@ -32,51 +32,11 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-15T18:00:00.000Z",
-   "tEnd": "2026-01-15T23:00:00.000Z",
-   "title": "Levain Build 1 — first refresh (muffins)",
-   "detail": "1:5:5 ratio · 2 min mix · ripens in 15–20 hr (slower ratio chosen to avoid a late-night refresh)",
-   "process": "muffin",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": "",
-   "equipStripTitle": null,
-   "container": "",
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-15T18:30:00.000Z",
-   "tEnd": "2026-01-15T23:30:00.000Z",
-   "title": "Levain Build 1 — first refresh (bagels)",
-   "detail": "1:5:5 ratio · 2 min mix · ripens in 15–20 hr (slower ratio chosen to avoid a late-night refresh)",
-   "process": "bagel",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": "",
-   "equipStripTitle": null,
-   "container": "",
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-15T21:00:00.000Z",
-   "tEnd": "2026-01-16T01:00:00.000Z",
-   "title": "Levain Build 2 — final build (loaves)",
+   "t": "2026-01-15T22:00:00.000Z",
+   "tEnd": "2026-01-16T02:00:00.000Z",
+   "title": "Levain Build 2 — final build",
    "detail": "1:5:5 ratio · 2 min mix · ripens in 12–16 hr (slower ratio chosen to avoid a late-night refresh)",
-   "process": "loaf",
+   "process": "shared",
    "columnKey": null,
    "colDetails": null,
    "stage": null,
@@ -92,7 +52,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T11:39:00.000Z",
+   "t": "2026-01-16T12:34:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "10 min active · 2 recipes · weigh per batch (2 containers)",
@@ -131,7 +91,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T11:49:00.000Z",
+   "t": "2026-01-16T12:44:00.000Z",
    "tEnd": null,
    "title": "Start autolyse — flour + water only",
    "detail": "10 min mix × 2 containers = 20 min active · then 50 min rest · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
@@ -170,7 +130,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T12:59:00.000Z",
+   "t": "2026-01-16T13:54:00.000Z",
    "tEnd": null,
    "title": "Mix in salt + ripe levain",
    "detail": "10 min mix × 2 containers = 20 min active · 30 min rest before fold 1 · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
@@ -209,47 +169,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T13:00:00.000Z",
-   "tEnd": "2026-01-16T15:00:00.000Z",
-   "title": "Levain Build 2 — final build (muffins)",
-   "detail": "1:1:1 ratio · 2 min mix · ripens in 4–6 hr",
-   "process": "muffin",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": "",
-   "equipStripTitle": null,
-   "container": "",
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T13:30:00.000Z",
-   "tEnd": "2026-01-16T15:30:00.000Z",
-   "title": "Levain Build 2 — final build (bagels)",
-   "detail": "1:1:1 ratio · 2 min mix · ripens in 4–6 hr",
-   "process": "bagel",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": "",
-   "equipStripTitle": null,
-   "container": "",
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T13:39:00.000Z",
+   "t": "2026-01-16T14:34:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 1 of 5",
    "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
@@ -269,7 +189,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:09:00.000Z",
+   "t": "2026-01-16T15:04:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 2 of 5",
    "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
@@ -289,7 +209,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:39:00.000Z",
+   "t": "2026-01-16T15:34:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 3 of 5",
    "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
@@ -309,67 +229,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:09:00.000Z",
-   "tEnd": null,
-   "title": "Stretch & fold 4 of 5",
-   "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
-   "process": "loaf",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": " · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
-   "equipStripTitle": null,
-   "container": null,
-   "activeStep": null,
-   "activeMin": 10,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T15:39:00.000Z",
-   "tEnd": null,
-   "title": "Stretch & fold 5 of 5 (last)",
-   "detail": "5 min × 2 containers = 10 min active · last fold, then bulk ferment · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
-   "process": "loaf",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": " · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
-   "equipStripTitle": null,
-   "container": null,
-   "activeStep": null,
-   "activeMin": 10,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T15:39:00.000Z",
-   "tEnd": "2026-01-16T19:39:00.000Z",
-   "title": "Bulk ferment",
-   "detail": "4 hr warm bulk ferment until ready to shape · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
-   "process": "loaf",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": "proof",
-   "stageType": null,
-   "equip": null,
-   "equipStrip": " · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
-   "equipStripTitle": null,
-   "container": null,
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T18:42:00.000Z",
+   "t": "2026-01-16T15:37:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active",
@@ -389,10 +249,10 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T18:47:00.000Z",
+   "t": "2026-01-16T15:42:00.000Z",
    "tEnd": null,
    "title": "Mix muffin dough",
-   "detail": "10 min mix · (uses muffin-specific Build 2 levain)",
+   "detail": "10 min mix · (uses the shared ripe Build 2 levain)",
    "process": "muffin",
    "columnKey": "muffin",
    "colDetails": null,
@@ -411,10 +271,10 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T18:57:00.000Z",
+   "t": "2026-01-16T15:52:00.000Z",
    "tEnd": null,
    "title": "Muffin dough bulk ferment",
-   "detail": "2 hr bulk ferment (uses muffin-specific Build 2 levain)",
+   "detail": "2 hr bulk ferment (uses the shared ripe Build 2 levain)",
    "process": "muffin",
    "columnKey": "muffin",
    "colDetails": null,
@@ -431,7 +291,27 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T19:19:00.000Z",
+   "t": "2026-01-16T16:04:00.000Z",
+   "tEnd": null,
+   "title": "Stretch & fold 4 of 5",
+   "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
+   "process": "loaf",
+   "columnKey": null,
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": " · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T16:14:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active · weigh per batch (2 mixer loads)",
@@ -451,10 +331,10 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T19:24:00.000Z",
+   "t": "2026-01-16T16:19:00.000Z",
    "tEnd": null,
    "title": "Mix bagel dough",
-   "detail": "10 min mix × 2 batches = 20 min active (mixer holds max 10 bagels; all batches go into the same container for proofing) (uses bagel-specific Build 2 levain)",
+   "detail": "10 min mix × 2 batches = 20 min active (mixer holds max 10 bagels; all batches go into the same container for proofing) (uses the shared ripe Build 2 levain)",
    "process": "bagel",
    "columnKey": "bagel",
    "colDetails": null,
@@ -473,19 +353,19 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T19:39:00.000Z",
+   "t": "2026-01-16T16:34:00.000Z",
    "tEnd": null,
-   "title": "Start preshape (container 1 of 2: 8 × Sourdough Batard)",
-   "detail": "Weigh & divide: 675 g each · 4 min × 8 loaves = 32 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
+   "title": "Stretch & fold 5 of 5 (last)",
+   "detail": "5 min × 2 containers = 10 min active · last fold, then bulk ferment · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
    "process": "loaf",
-   "columnKey": "loaf",
+   "columnKey": null,
    "colDetails": null,
    "stage": null,
    "stageType": null,
    "equip": null,
-   "equipStrip": null,
-   "equipStripTitle": " (container 1 of 2: 8 × Sourdough Batard)",
-   "container": "container 1 of 2: 8 × Sourdough Batard",
+   "equipStrip": " · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
+   "equipStripTitle": null,
+   "container": null,
    "activeStep": null,
    "activeMin": 10,
    "mixBatchCount": null,
@@ -493,10 +373,30 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T19:44:00.000Z",
-   "tEnd": "2026-01-16T21:44:00.000Z",
+   "t": "2026-01-16T16:34:00.000Z",
+   "tEnd": "2026-01-16T20:34:00.000Z",
+   "title": "Bulk ferment",
+   "detail": "4 hr warm bulk ferment until ready to shape · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
+   "process": "loaf",
+   "columnKey": null,
+   "colDetails": null,
+   "stage": "proof",
+   "stageType": null,
+   "equip": null,
+   "equipStrip": " · container 1 of 2: 8 × Sourdough Batard | container 2 of 2: 6 × Sourdough Boule",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T16:39:00.000Z",
+   "tEnd": "2026-01-16T18:39:00.000Z",
    "title": "Bagel dough bulk ferment",
-   "detail": "2 hr bulk ferment (uses bagel-specific Build 2 levain)",
+   "detail": "2 hr bulk ferment (uses the shared ripe Build 2 levain)",
    "process": "bagel",
    "columnKey": "bagel",
    "colDetails": null,
@@ -513,67 +413,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:11:00.000Z",
-   "tEnd": null,
-   "title": "Final shape (container 1 of 2: 8 × Sourdough Batard)",
-   "detail": "3 min × 8 loaves = 24 min total",
-   "process": "loaf",
-   "columnKey": "loaf",
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": null,
-   "equipStripTitle": " (container 1 of 2: 8 × Sourdough Batard)",
-   "container": "Bannetons: 8 × Sourdough Batard",
-   "activeStep": null,
-   "activeMin": 10,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T20:35:00.000Z",
-   "tEnd": null,
-   "title": "Start preshape (container 2 of 2: 6 × Sourdough Boule)",
-   "detail": "Weigh & divide: 850 g each · 4 min × 6 loaves = 24 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
-   "process": "loaf",
-   "columnKey": "loaf",
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": null,
-   "equipStripTitle": " (container 2 of 2: 6 × Sourdough Boule)",
-   "container": "container 2 of 2: 6 × Sourdough Boule",
-   "activeStep": null,
-   "activeMin": 10,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T20:35:00.000Z",
-   "tEnd": null,
-   "title": "Into fridge (container 1 of 2: 8 × Sourdough Batard)",
-   "detail": "16 hr cold proof",
-   "process": "loaf",
-   "columnKey": "loaf",
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": null,
-   "equipStripTitle": " (container 1 of 2: 8 × Sourdough Batard)",
-   "container": "Bannetons: 8 × Sourdough Batard",
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T20:57:00.000Z",
+   "t": "2026-01-16T17:52:00.000Z",
    "tEnd": null,
    "title": "Shape muffins",
    "detail": "1 min × 24 muffins = 24 min total · 80 g each",
@@ -593,47 +433,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:59:00.000Z",
-   "tEnd": null,
-   "title": "Final shape (container 2 of 2: 6 × Sourdough Boule)",
-   "detail": "3 min × 6 loaves = 18 min total",
-   "process": "loaf",
-   "columnKey": "loaf",
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": null,
-   "equipStripTitle": " (container 2 of 2: 6 × Sourdough Boule)",
-   "container": "Bannetons: 6 × Sourdough Boule",
-   "activeStep": null,
-   "activeMin": 10,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T21:17:00.000Z",
-   "tEnd": null,
-   "title": "Into fridge (container 2 of 2: 6 × Sourdough Boule)",
-   "detail": "15 hr 18 min cold proof",
-   "process": "loaf",
-   "columnKey": "loaf",
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": null,
-   "equipStripTitle": " (container 2 of 2: 6 × Sourdough Boule)",
-   "container": "Bannetons: 6 × Sourdough Boule",
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T21:21:00.000Z",
+   "t": "2026-01-16T18:16:00.000Z",
    "tEnd": null,
    "title": "Muffins into fridge — cold proof",
    "detail": "16 hr in fridge",
@@ -653,7 +453,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T21:44:00.000Z",
+   "t": "2026-01-16T18:39:00.000Z",
    "tEnd": null,
    "title": "Shape bagels",
    "detail": "2 min × 12 bagels = 24 min total · divide into 138 g each",
@@ -673,7 +473,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T22:08:00.000Z",
+   "t": "2026-01-16T19:03:00.000Z",
    "tEnd": null,
    "title": "Bagels into fridge — cold proof",
    "detail": "16 hr in fridge · boiled straight from cold",
@@ -693,7 +493,127 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T11:05:00.000Z",
+   "t": "2026-01-16T20:34:00.000Z",
+   "tEnd": null,
+   "title": "Start preshape (container 1 of 2: 8 × Sourdough Batard)",
+   "detail": "Weigh & divide: 675 g each · 4 min × 8 loaves = 32 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
+   "process": "loaf",
+   "columnKey": "loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 1 of 2: 8 × Sourdough Batard)",
+   "container": "container 1 of 2: 8 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T21:06:00.000Z",
+   "tEnd": null,
+   "title": "Final shape (container 1 of 2: 8 × Sourdough Batard)",
+   "detail": "3 min × 8 loaves = 24 min total",
+   "process": "loaf",
+   "columnKey": "loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 1 of 2: 8 × Sourdough Batard)",
+   "container": "Bannetons: 8 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T21:30:00.000Z",
+   "tEnd": null,
+   "title": "Start preshape (container 2 of 2: 6 × Sourdough Boule)",
+   "detail": "Weigh & divide: 850 g each · 4 min × 6 loaves = 24 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
+   "process": "loaf",
+   "columnKey": "loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 2 of 2: 6 × Sourdough Boule)",
+   "container": "container 2 of 2: 6 × Sourdough Boule",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T21:30:00.000Z",
+   "tEnd": null,
+   "title": "Into fridge (container 1 of 2: 8 × Sourdough Batard)",
+   "detail": "12 hr cold proof",
+   "process": "loaf",
+   "columnKey": "loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 1 of 2: 8 × Sourdough Batard)",
+   "container": "Bannetons: 8 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T21:54:00.000Z",
+   "tEnd": null,
+   "title": "Final shape (container 2 of 2: 6 × Sourdough Boule)",
+   "detail": "3 min × 6 loaves = 18 min total",
+   "process": "loaf",
+   "columnKey": "loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 2 of 2: 6 × Sourdough Boule)",
+   "container": "Bannetons: 6 × Sourdough Boule",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T22:12:00.000Z",
+   "tEnd": null,
+   "title": "Into fridge (container 2 of 2: 6 × Sourdough Boule)",
+   "detail": "11 hr 18 min cold proof",
+   "process": "loaf",
+   "columnKey": "loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 2 of 2: 6 × Sourdough Boule)",
+   "container": "Bannetons: 6 × Sourdough Boule",
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T08:00:00.000Z",
    "tEnd": null,
    "title": "Turn on oven (bread) to 500°F",
    "detail": "~90 min preheat to 500°F",
@@ -715,7 +635,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:14:00.000Z",
+   "t": "2026-01-17T09:09:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients — batch 1 of 2",
    "detail": "6 rolls · 5 min",
@@ -748,7 +668,7 @@
    ]
   },
   {
-   "t": "2026-01-17T12:19:00.000Z",
+   "t": "2026-01-17T09:14:00.000Z",
    "tEnd": null,
    "title": "Mix & knead — batch 1 of 2",
    "detail": "6 rolls · 20 min",
@@ -768,7 +688,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:35:00.000Z",
+   "t": "2026-01-17T09:30:00.000Z",
    "tEnd": null,
    "title": "Bake 1 of 2 — bread into oven",
    "detail": "10 min load · 40 min bake · 500°F\nDeck 1: 4 × Sourdough Batard\nDeck 2: 4 × Sourdough Batard\nDeck 3: 3 × Sourdough Boule",
@@ -792,7 +712,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:39:00.000Z",
+   "t": "2026-01-17T09:34:00.000Z",
    "tEnd": null,
    "title": "Bulk rise — batch 1 of 2",
    "detail": "6 rolls · 1.5 hr",
@@ -812,7 +732,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:46:00.000Z",
+   "t": "2026-01-17T09:41:00.000Z",
    "tEnd": null,
    "title": "Turn on oven (bagels) to 450°F",
    "detail": "~90 min preheat to 450°F",
@@ -832,7 +752,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:44:00.000Z",
+   "t": "2026-01-17T09:39:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients — batch 2 of 2",
    "detail": "6 rolls · 5 min",
@@ -865,7 +785,7 @@
    ]
   },
   {
-   "t": "2026-01-17T12:49:00.000Z",
+   "t": "2026-01-17T09:44:00.000Z",
    "tEnd": null,
    "title": "Mix & knead — batch 2 of 2",
    "detail": "6 rolls · 20 min",
@@ -885,7 +805,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:09:00.000Z",
+   "t": "2026-01-17T10:04:00.000Z",
    "tEnd": null,
    "title": "Bulk rise — batch 2 of 2",
    "detail": "6 rolls · 1.5 hr",
@@ -905,7 +825,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:15:00.000Z",
+   "t": "2026-01-17T10:10:00.000Z",
    "tEnd": null,
    "title": "Loaves out (batch 1 of 2)",
    "detail": "Pull batch 1, load batch 2 · reheat ~5 min to 500°F before next bake",
@@ -925,7 +845,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:20:00.000Z",
+   "t": "2026-01-17T10:15:00.000Z",
    "tEnd": null,
    "title": "Bake 2 of 2 — bread into oven",
    "detail": "10 min load · 40 min bake · 500°F\nDeck 1: 3 × Sourdough Boule",
@@ -947,7 +867,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:21:00.000Z",
+   "t": "2026-01-17T10:16:00.000Z",
    "tEnd": null,
    "title": "Muffins out of fridge",
    "detail": "3 hr warm-up / final proof before bake",
@@ -967,7 +887,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:52:00.000Z",
+   "t": "2026-01-17T10:47:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active",
@@ -987,7 +907,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:53:00.000Z",
+   "t": "2026-01-17T10:48:00.000Z",
    "tEnd": null,
    "title": "Bring the pot to a boil",
    "detail": "15 min · bagels are boiled straight from the cold fridge",
@@ -1009,7 +929,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:57:00.000Z",
+   "t": "2026-01-17T10:52:00.000Z",
    "tEnd": null,
    "title": "Mix focaccia dough",
    "detail": "10 min mix · then 20 min rest · commercial yeast, no levain needed",
@@ -1029,8 +949,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:00:00.000Z",
-   "tEnd": "2026-01-17T14:08:00.000Z",
+   "t": "2026-01-17T10:55:00.000Z",
+   "tEnd": "2026-01-17T11:03:00.000Z",
    "title": "Set the oven to 450°F",
    "detail": "8 min — adjust from 500°F before this bake",
    "process": "bagel",
@@ -1049,7 +969,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:00:00.000Z",
+   "t": "2026-01-17T10:55:00.000Z",
    "tEnd": null,
    "title": "Last loaves out — start cooling",
    "detail": "1 hr cool",
@@ -1069,7 +989,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:08:00.000Z",
+   "t": "2026-01-17T11:03:00.000Z",
    "tEnd": null,
    "title": "Boil batch 1 of 2",
    "detail": "10 bagels · 5 min boil",
@@ -1091,7 +1011,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:09:00.000Z",
+   "t": "2026-01-17T11:04:00.000Z",
    "tEnd": null,
    "title": "Shape — batch 1 of 2",
    "detail": "6 rolls · 12 min · 90 g per roll",
@@ -1111,7 +1031,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:13:00.000Z",
+   "t": "2026-01-17T11:08:00.000Z",
    "tEnd": null,
    "title": "Top batch 1 of 2",
    "detail": "10 bagels · 3 min — add toppings",
@@ -1131,7 +1051,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:16:00.000Z",
+   "t": "2026-01-17T11:11:00.000Z",
    "tEnd": null,
    "title": "Bake batch 1 of 2 — bagels into oven",
    "detail": "10 bagels · 22 min bake · 450°F",
@@ -1151,7 +1071,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:21:00.000Z",
+   "t": "2026-01-17T11:16:00.000Z",
    "tEnd": null,
    "title": "Final proof — warm — batch 1 of 2",
    "detail": "6 rolls · 1 hr",
@@ -1171,7 +1091,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:27:00.000Z",
+   "t": "2026-01-17T11:22:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 1 of 4 — focaccia",
    "detail": "5 min active · next fold in 15 min",
@@ -1191,7 +1111,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:38:00.000Z",
+   "t": "2026-01-17T11:33:00.000Z",
    "tEnd": null,
    "title": "Boil batch 2 of 2",
    "detail": "2 bagels · 5 min boil",
@@ -1213,7 +1133,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:39:00.000Z",
+   "t": "2026-01-17T11:34:00.000Z",
    "tEnd": null,
    "title": "Shape — batch 2 of 2",
    "detail": "6 rolls · 12 min · 90 g per roll",
@@ -1233,7 +1153,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:42:00.000Z",
+   "t": "2026-01-17T11:37:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 2 of 4 — focaccia",
    "detail": "5 min active · next fold in 15 min",
@@ -1253,7 +1173,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:43:00.000Z",
+   "t": "2026-01-17T11:38:00.000Z",
    "tEnd": null,
    "title": "Top batch 2 of 2",
    "detail": "2 bagels · 3 min — add toppings",
@@ -1273,7 +1193,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:46:00.000Z",
+   "t": "2026-01-17T11:41:00.000Z",
    "tEnd": null,
    "title": "Bake batch 2 of 2 — bagels into oven",
    "detail": "2 bagels · 22 min bake · 450°F",
@@ -1293,7 +1213,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:51:00.000Z",
+   "t": "2026-01-17T11:46:00.000Z",
    "tEnd": null,
    "title": "Final proof — warm — batch 2 of 2",
    "detail": "6 rolls · 1 hr",
@@ -1313,7 +1233,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:51:00.000Z",
+   "t": "2026-01-17T11:46:00.000Z",
    "tEnd": null,
    "title": "Turn on oven (muffins) to 375°F",
    "detail": "~90 min preheat to 375°F",
@@ -1335,7 +1255,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:57:00.000Z",
+   "t": "2026-01-17T11:52:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 3 of 4 — focaccia",
    "detail": "5 min active · next fold in 15 min",
@@ -1355,7 +1275,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:00:00.000Z",
+   "t": "2026-01-17T11:55:00.000Z",
    "tEnd": null,
    "title": "Loaves ready for sale",
    "detail": "",
@@ -1375,7 +1295,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:06:00.000Z",
+   "t": "2026-01-17T12:01:00.000Z",
    "tEnd": null,
    "title": "Turn on oven to 350°F",
    "detail": "~15 min preheat",
@@ -1395,7 +1315,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:08:00.000Z",
+   "t": "2026-01-17T12:03:00.000Z",
    "tEnd": null,
    "title": "Last bagels out — start cooling",
    "detail": "1 hr cool",
@@ -1415,8 +1335,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:08:00.000Z",
-   "tEnd": "2026-01-17T15:21:00.000Z",
+   "t": "2026-01-17T12:03:00.000Z",
+   "tEnd": "2026-01-17T12:16:00.000Z",
    "title": "Set the oven to 350°F",
    "detail": "13 min — adjust from 450°F before this bake",
    "process": "enriched",
@@ -1435,7 +1355,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:12:00.000Z",
+   "t": "2026-01-17T12:07:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 4 of 4 (last) — focaccia",
    "detail": "5 min active · then 75 min bulk ferment",
@@ -1455,8 +1375,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:21:00.000Z",
-   "tEnd": "2026-01-17T15:46:00.000Z",
+   "t": "2026-01-17T12:16:00.000Z",
+   "tEnd": "2026-01-17T12:41:00.000Z",
    "title": "Bake Test Rolls — batch 1 of 2",
    "detail": "6 rolls · 25 min · 350°F",
    "process": "enriched",
@@ -1475,8 +1395,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:51:00.000Z",
-   "tEnd": "2026-01-17T16:16:00.000Z",
+   "t": "2026-01-17T12:46:00.000Z",
+   "tEnd": "2026-01-17T13:11:00.000Z",
    "title": "Bake Test Rolls — batch 2 of 2",
    "detail": "6 rolls · 25 min · 350°F",
    "process": "enriched",
@@ -1495,7 +1415,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:52:00.000Z",
+   "t": "2026-01-17T12:47:00.000Z",
    "tEnd": null,
    "title": "Turn on oven to 475°F",
    "detail": "~90 min preheat",
@@ -1515,7 +1435,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:08:00.000Z",
+   "t": "2026-01-17T13:03:00.000Z",
    "tEnd": null,
    "title": "Bagels ready for sale",
    "detail": "",
@@ -1535,7 +1455,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:11:00.000Z",
+   "t": "2026-01-17T13:06:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients — batch 1 of 2",
    "detail": "12 cookies · 5 min",
@@ -1568,7 +1488,7 @@
    ]
   },
   {
-   "t": "2026-01-17T16:16:00.000Z",
+   "t": "2026-01-17T13:11:00.000Z",
    "tEnd": null,
    "title": "Test Rolls out — cool",
    "detail": "20 min cool",
@@ -1588,8 +1508,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:16:00.000Z",
-   "tEnd": "2026-01-17T16:21:00.000Z",
+   "t": "2026-01-17T13:11:00.000Z",
+   "tEnd": "2026-01-17T13:16:00.000Z",
    "title": "Set the oven to 375°F",
    "detail": "5 min — adjust from 350°F before this bake",
    "process": "muffin",
@@ -1608,7 +1528,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:16:00.000Z",
+   "t": "2026-01-17T13:11:00.000Z",
    "tEnd": null,
    "title": "Mix — batch 1 of 2",
    "detail": "12 cookies · 15 min",
@@ -1628,7 +1548,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:21:00.000Z",
+   "t": "2026-01-17T13:16:00.000Z",
    "tEnd": null,
    "title": "Bake 1 of 1 — muffins into oven",
    "detail": "10 min load · 12 min bake · 375°F\nDeck 1: 16 × Sourdough English Muffins\nDeck 2: 8 × Sourdough English Muffins",
@@ -1651,7 +1571,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:27:00.000Z",
+   "t": "2026-01-17T13:22:00.000Z",
    "tEnd": null,
    "title": "Shape focaccia — transfer to pans",
    "detail": "10 min × 1 pan = 10 min · oil pan, stretch dough to fit, dimple · 705 g per pan",
@@ -1671,7 +1591,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:24:00.000Z",
+   "t": "2026-01-17T13:19:00.000Z",
    "tEnd": null,
    "title": "Turn on oven to 350°F",
    "detail": "~15 min preheat",
@@ -1691,7 +1611,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:30:00.000Z",
+   "t": "2026-01-17T13:25:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients — batch 2 of 2",
    "detail": "12 cookies · 5 min",
@@ -1724,7 +1644,7 @@
    ]
   },
   {
-   "t": "2026-01-17T16:31:00.000Z",
+   "t": "2026-01-17T13:26:00.000Z",
    "tEnd": null,
    "title": "Shape / portion — batch 1 of 2",
    "detail": "12 cookies · 8 min · 40 g per cookie",
@@ -1744,7 +1664,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:36:00.000Z",
+   "t": "2026-01-17T13:31:00.000Z",
    "tEnd": null,
    "title": "Package & ready for sale",
    "detail": "",
@@ -1764,7 +1684,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:37:00.000Z",
+   "t": "2026-01-17T13:32:00.000Z",
    "tEnd": null,
    "title": "Pan rise",
    "detail": "45 min room-temp pan rise",
@@ -1784,7 +1704,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:33:00.000Z",
+   "t": "2026-01-17T13:28:00.000Z",
    "tEnd": null,
    "title": "Last muffins out — start cooling",
    "detail": "1 hr cool",
@@ -1804,8 +1724,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:33:00.000Z",
-   "tEnd": "2026-01-17T16:39:00.000Z",
+   "t": "2026-01-17T13:28:00.000Z",
+   "tEnd": "2026-01-17T13:34:00.000Z",
    "title": "Set the oven to 350°F",
    "detail": "6 min — adjust from 375°F before this bake",
    "process": "simple",
@@ -1824,7 +1744,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:35:00.000Z",
+   "t": "2026-01-17T13:30:00.000Z",
    "tEnd": null,
    "title": "Mix — batch 2 of 2",
    "detail": "12 cookies · 15 min",
@@ -1844,8 +1764,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:39:00.000Z",
-   "tEnd": "2026-01-17T16:53:00.000Z",
+   "t": "2026-01-17T13:34:00.000Z",
+   "tEnd": "2026-01-17T13:48:00.000Z",
    "title": "Bake Test Cookies — batch 1 of 2",
    "detail": "12 cookies · 14 min · 350°F",
    "process": "simple",
@@ -1864,7 +1784,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:50:00.000Z",
+   "t": "2026-01-17T13:45:00.000Z",
    "tEnd": null,
    "title": "Shape / portion — batch 2 of 2",
    "detail": "12 cookies · 8 min · 40 g per cookie",
@@ -1884,8 +1804,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T16:58:00.000Z",
-   "tEnd": "2026-01-17T17:12:00.000Z",
+   "t": "2026-01-17T13:53:00.000Z",
+   "tEnd": "2026-01-17T14:07:00.000Z",
    "title": "Bake Test Cookies — batch 2 of 2",
    "detail": "12 cookies · 14 min · 350°F",
    "process": "simple",
@@ -1904,8 +1824,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T17:12:00.000Z",
-   "tEnd": "2026-01-17T17:22:00.000Z",
+   "t": "2026-01-17T14:07:00.000Z",
+   "tEnd": "2026-01-17T14:17:00.000Z",
    "title": "Set the oven to 475°F",
    "detail": "10 min — adjust from 350°F before this bake",
    "process": "focaccia",
@@ -1924,7 +1844,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T17:12:00.000Z",
+   "t": "2026-01-17T14:07:00.000Z",
    "tEnd": null,
    "title": "Test Cookies out — cool",
    "detail": "15 min cool",
@@ -1944,8 +1864,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T17:22:00.000Z",
-   "tEnd": "2026-01-17T17:45:00.000Z",
+   "t": "2026-01-17T14:17:00.000Z",
+   "tEnd": "2026-01-17T14:40:00.000Z",
    "title": "Bake focaccia",
    "detail": "1 pan · 23 min · 475°F",
    "process": "focaccia",
@@ -1964,7 +1884,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T17:27:00.000Z",
+   "t": "2026-01-17T14:22:00.000Z",
    "tEnd": null,
    "title": "Package & ready for sale",
    "detail": "",
@@ -1984,7 +1904,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T17:33:00.000Z",
+   "t": "2026-01-17T14:28:00.000Z",
    "tEnd": null,
    "title": "Muffins ready for sale",
    "detail": "",
@@ -2004,7 +1924,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T17:45:00.000Z",
+   "t": "2026-01-17T14:40:00.000Z",
    "tEnd": null,
    "title": "Last focaccia out — start cooling",
    "detail": "20 min cool",
@@ -2024,7 +1944,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T17:45:00.000Z",
+   "t": "2026-01-17T14:40:00.000Z",
    "tEnd": null,
    "title": "Turn off the oven",
    "detail": "Baking done — oven off, cools to room temp",
@@ -2044,7 +1964,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T18:05:00.000Z",
+   "t": "2026-01-17T15:00:00.000Z",
    "tEnd": null,
    "title": "Focaccia ready for sale",
    "detail": "",
@@ -2066,61 +1986,97 @@
  ],
  "warnings": [
   {
-   "msg": "Oven conflict: Sourdough Bagels bakes after Sourdough Batard, Sourdough Boule, but now ends 68 min past its deadline.",
-   "issue": "oven-overlap-late",
+   "msg": "Sourdough Batard, Sourdough Boule bakes earlier so everything fits in the oven — ready ~3.1 hr before its deadline.",
+   "issue": "oven-pulled-earlier",
+   "kind": "loaf",
+   "type": "info"
+  },
+  {
+   "msg": "Sourdough Bagels bakes earlier so everything fits in the oven — ready ~1.9 hr before its deadline.",
+   "issue": "oven-pulled-earlier",
    "kind": "bagel",
    "type": "info"
   },
   {
-   "msg": "Oven conflict: Test Rolls bakes after Sourdough Bagels, but now ends 96 min past its deadline.",
-   "issue": "oven-overlap-late",
+   "msg": "Test Rolls bakes earlier so everything fits in the oven — ready ~89 min before its deadline.",
+   "issue": "oven-pulled-earlier",
    "kind": "enriched#1",
    "type": "info"
   },
   {
-   "msg": "Oven conflict: Sourdough English Muffins bakes after Test Rolls, but now ends 153 min past its deadline.",
-   "issue": "oven-overlap-late",
+   "msg": "Sourdough English Muffins bakes earlier so everything fits in the oven — ready ~32 min before its deadline.",
+   "issue": "oven-pulled-earlier",
    "kind": "muffin",
    "type": "info"
   },
   {
-   "msg": "Oven conflict: Test Cookies bakes after Sourdough English Muffins, but now ends 147 min past its deadline.",
-   "issue": "oven-overlap-late",
+   "msg": "Test Cookies bakes earlier so everything fits in the oven — ready ~38 min before its deadline.",
+   "issue": "oven-pulled-earlier",
    "kind": "simple#0",
    "type": "info"
   },
   {
-   "msg": "Oven conflict: Big and Bubbly Focaccia bakes after Test Cookies, but now ends 185 min past its deadline.",
-   "issue": "oven-overlap-late",
+   "msg": "2 active loaf steps fall outside kitchen hours (6 AM–10 PM) (Gather ingredients, Mix focaccia dough). Try a different loaf cold proof or bake time.",
+   "issue": "late-night",
+   "kind": "loaf",
+   "type": null
+  },
+  {
+   "msg": "2 active muffin steps fall outside kitchen hours (6 AM–10 PM) (Gather ingredients, Mix focaccia dough). Try a different muffin cold proof or bake time.",
+   "issue": "late-night",
+   "kind": "muffin",
+   "type": null
+  },
+  {
+   "msg": "2 active bagel steps fall outside kitchen hours (6 AM–10 PM) (Gather ingredients, Mix focaccia dough). Try a different bagel cold proof or bake time.",
+   "issue": "late-night",
+   "kind": "bagel",
+   "type": null
+  },
+  {
+   "msg": "2 active focaccia steps fall outside kitchen hours (6 AM–10 PM) (Gather ingredients, Mix focaccia dough). Try a different bake time.",
+   "issue": "late-night",
    "kind": "focaccia",
-   "type": "info"
+   "type": null
   },
   {
-   "msg": "Hands-on steps overlap: \"Shape muffins\" and \"Final shape (container 2 of 2: 6 × Sourdough Boule)\" both need you around 3:57 PM. You can only do one at a time — consider staggering them.",
+   "msg": "6 active steps for Test Cookies fall outside kitchen hours (6 AM–10 PM) (Gather ingredients, Mix focaccia dough, Mix & knead — batch, Gather ingredients — batch). Try a later deadline or a different bake time.",
+   "issue": "late-night",
+   "kind": "simple",
+   "type": null
+  },
+  {
+   "msg": "6 active steps for Test Rolls fall outside kitchen hours (6 AM–10 PM) (Gather ingredients, Mix focaccia dough, Mix & knead — batch, Gather ingredients — batch). Try a later deadline or a different bake time.",
+   "issue": "late-night",
+   "kind": "enriched",
+   "type": null
+  },
+  {
+   "msg": "Hands-on steps overlap: \"Stretch & fold 3 of 5\" and \"Gather ingredients\" both need you around 10:34 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Boil batch 1 of 2\" and \"Shape — batch 1 of 2\" both need you around 9:08 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Stretch & fold 3 of 5\" and \"Mix muffin dough\" both need you around 10:34 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Boil batch 1 of 2\" and \"Top batch 1 of 2\" both need you around 9:08 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Boil batch 1 of 2\" and \"Shape — batch 1 of 2\" both need you around 6:03 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Shape — batch 1 of 2\" and \"Top batch 1 of 2\" both need you around 9:09 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Boil batch 1 of 2\" and \"Top batch 1 of 2\" both need you around 6:03 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Boil batch 2 of 2\" and \"Shape — batch 2 of 2\" both need you around 9:38 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Shape — batch 1 of 2\" and \"Top batch 1 of 2\" both need you around 6:04 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
@@ -2138,8 +2094,8 @@
    "role": "Loaf bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T12:35:00.000Z",
-   "end": "2026-01-17T13:15:00.000Z",
+   "start": "2026-01-17T09:30:00.000Z",
+   "end": "2026-01-17T10:10:00.000Z",
    "capacity": 1
   },
   {
@@ -2147,8 +2103,8 @@
    "role": "Loaf bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T13:20:00.000Z",
-   "end": "2026-01-17T14:00:00.000Z",
+   "start": "2026-01-17T10:15:00.000Z",
+   "end": "2026-01-17T10:55:00.000Z",
    "capacity": 1
   },
   {
@@ -2156,8 +2112,8 @@
    "role": "Muffin bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T16:21:00.000Z",
-   "end": "2026-01-17T16:33:00.000Z",
+   "start": "2026-01-17T13:16:00.000Z",
+   "end": "2026-01-17T13:28:00.000Z",
    "capacity": 1
   },
   {
@@ -2165,8 +2121,8 @@
    "role": "Bagel bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T14:16:00.000Z",
-   "end": "2026-01-17T14:38:00.000Z",
+   "start": "2026-01-17T11:11:00.000Z",
+   "end": "2026-01-17T11:33:00.000Z",
    "capacity": 1
   },
   {
@@ -2174,8 +2130,8 @@
    "role": "Bagel bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T14:46:00.000Z",
-   "end": "2026-01-17T15:08:00.000Z",
+   "start": "2026-01-17T11:41:00.000Z",
+   "end": "2026-01-17T12:03:00.000Z",
    "capacity": 1
   },
   {
@@ -2183,8 +2139,8 @@
    "role": "Focaccia bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T17:22:00.000Z",
-   "end": "2026-01-17T17:45:00.000Z",
+   "start": "2026-01-17T14:17:00.000Z",
+   "end": "2026-01-17T14:40:00.000Z",
    "capacity": 1
   },
   {
@@ -2192,8 +2148,8 @@
    "role": "Test Cookies bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T16:39:00.000Z",
-   "end": "2026-01-17T16:53:00.000Z",
+   "start": "2026-01-17T13:34:00.000Z",
+   "end": "2026-01-17T13:48:00.000Z",
    "capacity": 1
   },
   {
@@ -2201,8 +2157,8 @@
    "role": "Test Cookies bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T16:58:00.000Z",
-   "end": "2026-01-17T17:12:00.000Z",
+   "start": "2026-01-17T13:53:00.000Z",
+   "end": "2026-01-17T14:07:00.000Z",
    "capacity": 1
   },
   {
@@ -2210,8 +2166,8 @@
    "role": "Test Rolls bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T15:21:00.000Z",
-   "end": "2026-01-17T15:46:00.000Z",
+   "start": "2026-01-17T12:16:00.000Z",
+   "end": "2026-01-17T12:41:00.000Z",
    "capacity": 1
   },
   {
@@ -2219,8 +2175,8 @@
    "role": "Test Rolls bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T15:51:00.000Z",
-   "end": "2026-01-17T16:16:00.000Z",
+   "start": "2026-01-17T12:46:00.000Z",
+   "end": "2026-01-17T13:11:00.000Z",
    "capacity": 1
   }
  ],
@@ -2267,40 +2223,12 @@
    "kind": "slow",
    "manual": false
   },
-  "useSeparateLevains": true,
-  "muffinBuild1Opt": {
-   "min": 15,
-   "max": 20,
-   "mid": 17,
-   "ratio": "1:5:5",
-   "kind": "slow",
-   "manual": false
-  },
-  "muffinBuild2Opt": {
-   "min": 4,
-   "max": 6,
-   "mid": 5,
-   "ratio": "1:1:1",
-   "kind": "fast",
-   "manual": false
-  },
-  "bagelBuild1Opt": {
-   "min": 15,
-   "max": 20,
-   "mid": 17,
-   "ratio": "1:5:5",
-   "kind": "slow",
-   "manual": false
-  },
-  "bagelBuild2Opt": {
-   "min": 4,
-   "max": 6,
-   "mid": 5,
-   "ratio": "1:1:1",
-   "kind": "fast",
-   "manual": false
-  },
-  "useBagelSeparateLevain": true,
+  "useSeparateLevains": false,
+  "muffinBuild1Opt": null,
+  "muffinBuild2Opt": null,
+  "bagelBuild1Opt": null,
+  "bagelBuild2Opt": null,
+  "useBagelSeparateLevain": false,
   "levainContainerInfo": {
    "shared": null,
    "muffin": null,
@@ -2338,7 +2266,7 @@
   }
  ],
  "loafColdProofRange": {
-  "minMs": 55080000,
-  "maxMs": 57600000
+  "minMs": 40680000,
+  "maxMs": 43200000
  }
 }

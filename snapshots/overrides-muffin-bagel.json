@@ -12,10 +12,10 @@
  },
  "events": [
   {
-   "t": "2026-01-15T22:00:00.000Z",
-   "tEnd": "2026-01-16T02:00:00.000Z",
+   "t": "2026-01-15T17:30:00.000Z",
+   "tEnd": "2026-01-15T20:30:00.000Z",
    "title": "Levain Build 1 — first refresh (muffins + bagels)",
-   "detail": "1:3:3 ratio · 2 min mix · ripens in 10–14 hr (medium ratio chosen to avoid a late-night refresh)",
+   "detail": "1:1:1 ratio · 2 min mix · ripens in 6–9 hr",
    "process": "shared",
    "columnKey": null,
    "colDetails": null,
@@ -32,10 +32,10 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T11:00:00.000Z",
-   "tEnd": "2026-01-16T13:00:00.000Z",
+   "t": "2026-01-16T00:30:00.000Z",
+   "tEnd": "2026-01-16T04:30:00.000Z",
    "title": "Levain Build 2 — final build (muffins + bagels)",
-   "detail": "1:1:1 ratio · 2 min mix · ripens in 4–6 hr",
+   "detail": "1:5:5 ratio · 2 min mix · ripens in 12–16 hr (slower ratio chosen to avoid a late-night refresh)",
    "process": "shared",
    "columnKey": null,
    "colDetails": null,
@@ -52,7 +52,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T17:02:00.000Z",
+   "t": "2026-01-16T16:36:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active",
@@ -72,7 +72,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T17:07:00.000Z",
+   "t": "2026-01-16T16:41:00.000Z",
    "tEnd": null,
    "title": "Mix muffin dough",
    "detail": "10 min mix · (uses the shared ripe Build 2 levain)",
@@ -94,7 +94,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T17:17:00.000Z",
+   "t": "2026-01-16T16:51:00.000Z",
    "tEnd": null,
    "title": "Muffin dough bulk ferment",
    "detail": "2.5 hr bulk ferment (uses the shared ripe Build 2 levain)",
@@ -114,7 +114,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T18:23:00.000Z",
+   "t": "2026-01-16T17:57:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active · weigh per batch (2 mixer loads)",
@@ -134,7 +134,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T18:28:00.000Z",
+   "t": "2026-01-16T18:02:00.000Z",
    "tEnd": null,
    "title": "Mix bagel dough",
    "detail": "10 min mix × 2 batches = 20 min active (mixer holds max 10 bagels; all batches go into the same container for proofing) (uses the shared ripe Build 2 levain)",
@@ -156,8 +156,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T18:48:00.000Z",
-   "tEnd": "2026-01-16T20:18:00.000Z",
+   "t": "2026-01-16T18:22:00.000Z",
+   "tEnd": "2026-01-16T19:52:00.000Z",
    "title": "Bagel dough bulk ferment",
    "detail": "1.5 hr bulk ferment (uses the shared ripe Build 2 levain)",
    "process": "bagel",
@@ -176,7 +176,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T19:47:00.000Z",
+   "t": "2026-01-16T19:21:00.000Z",
    "tEnd": null,
    "title": "Shape muffins",
    "detail": "1 min × 24 muffins = 24 min total · 80 g each",
@@ -196,7 +196,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:11:00.000Z",
+   "t": "2026-01-16T19:45:00.000Z",
    "tEnd": null,
    "title": "Muffins into fridge — cold proof",
    "detail": "16 hr in fridge",
@@ -216,7 +216,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:18:00.000Z",
+   "t": "2026-01-16T19:52:00.000Z",
    "tEnd": null,
    "title": "Shape bagels",
    "detail": "3 min × 12 bagels = 36 min total · divide into 138 g each",
@@ -236,7 +236,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:54:00.000Z",
+   "t": "2026-01-16T20:28:00.000Z",
    "tEnd": null,
    "title": "Bagels into fridge — cold proof",
    "detail": "16 hr in fridge · boiled straight from cold",
@@ -256,7 +256,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T11:32:00.000Z",
+   "t": "2026-01-17T11:06:00.000Z",
    "tEnd": null,
    "title": "Turn on oven (bagels) to 450°F",
    "detail": "~90 min preheat to 450°F",
@@ -276,7 +276,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:11:00.000Z",
+   "t": "2026-01-17T11:45:00.000Z",
    "tEnd": null,
    "title": "Muffins out of fridge",
    "detail": "2 hr warm-up / final proof before bake",
@@ -296,7 +296,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:39:00.000Z",
+   "t": "2026-01-17T12:13:00.000Z",
    "tEnd": null,
    "title": "Bring the pot to a boil",
    "detail": "15 min · bagels are boiled straight from the cold fridge",
@@ -318,7 +318,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:54:00.000Z",
+   "t": "2026-01-17T12:28:00.000Z",
    "tEnd": null,
    "title": "Boil batch 1 of 2",
    "detail": "10 bagels · 5 min boil",
@@ -340,7 +340,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T12:59:00.000Z",
+   "t": "2026-01-17T12:33:00.000Z",
    "tEnd": null,
    "title": "Top batch 1 of 2",
    "detail": "10 bagels · 3 min — add toppings",
@@ -360,7 +360,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:02:00.000Z",
+   "t": "2026-01-17T12:36:00.000Z",
    "tEnd": null,
    "title": "Bake batch 1 of 2 — bagels into oven",
    "detail": "10 bagels · 25 min bake · 450°F",
@@ -380,7 +380,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:27:00.000Z",
+   "t": "2026-01-17T13:01:00.000Z",
    "tEnd": null,
    "title": "Boil batch 2 of 2",
    "detail": "2 bagels · 5 min boil",
@@ -402,7 +402,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:32:00.000Z",
+   "t": "2026-01-17T13:06:00.000Z",
    "tEnd": null,
    "title": "Top batch 2 of 2",
    "detail": "2 bagels · 3 min — add toppings",
@@ -422,7 +422,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:35:00.000Z",
+   "t": "2026-01-17T13:09:00.000Z",
    "tEnd": null,
    "title": "Bake batch 2 of 2 — bagels into oven",
    "detail": "2 bagels · 25 min bake · 450°F",
@@ -442,7 +442,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:00:00.000Z",
+   "t": "2026-01-17T13:34:00.000Z",
    "tEnd": null,
    "title": "Last bagels out — start cooling",
    "detail": "1 hr cool",
@@ -462,8 +462,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:00:00.000Z",
-   "tEnd": "2026-01-17T14:11:00.000Z",
+   "t": "2026-01-17T13:34:00.000Z",
+   "tEnd": "2026-01-17T13:45:00.000Z",
    "title": "Set the oven to 375°F",
    "detail": "11 min — adjust from 450°F before this bake",
    "process": "muffin",
@@ -482,7 +482,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:11:00.000Z",
+   "t": "2026-01-17T13:45:00.000Z",
    "tEnd": null,
    "title": "Bake 1 of 1 — muffins into oven",
    "detail": "10 min load · 15 min bake · 375°F\nDeck 1: 16 × Sourdough English Muffins\nDeck 2: 8 × Sourdough English Muffins",
@@ -505,7 +505,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:26:00.000Z",
+   "t": "2026-01-17T14:00:00.000Z",
    "tEnd": null,
    "title": "Last muffins out — start cooling",
    "detail": "1 hr cool",
@@ -525,7 +525,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:26:00.000Z",
+   "t": "2026-01-17T14:00:00.000Z",
    "tEnd": null,
    "title": "Turn off the oven",
    "detail": "Baking done — oven off, cools to room temp",
@@ -545,7 +545,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:00:00.000Z",
+   "t": "2026-01-17T14:34:00.000Z",
    "tEnd": null,
    "title": "Bagels ready for sale",
    "detail": "",
@@ -565,7 +565,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:26:00.000Z",
+   "t": "2026-01-17T15:00:00.000Z",
    "tEnd": null,
    "title": "Muffins ready for sale",
    "detail": "",
@@ -587,19 +587,19 @@
  ],
  "warnings": [
   {
-   "msg": "Oven conflict: Sourdough English Muffins bakes after Sourdough Bagels, but now ends 26 min past its deadline.",
-   "issue": "oven-overlap-late",
-   "kind": "muffin",
+   "msg": "Sourdough Bagels bakes earlier so everything fits in the oven — ready ~26 min before its deadline.",
+   "issue": "oven-pulled-earlier",
+   "kind": "bagel",
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Boil batch 1 of 2\" and \"Top batch 1 of 2\" both need you around 7:54 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Boil batch 1 of 2\" and \"Top batch 1 of 2\" both need you around 7:28 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Boil batch 2 of 2\" and \"Top batch 2 of 2\" both need you around 8:27 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Boil batch 2 of 2\" and \"Top batch 2 of 2\" both need you around 8:01 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
@@ -617,26 +617,26 @@
    "role": "Muffin bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T14:11:00.000Z",
-   "end": "2026-01-17T14:26:00.000Z",
-   "capacity": 1
-  },
-  {
-   "pool": "oven",
-   "role": "Bagel bake",
-   "name": "Oven",
-   "count": 1,
-   "start": "2026-01-17T13:02:00.000Z",
-   "end": "2026-01-17T13:27:00.000Z",
-   "capacity": 1
-  },
-  {
-   "pool": "oven",
-   "role": "Bagel bake",
-   "name": "Oven",
-   "count": 1,
-   "start": "2026-01-17T13:35:00.000Z",
+   "start": "2026-01-17T13:45:00.000Z",
    "end": "2026-01-17T14:00:00.000Z",
+   "capacity": 1
+  },
+  {
+   "pool": "oven",
+   "role": "Bagel bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T12:36:00.000Z",
+   "end": "2026-01-17T13:01:00.000Z",
+   "capacity": 1
+  },
+  {
+   "pool": "oven",
+   "role": "Bagel bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T13:09:00.000Z",
+   "end": "2026-01-17T13:34:00.000Z",
    "capacity": 1
   }
  ],
@@ -649,19 +649,19 @@
  },
  "levain": {
   "build1Opt": {
-   "min": 10,
-   "max": 14,
-   "mid": 12,
-   "ratio": "1:3:3",
-   "kind": "medium",
+   "min": 6,
+   "max": 9,
+   "mid": 7,
+   "ratio": "1:1:1",
+   "kind": "fast",
    "manual": false
   },
   "build2Opt": {
-   "min": 4,
-   "max": 6,
-   "mid": 5,
-   "ratio": "1:1:1",
-   "kind": "fast",
+   "min": 12,
+   "max": 16,
+   "mid": 14,
+   "ratio": "1:5:5",
+   "kind": "slow",
    "manual": false
   },
   "useSeparateLevains": false,

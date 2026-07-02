@@ -12,8 +12,8 @@
  },
  "events": [
   {
-   "t": "2026-01-14T17:30:00.000Z",
-   "tEnd": "2026-01-15T00:00:00.000Z",
+   "t": "2026-01-14T17:00:00.000Z",
+   "tEnd": "2026-01-14T23:30:00.000Z",
    "title": "Levain Build 1 — first refresh",
    "detail": "1:5:5 ratio · 2 min mix · ripens in 19.15742525934132–25.54323367912176 hr (slower ratio chosen to avoid a late-night refresh)",
    "process": "shared",
@@ -32,8 +32,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-15T16:30:00.000Z",
-   "tEnd": "2026-01-15T21:30:00.000Z",
+   "t": "2026-01-15T16:00:00.000Z",
+   "tEnd": "2026-01-15T21:00:00.000Z",
    "title": "Levain Build 2 — final build",
    "detail": "1:5:5 ratio · 2 min mix · ripens in 15.325940207473057–20.434586943297408 hr (slower ratio chosen to avoid a late-night refresh)",
    "process": "shared",
@@ -52,7 +52,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T11:42:00.000Z",
+   "t": "2026-01-16T11:14:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active",
@@ -72,7 +72,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T11:47:00.000Z",
+   "t": "2026-01-16T11:19:00.000Z",
    "tEnd": null,
    "title": "Start autolyse — flour + water only",
    "detail": "10 min mix · then 50 min rest",
@@ -92,7 +92,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T12:47:00.000Z",
+   "t": "2026-01-16T12:19:00.000Z",
    "tEnd": null,
    "title": "Mix in salt + ripe levain",
    "detail": "10 min mix · 30 min rest before fold 1",
@@ -112,7 +112,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T13:17:00.000Z",
+   "t": "2026-01-16T12:49:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 1 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -132,7 +132,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T13:47:00.000Z",
+   "t": "2026-01-16T13:19:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 2 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -152,7 +152,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:17:00.000Z",
+   "t": "2026-01-16T13:49:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 3 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -172,7 +172,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:47:00.000Z",
+   "t": "2026-01-16T14:19:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 4 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -192,47 +192,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:17:00.000Z",
-   "tEnd": null,
-   "title": "Stretch & fold 5 of 5 (last)",
-   "detail": "5 min active · last fold, then bulk ferment",
-   "process": "loaf",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": null,
-   "stageType": null,
-   "equip": null,
-   "equipStrip": "",
-   "equipStripTitle": null,
-   "container": null,
-   "activeStep": null,
-   "activeMin": 5,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T15:17:00.000Z",
-   "tEnd": "2026-01-16T20:24:00.000Z",
-   "title": "Bulk ferment",
-   "detail": "5.1 hr warm bulk ferment until ready to shape",
-   "process": "loaf",
-   "columnKey": null,
-   "colDetails": null,
-   "stage": "proof",
-   "stageType": null,
-   "equip": null,
-   "equipStrip": "",
-   "equipStripTitle": null,
-   "container": null,
-   "activeStep": null,
-   "activeMin": 0,
-   "mixBatchCount": null,
-   "mixBatchContents": null,
-   "batchIngredients": null
-  },
-  {
-   "t": "2026-01-16T15:14:00.000Z",
+   "t": "2026-01-16T14:46:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active",
@@ -252,7 +212,47 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:19:00.000Z",
+   "t": "2026-01-16T14:49:00.000Z",
+   "tEnd": null,
+   "title": "Stretch & fold 5 of 5 (last)",
+   "detail": "5 min active · last fold, then bulk ferment",
+   "process": "loaf",
+   "columnKey": null,
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 5,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T14:49:00.000Z",
+   "tEnd": "2026-01-16T19:56:00.000Z",
+   "title": "Bulk ferment",
+   "detail": "5.1 hr warm bulk ferment until ready to shape",
+   "process": "loaf",
+   "columnKey": null,
+   "colDetails": null,
+   "stage": "proof",
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T14:51:00.000Z",
    "tEnd": null,
    "title": "Mix muffin dough",
    "detail": "10 min mix · (uses the shared ripe Build 2 levain)",
@@ -274,7 +274,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:29:00.000Z",
+   "t": "2026-01-16T15:01:00.000Z",
    "tEnd": null,
    "title": "Muffin dough bulk ferment",
    "detail": "2.5 hr bulk ferment (uses the shared ripe Build 2 levain)",
@@ -294,7 +294,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T18:02:00.000Z",
+   "t": "2026-01-16T17:34:00.000Z",
    "tEnd": null,
    "title": "Shape muffins",
    "detail": "1 min × 24 muffins = 24 min total · 80 g each",
@@ -314,7 +314,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T18:26:00.000Z",
+   "t": "2026-01-16T17:58:00.000Z",
    "tEnd": null,
    "title": "Muffins into fridge — cold proof",
    "detail": "16 hr in fridge",
@@ -334,7 +334,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:24:00.000Z",
+   "t": "2026-01-16T19:56:00.000Z",
    "tEnd": null,
    "title": "Start preshape",
    "detail": "Weigh & divide: 675 g each · 4 min × 8 loaves = 32 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
@@ -354,7 +354,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:56:00.000Z",
+   "t": "2026-01-16T20:28:00.000Z",
    "tEnd": null,
    "title": "Final shape",
    "detail": "3 min × 8 loaves = 24 min total",
@@ -374,7 +374,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T21:20:00.000Z",
+   "t": "2026-01-16T20:52:00.000Z",
    "tEnd": null,
    "title": "Into fridge",
    "detail": "16 hr cold proof",
@@ -394,7 +394,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T10:26:00.000Z",
+   "t": "2026-01-17T09:58:00.000Z",
    "tEnd": null,
    "title": "Muffins out of fridge",
    "detail": "3.8 hr warm-up / final proof before bake",
@@ -414,7 +414,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T11:50:00.000Z",
+   "t": "2026-01-17T11:22:00.000Z",
    "tEnd": null,
    "title": "Turn on oven to 500°F",
    "detail": "~90 min preheat to 500°F",
@@ -436,7 +436,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T13:20:00.000Z",
+   "t": "2026-01-17T12:52:00.000Z",
    "tEnd": null,
    "title": "Bake 1 of 1 — bread into oven",
    "detail": "10 min load · 40 min bake · 500°F\nDeck 1: 4 × Sourdough Batard\nDeck 2: 4 × Sourdough Batard",
@@ -459,7 +459,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:00:00.000Z",
+   "t": "2026-01-17T13:32:00.000Z",
    "tEnd": null,
    "title": "Last loaves out — start cooling",
    "detail": "1 hr cool",
@@ -479,8 +479,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:00:00.000Z",
-   "tEnd": "2026-01-17T14:16:00.000Z",
+   "t": "2026-01-17T13:32:00.000Z",
+   "tEnd": "2026-01-17T13:48:00.000Z",
    "title": "Set the oven to 375°F",
    "detail": "16 min — adjust from 500°F before this bake",
    "process": "muffin",
@@ -499,7 +499,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:16:00.000Z",
+   "t": "2026-01-17T13:48:00.000Z",
    "tEnd": null,
    "title": "Bake 1 of 1 — muffins into oven",
    "detail": "10 min load · 12 min bake · 375°F\nDeck 1: 16 × Sourdough English Muffins\nDeck 2: 8 × Sourdough English Muffins",
@@ -522,7 +522,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:28:00.000Z",
+   "t": "2026-01-17T14:00:00.000Z",
    "tEnd": null,
    "title": "Last muffins out — start cooling",
    "detail": "1 hr cool",
@@ -542,7 +542,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T14:28:00.000Z",
+   "t": "2026-01-17T14:00:00.000Z",
    "tEnd": null,
    "title": "Turn off the oven",
    "detail": "Baking done — oven off, cools to room temp",
@@ -562,7 +562,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:00:00.000Z",
+   "t": "2026-01-17T14:32:00.000Z",
    "tEnd": null,
    "title": "Loaves ready for sale",
    "detail": "",
@@ -582,7 +582,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-17T15:28:00.000Z",
+   "t": "2026-01-17T15:00:00.000Z",
    "tEnd": null,
    "title": "Muffins ready for sale",
    "detail": "",
@@ -604,19 +604,19 @@
  ],
  "warnings": [
   {
-   "msg": "Oven conflict: Sourdough English Muffins bakes after Sourdough Batard, but now ends 28 min past its deadline.",
-   "issue": "oven-overlap-late",
-   "kind": "muffin",
+   "msg": "Sourdough Batard bakes earlier so everything fits in the oven — ready ~28 min before its deadline.",
+   "issue": "oven-pulled-earlier",
+   "kind": "loaf",
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Gather ingredients\" and \"Stretch & fold 5 of 5 (last)\" both need you around 10:14 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Gather ingredients\" and \"Stretch & fold 5 of 5 (last)\" both need you around 9:46 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
   },
   {
-   "msg": "Hands-on steps overlap: \"Stretch & fold 5 of 5 (last)\" and \"Mix muffin dough\" both need you around 10:17 AM. You can only do one at a time — consider staggering them.",
+   "msg": "Hands-on steps overlap: \"Stretch & fold 5 of 5 (last)\" and \"Mix muffin dough\" both need you around 9:49 AM. You can only do one at a time — consider staggering them.",
    "issue": "active-overlap",
    "kind": null,
    "type": "info"
@@ -628,8 +628,8 @@
    "role": "Loaf bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T13:20:00.000Z",
-   "end": "2026-01-17T14:00:00.000Z",
+   "start": "2026-01-17T12:52:00.000Z",
+   "end": "2026-01-17T13:32:00.000Z",
    "capacity": 1
   },
   {
@@ -637,8 +637,8 @@
    "role": "Muffin bake",
    "name": "Oven",
    "count": 1,
-   "start": "2026-01-17T14:16:00.000Z",
-   "end": "2026-01-17T14:28:00.000Z",
+   "start": "2026-01-17T13:48:00.000Z",
+   "end": "2026-01-17T14:00:00.000Z",
    "capacity": 1
   }
  ],

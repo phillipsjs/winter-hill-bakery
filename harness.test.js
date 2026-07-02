@@ -600,15 +600,25 @@ p2Ok &= p2(`bulk +60 min shifts chain ~60 min earlier (got ${shiftedMin})`, shif
 
 // Post-bake cool/glaze are now stage-driven. Package-ready is deadline-anchored, so a
 // longer cool shifts the BAKE earlier (more cooling before the deadline) and the cool
-// step's duration updates.
+// step's duration updates. Rendered enriched-ONLY: with the simple recipe sharing the
+// oven, the deadline-fidelity optimizer packs the contended sequence and the bake's
+// position is no longer a pure function of its own cool time.
 const firstBake = (es) => es.filter(e => /^Bake /.test(e.title)).sort((a, b) => a.time - b.time)[0].time.getTime();
 const coolDetail = (es) => (es.find(e => /out — cool/.test(e.title)) || {}).detail || '';
 // reset enriched bulk back so only cool changes between the two renders
 enrR.stages.find(s => s.type === 'bulk').duration.min -= 60;
-let eePre = p2events('enriched');
+function p2enrichedOnly() {
+  api.__setPlan({ 'p2-enr': 12 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.renderSchedule();
+  return api.__sr().events.filter(e => e.process === 'enriched');
+}
+let eePre = p2enrichedOnly();
 const bakeBefore = firstBake(eePre);
 enrR.stages.find(s => s.type === 'cool').duration.min += 30; // +30 min cool
-let eePost = p2events('enriched');
+let eePost = p2enrichedOnly();
 const bakeShift = Math.round((bakeBefore - firstBake(eePost)) / 60000);
 p2Ok &= p2(`cool +30 min shifts the bake ~30 min earlier (got ${bakeShift})`, bakeShift === 30);
 p2Ok &= p2(`cool step duration reflects the edit (got "${coolDetail(eePost)}")`, /50 min/.test(coolDetail(eePost)));
@@ -3547,6 +3557,43 @@ function sideSplitSetup(recipe, count, splitCount) {
   api.saveBakeInstances({});
 }
 allOk &= ssOk;
+
+// ---- Deadline-fidelity optimizer: contended ovens pull earlier bakes earlier ----
+console.log('\nOptimizer assertions:');
+let opOk = true;
+function op(label, cond) { console.log(`  [optimize] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  // Muffins + bagels share the single oven at one deadline — enough combined bake time
+  // that the legacy push-later sequencing missed a deadline.
+  api.__setOvens([]); api.__setContainers([]); api.saveBakeInstances({});
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.muffin]: 48, [SEED.bagel]: 24 }); seedPlan({ [SEED.muffin]: 48, [SEED.bagel]: 24 });
+  api.renderSchedule();
+  const sr = api.__sr();
+  const dl = tomorrow8.getTime();
+  opOk &= op('contended oven: nothing ends past its deadline (no oven-overlap-late)',
+    !(sr.warnings || []).some(w => w.issue === 'oven-overlap-late'));
+  const readies = sr.events.filter(e => /(ready for sale|Package & ready)/.test(e.title));
+  opOk &= op('every ready marker lands at or before the deadline',
+    readies.length > 0 && readies.every(e => e.time.getTime() <= dl + 60000));
+  opOk &= op('the pull is surfaced as an informational note',
+    (sr.warnings || []).some(w => w.issue === 'oven-pulled-earlier' && w.type === 'info'));
+  // Bake claims must not overlap on the one oven (the pull kept the sequence packed, not stacked).
+  const ovenClaims = (sr.equipClaims || []).filter(c => c.pool === 'oven').sort((a, b) => a.startMs - b.startMs);
+  opOk &= op('oven claims stay non-overlapping after the pull',
+    ovenClaims.every((c, i) => i === 0 || c.startMs >= ovenClaims[i - 1].endMs));
+}
+{
+  // Uncontended plan: the optimizer must not touch anything.
+  api.__setPlan({ [SEED.muffin]: 12 }); seedPlan({ [SEED.muffin]: 12 });
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  api.renderSchedule();
+  opOk &= op('uncontended plan: no pulled-earlier notes',
+    !(api.__sr().warnings || []).some(w => w.issue === 'oven-pulled-earlier'));
+}
+allOk &= opOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);
