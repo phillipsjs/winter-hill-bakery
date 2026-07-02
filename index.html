@@ -12381,7 +12381,7 @@ ${notesHtml}
       const availOvenIds = ovenDefs.map(o => o.id);
 
       const slots = [
-        loafSlot     ? { s: loafSlot,     kind: 'loaf'     } : null,
+        ...loafGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
         ...muffinGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
         ...bagelGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
         ...focacciaGroups.map(g => g.slot ? { s: g.slot, kind: g.key } : null),
@@ -14322,7 +14322,7 @@ ${notesHtml}
     // Surface oven temp-change buffers (set by the oven-assignment layer) as their
     // own timeline steps, placed in the gap right before the bake they precede.
     [
-      { s: loafSlot, process: 'loaf' },
+      ...loafGroups.map(g => ({ s: g.slot, process: 'loaf' })),
       ...muffinGroups.map(g => ({ s: g.slot, process: 'muffin', columnKey: g.key })),
       ...bagelGroups.map(g => ({ s: g.slot, process: 'bagel', columnKey: g.key })),
       ...focacciaGroups.map(g => ({ s: g.slot, process: 'focaccia', columnKey: g.key })),
@@ -14386,7 +14386,7 @@ ${notesHtml}
       bagelBatches,
       loafColdProofRange,
       mixBatches: totalMixBatches,
-      loafContainerInfo: containerInfo.slice(),
+      loafContainerInfo: loafGroups.flatMap(g => g.containerInfo || []),
       levainContainerInfo,
       equipClaims,
     };
