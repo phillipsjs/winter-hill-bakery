@@ -3629,5 +3629,43 @@ function ec(label, cond) { console.log(`  [elastic-chill] ${cond ? 'PASS' : 'FAI
 }
 allOk &= ecOk;
 
+// ---- Throughput optimizer: spread contended slots to idle allowed ovens ----
+console.log('\nOven-spread assertions:');
+let osOk = true;
+function os(label, cond) { console.log(`  [oven-spread] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  // Both processes softly PREFER Oven A (so the greedy assignment stacks them there and
+  // one gets displaced); Oven B is allowed and idle. With a bake-time PRESET there's
+  // slack (no deadline miss, so the miss-fallback stays out of it) — the throughput pass
+  // should move the displaced one to B so both bake right on time: no pull, no push.
+  api.__setOvens([
+    { id: 'os-a', name: 'Oven A', decks: 1, tempF: 500 },
+    { id: 'os-b', name: 'Oven B', decks: 1, tempF: 500 },
+  ]);
+  api.__setContainers([]); api.saveBakeInstances({});
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input'].forEach(id => { els[id].value = ''; });
+  els['bake-time-default-input'].value = 'morning';
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  const muffinR = api.__recipes().find(r => r.id === SEED.muffin);
+  const bagelR = api.__recipes().find(r => r.id === SEED.bagel);
+  const muffinPrefsSnap = muffinR.ovenPrefs, bagelPrefsSnap = bagelR.ovenPrefs;
+  muffinR.ovenPrefs = { 'os-a': 'preferred' };
+  bagelR.ovenPrefs = { 'os-a': 'preferred' };
+  api.__setPlan({ [SEED.muffin]: 24, [SEED.bagel]: 12 }); seedPlan({ [SEED.muffin]: 24, [SEED.bagel]: 12 });
+  api.renderSchedule();
+  const srOS = api.__sr();
+  els['bake-time-default-input'].value = '';
+  osOk &= os('the displaced unit spreads to the idle allowed oven (oven-spread note)',
+    (srOS.warnings || []).some(w => w.issue === 'oven-spread' && /Oven B/.test(w.msg)));
+  osOk &= os('nothing is pulled earlier or pushed late after spreading',
+    !(srOS.warnings || []).some(w => w.issue === 'oven-pulled-earlier' || w.issue === 'oven-overlap-late'));
+  const osOvens = new Set((srOS.equipClaims || []).filter(c => c.pool === 'oven').map(c => c.name));
+  osOk &= os('bakes land on BOTH ovens', osOvens.has('Oven A') && osOvens.has('Oven B'));
+  muffinR.ovenPrefs = muffinPrefsSnap; bagelR.ovenPrefs = bagelPrefsSnap;
+  api.__setOvens([]);
+}
+allOk &= osOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

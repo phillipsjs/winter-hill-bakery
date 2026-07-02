@@ -12619,6 +12619,35 @@ ${notesHtml}
         }
       });
 
+      // Throughput pass (optimizer): before sacrificing freshness (pull-earlier below) or
+      // punctuality (push-later), spread contention across the kitchen — a slot that the
+      // sequence displaced from its desired time moves to another ALLOWED oven when it can
+      // bake there exactly as desired without displacing that oven's own bakes. Soft
+      // preferences yield to punctuality (required/avoid stay hard via allowedOvens).
+      const displacedSlot = (it) => it.s.firstBakeStart.getTime() > it.desiredFirst.getTime();
+      if (multiOven) {
+        slots.filter(it => displacedSlot(it) && it.allowedOvens.length > 1).forEach(it => {
+          const fromId = it.ovenId;
+          for (const oid of it.allowedOvens) {
+            if (oid === fromId) continue;
+            assigned[fromId] = assigned[fromId].filter(x => x !== it);
+            assigned[oid].push(it);
+            sequenceOven(fromId); sequenceOven(oid);
+            if (!displacedSlot(it) && assigned[oid].every(x => x === it || !displacedSlot(x))) {
+              warnings.push({
+                msg: `${recipeLabel(it.kind)} moved to ${ovenName(oid)} so it can bake right on time (its first-choice oven was busy).`,
+                issue: 'oven-spread', kind: it.kind, type: 'info',
+              });
+              break;
+            }
+            // revert
+            assigned[oid] = assigned[oid].filter(x => x !== it);
+            assigned[fromId].push(it);
+            sequenceOven(fromId); sequenceOven(oid);
+          }
+        });
+      }
+
       // Deadline-fidelity pass (optimizer): when an oven's sequence still leaves a bake
       // ending past its deadline, pull the EARLIER bakes earlier instead of pushing the
       // later ones late — an early bake just cools longer (less fresh but ON TIME), which
