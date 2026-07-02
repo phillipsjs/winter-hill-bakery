@@ -12,8 +12,8 @@
  },
  "events": [
   {
-   "t": "2026-01-15T13:30:00.000Z",
-   "tEnd": "2026-01-15T16:30:00.000Z",
+   "t": "2026-01-15T14:30:00.000Z",
+   "tEnd": "2026-01-15T17:30:00.000Z",
    "title": "Levain Build 1 — first refresh",
    "detail": "1:1:1 ratio · 2 min mix · ripens in 6–9 hr",
    "process": "loaf",
@@ -32,8 +32,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-15T20:30:00.000Z",
-   "tEnd": "2026-01-16T00:30:00.000Z",
+   "t": "2026-01-15T21:30:00.000Z",
+   "tEnd": "2026-01-16T01:30:00.000Z",
    "title": "Levain Build 2 — final build",
    "detail": "1:5:5 ratio · 2 min mix · ripens in 12–16 hr (slower ratio chosen to avoid a late-night refresh)",
    "process": "loaf",
@@ -52,7 +52,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T11:11:00.000Z",
+   "t": "2026-01-16T11:56:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "10 min active · 2 recipes · weigh per batch (2 containers)",
@@ -91,7 +91,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T11:21:00.000Z",
+   "t": "2026-01-16T12:06:00.000Z",
    "tEnd": null,
    "title": "Start autolyse — flour + water only",
    "detail": "10 min mix × 2 containers = 20 min active · then 50 min rest · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
@@ -130,7 +130,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T12:31:00.000Z",
+   "t": "2026-01-16T13:16:00.000Z",
    "tEnd": null,
    "title": "Mix in salt + ripe levain",
    "detail": "10 min mix × 2 containers = 20 min active · 30 min rest before fold 1 · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
@@ -169,7 +169,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T13:11:00.000Z",
+   "t": "2026-01-16T13:56:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 1 of 5",
    "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
@@ -189,7 +189,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T13:41:00.000Z",
+   "t": "2026-01-16T14:26:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 2 of 5",
    "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
@@ -209,7 +209,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:11:00.000Z",
+   "t": "2026-01-16T14:56:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 3 of 5",
    "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
@@ -229,7 +229,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:41:00.000Z",
+   "t": "2026-01-16T15:26:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 4 of 5",
    "detail": "5 min × 2 containers = 10 min active · next fold in 30 min · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
@@ -249,7 +249,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:11:00.000Z",
+   "t": "2026-01-16T15:56:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 5 of 5 (last)",
    "detail": "5 min × 2 containers = 10 min active · last fold, then bulk ferment · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
@@ -269,8 +269,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:11:00.000Z",
-   "tEnd": "2026-01-16T19:11:00.000Z",
+   "t": "2026-01-16T15:56:00.000Z",
+   "tEnd": "2026-01-16T19:56:00.000Z",
    "title": "Bulk ferment",
    "detail": "4 hr warm bulk ferment until ready to shape · container 1 of 2: 12 × Sourdough Batard | container 2 of 2: 8 × Sourdough Boule",
    "process": "loaf",
@@ -289,7 +289,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T19:11:00.000Z",
+   "t": "2026-01-16T19:56:00.000Z",
    "tEnd": null,
    "title": "Start preshape (container 1 of 2: 12 × Sourdough Batard)",
    "detail": "Weigh & divide: 675 g each · 4 min × 12 loaves = 48 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
@@ -309,7 +309,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T19:59:00.000Z",
+   "t": "2026-01-16T20:44:00.000Z",
    "tEnd": null,
    "title": "Final shape (container 1 of 2: 12 × Sourdough Batard)",
    "detail": "3 min × 12 loaves = 36 min total",
@@ -329,7 +329,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:35:00.000Z",
+   "t": "2026-01-16T21:20:00.000Z",
    "tEnd": null,
    "title": "Start preshape (container 2 of 2: 8 × Sourdough Boule)",
    "detail": "Weigh & divide: 850 g each · 4 min × 8 loaves = 32 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
@@ -349,7 +349,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T20:35:00.000Z",
+   "t": "2026-01-16T21:20:00.000Z",
    "tEnd": null,
    "title": "Into fridge (container 1 of 2: 12 × Sourdough Batard)",
    "detail": "16 hr cold proof · last batch proofs ~4 hr longer (staggered bakes)",
@@ -369,7 +369,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T21:07:00.000Z",
+   "t": "2026-01-16T21:52:00.000Z",
    "tEnd": null,
    "title": "Final shape (container 2 of 2: 8 × Sourdough Boule)",
    "detail": "3 min × 8 loaves = 24 min total",
@@ -389,10 +389,10 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T21:31:00.000Z",
+   "t": "2026-01-16T22:16:00.000Z",
    "tEnd": null,
    "title": "Into fridge (container 2 of 2: 8 × Sourdough Boule)",
-   "detail": "15 hr 49 min cold proof · last batch proofs ~4 hr longer (staggered bakes)",
+   "detail": "15 hr 4 min cold proof · last batch proofs ~4 hr longer (staggered bakes)",
    "process": "loaf",
    "columnKey": "g0~loaf",
    "colDetails": null,
@@ -691,7 +691,7 @@
   }
  ],
  "loafColdProofRange": {
-  "minMs": 56940000,
+  "minMs": 54240000,
   "maxMs": 57600000
  }
 }

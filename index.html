@@ -12094,14 +12094,66 @@ ${notesHtml}
     // plans by deadline, so buildSchedule always sees ONE loaf group today. This is the
     // group-shaped view of the loaf singulars — the pipeline attaches its derived values
     // (container info, bake start times, package-ready) as it runs, and emission blocks
-    // convert one by one to iterate loafGroups (a loop of 1 → byte-identical), so multiple
-    // in-engine deadline groups — and native split portions — become possible (G1b/G2).
-    const loafGroups = totalLoaves > 0 ? [{
-      key: 'loaf', deadline: loafDeadline ? new Date(loafDeadline) : null,
-      recipes: loafRecipes, total: totalLoaves,
-      agg: loafAgg, ovenPlan, batches: breadBatches, bakeTotalMin: loafBakeTotalMin,
-      coolMin: loafCoolMin, slot: loafSlot,
-    }] : [];
+    // iterate loafGroups (a loop of 1), so multiple in-engine deadline groups — and native
+    // split portions — are possible.
+    //
+    // Native split portions (G2): when the plan carries a split bake, the LATER portions
+    // (__sharePrep clones, own deadlines) bake at their own slots while the base recipes
+    // ride the group bake — so the group's bake side covers only the base loaves, and all
+    // prep (which the group anchors at the earliest deadline) is shared. Portion slots are
+    // QUIET (no slack/late warnings), matching the legacy wrapper discarding them.
+    // Resolve a recipe's effective deadline: per-recipe override → the process fallback.
+    // Shared by every per-deadline grouping (loaf portions, muffin/bagel/focaccia bake
+    // groups, side groups).
+    const deadlineForRecipe = (r, fallback) => {
+      const d = opts.recipeDeadlines && opts.recipeDeadlines[r.id];
+      return d ? new Date(d) : (fallback ? new Date(fallback) : null);
+    };
+    const loafGroups = (() => {
+      if (!(totalLoaves > 0)) return [];
+      const g = {
+        key: 'loaf', deadline: loafDeadline ? new Date(loafDeadline) : null,
+        recipes: loafRecipes, total: totalLoaves,
+        agg: loafAgg, ovenPlan, batches: breadBatches, bakeTotalMin: loafBakeTotalMin,
+        coolMin: loafCoolMin, slot: loafSlot,
+      };
+      // A later portion = a split clone (__sharePrep) or a combine-toggled recipe whose own
+      // deadline is after the group anchor (the across-groups wrapper hands merged units to
+      // this one call). Wrapper-partitioned single-deadline calls never match.
+      const groupDlMs2 = loafDeadline ? new Date(loafDeadline).getTime() : null;
+      const isLaterPortion = (r) => {
+        if (!((plan[r.id] || 0) > 0)) return false;
+        if (r.__sharePrep) return true;
+        const d = deadlineForRecipe(r, loafDeadline);
+        return !!(d && groupDlMs2 && d.getTime() > groupDlMs2);
+      };
+      const clones = loafRecipes.filter(isLaterPortion);
+      if (clones.length) {
+        const baseRecs = loafRecipes.filter(r => !isLaterPortion(r));
+        const basePlan = {};
+        baseRecs.forEach(r => { if ((plan[r.id] || 0) > 0) basePlan[r.id] = plan[r.id]; });
+        g.ovenPlan = planOvenLoads(baseRecs, basePlan);
+        g.batches = g.ovenPlan.length;
+        g.bakeTotalMin = g.batches * loafAgg.bakeMin + Math.max(0, g.batches - 1) * SCHED.REHEAT_MIN;
+        g.total = baseRecs.reduce((s, r) => s + (plan[r.id] || 0), 0);
+        // Quiet: the full-count loafSlot above already carried the group's slack/late
+        // warnings (matching the legacy wrapper's prep call) — don't double them.
+        g.slot = computeSlot(loafDeadline, loafBakeTime, g.bakeTotalMin, loafCoolMin, 'Bread', 'loaf', 'picking a different bake-time preference.', true);
+        g.portions = clones.map(r => {
+          const count = plan[r.id] || 0;
+          const pPlan = planOvenLoads([r], { [r.id]: count });
+          const pBatches = pPlan.length;
+          const pTotalMin = pBatches * loafAgg.bakeMin + Math.max(0, pBatches - 1) * SCHED.REHEAT_MIN;
+          const pDeadline = deadlineForRecipe(r, loafDeadline);
+          return {
+            recipe: r, recipeId: r.id, count, deadline: pDeadline,
+            ovenPlan: pPlan, batches: pBatches, bakeTotalMin: pTotalMin,
+            slot: computeSlot(pDeadline, loafBakeTime, pTotalMin, loafCoolMin, 'Bread', 'loaf', 'picking a different bake-time preference.', true),
+          };
+        });
+      }
+      return [g];
+    })();
     // A mixer load can only ever hold ONE dough — two recipes with different
     // ingredients can't be mixed together even if their combined count would fit
     // the mixer. So mix batches are counted PER dough (recipes with an identical
@@ -12116,12 +12168,6 @@ ${notesHtml}
       return n;
     };
     const multiDough = (recs) => new Set(recs.map(ratioSignature)).size > 1;
-    // Resolve a recipe's effective deadline: per-recipe override → the process fallback.
-    // Shared by every per-deadline grouping (muffin/bagel/focaccia bake groups, side groups).
-    const deadlineForRecipe = (r, fallback) => {
-      const d = opts.recipeDeadlines && opts.recipeDeadlines[r.id];
-      return d ? new Date(d) : (fallback ? new Date(fallback) : null);
-    };
     // Bucket recipes by that deadline, earliest first — the shared first step of every
     // per-deadline bake-group split. One bucket per distinct deadline.
     const makeDeadlineBuckets = (recs, fallback) => {
@@ -12618,6 +12664,33 @@ ${notesHtml}
     // remain (exactly one group exists until the across-groups wrapper hands over).
     loafGroups.forEach(gLoaf => {
       if (!gLoaf.slot) return;
+      // Native split portions: assign each portion's oven (its own recipe's prefs — a
+      // split's per-portion oven — else ride the group's), then, when a portion's bake
+      // would overlap the group's own bake window on the same oven, pull the GROUP's
+      // bakes earlier so the portion keeps its deadline-fresh slot (the legacy wrapper's
+      // pull-earlier sequencing, freshness-preserving by anchoring the latest bake).
+      if (gLoaf.portions && gLoaf.portions.length) {
+        gLoaf.portions.forEach(p => {
+          const cons = combinedOvenConstraint([p.recipe], userOvens.map(o => o.id));
+          const prefId = !cons.infeasible && cons.allowed && cons.allowed.length
+            ? cons.allowed.slice().sort((a, b) => ((cons.score && cons.score[b]) || 0) - ((cons.score && cons.score[a]) || 0))[0]
+            : null;
+          const prefOven = prefId ? userOvens.find(o => o.id === prefId) : null;
+          p.ovenName = (prefOven && prefOven.name) || (gLoaf.slot.ovenName || (userOvens.length === 1 ? userOvens[0].name : 'Oven'));
+        });
+        const groupOven = gLoaf.slot.ovenName || (userOvens.length === 1 ? userOvens[0].name : 'Oven');
+        const sameOven = (p) => p.ovenName === groupOven;
+        const earliest = gLoaf.portions.filter(sameOven).reduce((m, p) => (!m || p.slot.firstBakeStart < m ? p.slot.firstBakeStart : m), null);
+        if (earliest) {
+          const groupEnd = addMinutes(gLoaf.slot.firstBakeStart, gLoaf.bakeTotalMin);
+          const overMs = groupEnd - earliest;
+          if (overMs > 0) {
+            ['firstBakeStart', 'lastBakeEnd', 'packageReady'].forEach(k => {
+              if (gLoaf.slot[k]) gLoaf.slot[k] = new Date(gLoaf.slot[k].getTime() - overMs);
+            });
+          }
+        }
+      }
       const loafSlot = gLoaf.slot, loafAgg = gLoaf.agg, loafRecipes = gLoaf.recipes,
         breadBatches = gLoaf.batches, ovenPlan = gLoaf.ovenPlan;
       firstBakeStart = loafSlot.firstBakeStart;
@@ -12804,26 +12877,6 @@ ${notesHtml}
           x.firstFold = addMinutes(x.lastFold, -(loafAgg.foldsCount - 1) * loafAgg.foldIntervalMin);
           x.mix = addMinutes(x.firstFold, -loafAgg.foldIntervalMin);
           x.autolyse = addMinutes(x.mix, -loafAgg.autolyseMin);
-        });
-      }
-      // Native split portions (G2 scaffolding, inert — nothing consumes these yet): when
-      // this group carries a split bake (base recipe + __sharePrep clones, each with its
-      // own deadline), assemble one portion per recipe with its own deck plan and bake
-      // slot. All prep is shared (the group schedules at the earliest deadline); only the
-      // cold proof and bake diverge per portion. Quiet slots: the legacy wrapper discarded
-      // per-portion slack/late warnings, so the native slots skip them too.
-      if (loafRecipes.some(r => r.__sharePrep)) {
-        gLoaf.portions = loafRecipes.filter(r => (plan[r.id] || 0) > 0).map(r => {
-          const count = plan[r.id] || 0;
-          const pPlan = planOvenLoads([r], { [r.id]: count });
-          const pBatches = pPlan.length;
-          const pTotalMin = pBatches * loafAgg.bakeMin + Math.max(0, pBatches - 1) * SCHED.REHEAT_MIN;
-          const pDeadline = deadlineForRecipe(r, loafDeadline);
-          return {
-            recipe: r, recipeId: r.id, count, deadline: pDeadline,
-            ovenPlan: pPlan, batches: pBatches, bakeTotalMin: pTotalMin,
-            slot: computeSlot(pDeadline, loafBakeTime, pTotalMin, gLoaf.coolMin, 'Bread', 'loaf', 'picking a different bake-time preference.', true),
-          };
         });
       }
       // Attach the group-shaped view the per-group emission blocks read (single group
@@ -13715,6 +13768,30 @@ ${notesHtml}
         addClaim('banneton', 'Loaf cold proof', bannetonKey, c.loaves || 0, fridgeTime, bakeStart, eligibleBannetonCap || null);
       }
     });
+    // Native split portions: note the longer proof on the split dough's fridge step(s) —
+    // the dough goes into the fridge once, but later portions bake (so proof) hours longer.
+    loafGroups.forEach(g => {
+      if (!g.portions || !g.slot) return;
+      const bySig = new Map();
+      const consider = (r, t) => {
+        const s = ratioSignature(r);
+        if (!bySig.has(s)) bySig.set(s, { times: [], names: new Set() });
+        const e = bySig.get(s);
+        e.times.push(t.getTime()); e.names.add(r.name);
+      };
+      g.recipes.filter(r => !r.__sharePrep).forEach(r => consider(r, g.slot.firstBakeStart));
+      g.portions.forEach(p => consider(p.recipe, p.slot.firstBakeStart));
+      bySig.forEach(x => {
+        if (x.times.length < 2) return;
+        const spreadHr = (Math.max(...x.times) - Math.min(...x.times)) / 3600000;
+        if (spreadHr < 0.5) return;
+        const extra = spreadHr < 1 ? 'under an hour' : `~${Math.round(spreadHr)} hr`;
+        const names = [...x.names];
+        events.forEach(ev => {
+          if (/^Into fridge/.test(ev.title) && names.some(n => ev.title.includes(n))) ev.detail = `${ev.detail} · last batch proofs ${extra} longer (staggered bakes)`;
+        });
+      });
+    });
     const loafColdProofRange = containerColdProofMs.length > 0
       ? { minMs: Math.min(...containerColdProofMs), maxMs: Math.max(...containerColdProofMs) }
       : null;
@@ -13807,10 +13884,18 @@ ${notesHtml}
       // each dough's column shows its own loaves/deck under the shared bake instruction.
       let bakeColDetails = null;
       if (plan_b && loafColumns.length > 1) {
+        // Group batches carry only BASE loaves (a split's later portions bake separately),
+        // and a split base + clone share a NAME — so resolve each deck item to the BASE
+        // recipe's column by id, never the name map (whose last write is the clone's).
+        const portionIds = new Set((g.portions || []).map(p => p.recipeId));
+        const baseColKeyFor = (name) => {
+          const baseRec = g.recipes.find(r => r.name === name && !portionIds.has(r.id));
+          return (baseRec && loafRecipeColKeyById.get(baseRec.id)) || loafRecipeColKey.get(name) || 'loaf';
+        };
         bakeColDetails = {};
         plan_b.forEach((deck, di) => {
           deck.items.forEach(it => {
-            const ck = loafRecipeColKey.get(it.name) || 'loaf';
+            const ck = baseColKeyFor(it.name);
             const line = `${it.count} × ${it.name} (${deckLabelFor(di)})`;
             bakeColDetails[ck] = bakeColDetails[ck] ? `${bakeColDetails[ck]}\n${line}` : line;
           });
@@ -13836,6 +13921,45 @@ ${notesHtml}
         });
       }
       }
+      // Native split portions: each later portion bakes at its own slot — own preheat
+      // (consolidateOvenPreheats collapses same-oven sessions), bakes, intra-portion
+      // "Loaves out"; cooling and the bucketed ready markers are emitted with the
+      // group finish below. Oven assignment is local (the portion honors its own
+      // recipe's oven prefs — a split's per-portion oven — else rides the group's).
+      (g.portions || []).forEach(p => {
+        const pCk = splitLoaf ? `loaf::${p.recipeId}` : undefined;
+        events.push({
+          time: addMinutes(p.slot.firstBakeStart, -loafPreheat),
+          title: `Turn on oven (bread) to ${fmtTemp(loafTemp)}`,
+          detail: fmtPreheat(loafPreheat, loafTemp),
+          process: 'loaf', columnKey: pCk,
+          equip: [p.ovenName],
+        });
+        for (let b = 0; b < p.batches; b++) {
+          const bakeStart = addMinutes(p.slot.firstBakeStart, b * (g.agg.bakeMin + SCHED.REHEAT_MIN));
+          const plan_b = p.ovenPlan[b];
+          const deckEquip = plan_b
+            ? plan_b.map((deck, di) => `${deckLabelFor(di)}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
+                .map(s => (userOvens.length > 1 ? s.replace(/^.*? · Deck /, `${p.ovenName} · Deck `) : s))
+            : [];
+          const planLines = deckEquip.length ? '\n' + deckEquip.join('\n') : '';
+          events.push({
+            time: bakeStart,
+            title: `Bake ${b + 1} of ${p.batches} — into oven`,
+            detail: `${SCHED.OVEN_LOAD_MIN} min load · ${g.agg.bakeMin} min bake · ${fmtTemp(g.agg.bakeTempF)}${planLines}`,
+            process: 'loaf', columnKey: pCk, equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
+          });
+          addOvenClaim([p.ovenName], 'Loaf bake', bakeStart, g.agg.bakeMin);
+          if (b < p.batches - 1) {
+            events.push({
+              time: addMinutes(bakeStart, g.agg.bakeMin),
+              title: `Loaves out (batch ${b + 1} of ${p.batches})`,
+              detail: `Pull batch ${b + 1}, load batch ${b + 2} · reheat ~${SCHED.REHEAT_MIN} min to ${fmtTemp(g.agg.bakeTempF)} before next bake`,
+              process: 'loaf', columnKey: pCk, stage: 'bake', equip: [p.ovenName],
+            });
+          }
+        }
+      });
     });
 
     // --- Muffin bake loop (per deadline group, independent slot) ---
@@ -14214,6 +14338,18 @@ ${notesHtml}
         detail: `${fmtCoolHr(g.slot.packageReady - gLastBakeEnd)} cool` + (turnOff ? ` · turn off ${loafOvenLabel} (cools to room temp)` : ''),
         process: 'loaf',
       });
+      // Native split portions: each later portion cools from its own last bake (its
+      // isolated oven session ends there, so the turn-off note rides along).
+      (g.portions || []).forEach(p => {
+        if (!(p.batches > 0) || !p.slot) return;
+        const pLastBakeEnd = addMinutes(p.slot.firstBakeStart, p.batches * g.agg.bakeMin + Math.max(0, p.batches - 1) * SCHED.REHEAT_MIN);
+        events.push({
+          time: pLastBakeEnd,
+          title: 'Last loaves out — start cooling',
+          detail: `${fmtCoolHr(p.slot.packageReady - pLastBakeEnd)} cool · turn off ${p.ovenName === 'Oven' ? 'the oven' : (p.ovenName || 'the oven')} (cools to room temp)`,
+          process: 'loaf', columnKey: splitLoaf ? `loaf::${p.recipeId}` : undefined,
+        });
+      });
     });
     // Group-level cooling step: last bake out → cool until package-ready.
     const emitGroupCooling = (g, label, process) => {
@@ -14227,7 +14363,30 @@ ${notesHtml}
     // Package-ready: collapse to one combined event when every present process
     // finishes within a minute of the others; otherwise per-process events.
     const readyEntries = [];
-    loafGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Loaves', process: 'loaf' }); });
+    loafGroups.forEach(g => { if (g.slot && !g.portions) readyEntries.push({ time: g.slot.packageReady, label: 'Loaves', process: 'loaf' }); });
+    // Native split portions: per-bucket ready markers (the base loaves together, then each
+    // later portion at its own ready time; buckets within a minute collapse and sum).
+    loafGroups.forEach(g => {
+      if (!g.portions || !g.slot) return;
+      const baseIds = g.recipes.filter(r => !r.__sharePrep).map(r => r.id);
+      const buckets = [{ ms: g.slot.packageReady.getTime(), count: g.total, cols: new Set(baseIds.map(id => `loaf::${id}`)) }];
+      g.portions.slice().sort((a, b) => a.slot.packageReady - b.slot.packageReady).forEach(p => {
+        const ms = p.slot.packageReady.getTime();
+        const last = buckets[buckets.length - 1];
+        if (last && ms - last.ms <= 60000) { last.count += p.count; last.cols.add(`loaf::${p.recipeId}`); }
+        else buckets.push({ ms, count: p.count, cols: new Set([`loaf::${p.recipeId}`]) });
+      });
+      buckets.forEach(b => {
+        const label = buckets.length > 1 ? `${b.count} ${b.count === 1 ? 'loaf' : 'loaves'} ready for sale` : 'Loaves ready for sale';
+        const ev = { time: new Date(b.ms), title: label, detail: '', process: 'loaf' };
+        if (splitLoaf) {
+          const cols = [...b.cols];
+          if (cols.length === 1) ev.columnKey = cols[0];
+          else { ev.colDetails = {}; cols.forEach(k => { ev.colDetails[k] = ''; }); }
+        }
+        events.push(ev);
+      });
+    });
     muffinGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Muffins', process: 'muffin', columnKey: g.key }); });
     bagelGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Bagels', process: 'bagel', columnKey: g.key }); });
     focacciaGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Focaccia', process: 'focaccia', columnKey: g.key }); });
@@ -14484,152 +14643,6 @@ ${notesHtml}
     renderSchedule();
   }
 
-  // Schedule a COMBINED unit (same-dough recipes across close deadlines) as ONE dough with
-  // staggered bakes: a shared prep call (sized for the full dough, anchored to the earliest
-  // deadline) supplies everything except the loaf bakes, and one bake call per recipe
-  // (anchored to its own deadline) supplies that recipe's bake from the single fridged batch.
-  function scheduleCombinedUnit(unit, baseOpts, rd, carryNonLoaf, fullPlan, dlMs) {
-    const sorted = [...unit.recipes].sort((a, b) => (dlMs(a) || 0) - (dlMs(b) || 0));
-    const ids = new Set(sorted.map(r => r.id));
-    const isLoafBake = (ev) => { if (ev.process !== 'loaf') return false; const s = getEventStage(ev); return s === 'bake' || s === 'cool' || s === 'done'; };
-    const prepPlan = {};
-    recipes.forEach(r => {
-      const c = fullPlan[r.id] || 0; if (c <= 0) return;
-      if (getProcessType(r) === 'sourdough-loaf') { if (ids.has(r.id)) prepPlan[r.id] = c; }
-      else if (carryNonLoaf) prepPlan[r.id] = c;
-    });
-    plan = prepPlan;
-    const cw = unit.window ? { loafColdProofHours: unit.window.min, loafColdProofMaxHr: unit.window.max } : {};
-    const prepRes = buildSchedule({ ...baseOpts, ...cw, loafDeadline: rd[sorted[0].id] || baseOpts.loafDeadline });
-    // The prep bakes the whole unit at the EARLIEST deadline, so its "ready for sale" marker is
-    // at the wrong time for a split (the later portion isn't ready until its own bake). Drop the
-    // prep's loaf/shared ready marker; we re-emit one per portion ready-time below. (Non-loaf
-    // "Muffins/Bagels ready" markers stay.)
-    const isLoafReady = (ev) => /^(Package & ready for sale|Loaves ready for sale)$/.test(ev.title || '') && (ev.process === 'loaf' || ev.process === 'shared');
-    const events = prepRes.events.filter(ev => !isLoafBake(ev) && !isLoafReady(ev)); // shared prep, no loaf bakes/ready
-    // The dough goes into the fridge once (shared prep, at the EARLIEST deadline), but each
-    // recipe bakes at its own time — so later portions cold-proof longer. The "Into fridge"
-    // label reflects the earliest bake; track the spread so we can note the longer proof.
-    const firstBakeTimes = [];
-    const bakeOvenClaims = []; // each portion bakes at its own time → keep its oven claims
-    // Build each portion independently (its own deadline), but COLLECT its bake-side events
-    // and oven claims first so we can sequence portions that share an oven. Each portion's
-    // buildSchedule assigns the oven assuming full availability, so two portions baking close
-    // together would otherwise grab the same oven at once → a false "oven double-booked".
-    // In the per-recipe column view, each portion is a single recipe whose own buildSchedule
-    // can't know it belongs to a per-recipe column — so its bake/cool steps carry no columnKey
-    // and would span EVERY loaf column. Stamp each portion's bake steps with its recipe column
-    // key (`loaf::<id>`, matching the prep's split-loaf columns) so they confine to that column.
-    const splitLoafView = loadSplitLoafCols();
-    const portions = [];
-    sorted.forEach(r => {
-      const bp = {}; bp[r.id] = fullPlan[r.id] || 0;
-      plan = bp;
-      const br = buildSchedule({ ...baseOpts, ...cw, loafDeadline: rd[r.id] || baseOpts.loafDeadline });
-      const pEvents = [];
-      br.events.forEach(ev => { if (isLoafBake(ev)) { if (splitLoafView) ev.columnKey = `loaf::${r.id}`; pEvents.push(ev); } });
-      const pClaims = (br.equipClaims || []).filter(c => c.pool === 'oven');
-      const starts = pClaims.map(c => c.startMs), ends = pClaims.map(c => c.endMs);
-      const readyEv = br.events.find(ev => isLoafReady(ev));
-      portions.push({
-        events: pEvents, claims: pClaims, name: r.name, sig: ratioSignature(r), id: r.id, // group the staggered dough
-        count: fullPlan[r.id] || 0,
-        readyMs: readyEv && readyEv.time ? readyEv.time.getTime() : null,
-        ovenName: pClaims.length ? pClaims[0].name : null,
-        startMs: starts.length ? Math.min(...starts) : null,
-        endMs: ends.length ? Math.max(...ends) : null,
-      });
-    });
-    // Sequence portions that share one oven: anchor the latest portion (it's deadline-pinned
-    // = freshest) and pull each earlier portion EARLIER so its bake finishes before the next
-    // one starts. An earlier portion baking a bit sooner just cools a little longer — far
-    // better than a phantom double-book. Portions on different ovens don't interfere.
-    const byOven = new Map();
-    portions.forEach(p => { if (p.startMs == null) return; const k = p.ovenName || '__single__'; if (!byOven.has(k)) byOven.set(k, []); byOven.get(k).push(p); });
-    byOven.forEach(list => {
-      list.sort((a, b) => a.startMs - b.startMs);
-      for (let i = list.length - 2; i >= 0; i--) {
-        const cur = list[i], next = list[i + 1];
-        if (cur.endMs > next.startMs) {
-          const shift = cur.endMs - next.startMs; // ms to move this portion EARLIER
-          cur.events.forEach(e => { if (e.time) e.time = new Date(e.time.getTime() - shift); });
-          cur.claims.forEach(c => { c.startMs -= shift; c.endMs -= shift; });
-          cur.startMs -= shift; cur.endMs -= shift;
-        }
-      }
-    });
-    portions.forEach(p => {
-      const ov = p.ovenName;
-      p.events.forEach(ev => {
-        // Loaf bake decks are labelled from the deck index (which packs from oven 1), so a
-        // portion sent to another oven would still READ "<oven 1> · Deck N". Rewrite the oven
-        // prefix to the portion's actually-assigned oven so the split shows its real oven.
-        // (Plain oven-name equip like the "loaves out" step has no " · Deck" and is left as-is —
-        // it already uses the assigned oven.)
-        if (ov && Array.isArray(ev.equip)) {
-          ev.equip = ev.equip.map(s => (typeof s === 'string' ? s.replace(/^.*? · Deck /, `${ov} · Deck `) : s));
-        }
-        if (ov && ev.colDetails) {
-          const cd = {};
-          Object.keys(ev.colDetails).forEach(k => { cd[k] = String(ev.colDetails[k]).replace(/\([^()·]*? · Deck /g, `(${ov} · Deck `); });
-          ev.colDetails = cd;
-        }
-        events.push(ev);
-      });
-      p.claims.forEach(c => bakeOvenClaims.push(c));
-      if (p.startMs != null) firstBakeTimes.push(new Date(p.startMs));
-    });
-    // "Last batch proofs longer" applies only to the DOUGH actually staggered across bake times
-    // — a split's portions, or combine-toggled same-dough recipes — not a neighbour (e.g. boules)
-    // that merely shares this unit's prep and bakes once. Group bake times by dough signature;
-    // note only the doughs whose own bakes are spread out, on just their "Into fridge" steps
-    // (matched by the dough's recipe name(s) in the step title).
-    const doughGroups = new Map(); // sig -> { times: [], names: Set }
-    portions.forEach(p => {
-      if (p.startMs == null) return;
-      if (!doughGroups.has(p.sig)) doughGroups.set(p.sig, { times: [], names: new Set() });
-      const g = doughGroups.get(p.sig);
-      g.times.push(p.startMs); g.names.add(p.name);
-    });
-    doughGroups.forEach(g => {
-      if (g.times.length < 2) return;
-      const spreadHr = (Math.max(...g.times) - Math.min(...g.times)) / 3600000;
-      if (spreadHr < 0.5) return;
-      const extra = spreadHr < 1 ? 'under an hour' : `~${Math.round(spreadHr)} hr`;
-      const names = [...g.names];
-      events.forEach(ev => {
-        if (/^Into fridge/.test(ev.title) && names.some(n => ev.title.includes(n))) ev.detail = `${ev.detail} · last batch proofs ${extra} longer (staggered bakes)`;
-      });
-    });
-    // Re-emit the loaf "ready for sale" marker per portion ready-time (we dropped the prep's
-    // single early one). Portions ready within a minute collapse into one marker (sum their
-    // loaves); a split's later batch gets its own marker at its real ready time.
-    const readyBuckets = [];
-    portions.filter(p => p.readyMs != null && p.count > 0).sort((a, b) => a.readyMs - b.readyMs).forEach(p => {
-      const last = readyBuckets[readyBuckets.length - 1];
-      if (last && p.readyMs - last.ms <= 60000) { last.count += p.count; last.cols.add(`loaf::${p.id}`); }
-      else readyBuckets.push({ ms: p.readyMs, count: p.count, cols: new Set([`loaf::${p.id}`]) });
-    });
-    readyBuckets.forEach(b => {
-      const label = readyBuckets.length > 1 ? `${b.count} ${b.count === 1 ? 'loaf' : 'loaves'} ready for sale` : 'Loaves ready for sale';
-      const ev = { time: new Date(b.ms), title: label, detail: '', process: 'loaf' };
-      // In the per-recipe column view, scope the marker to the columns whose loaves it covers
-      // (e.g. boules + the first batard batch, vs only the split's later batch). One column →
-      // confine via columnKey; several → colDetails so the renderer spans just those columns.
-      if (splitLoafView) {
-        const cols = [...b.cols];
-        if (cols.length === 1) ev.columnKey = cols[0];
-        else { ev.colDetails = {}; cols.forEach(k => { ev.colDetails[k] = ''; }); }
-      }
-      events.push(ev);
-    });
-    // Keep the prep's container/banneton claims but DROP its oven claims — the prep
-    // buildSchedule baked the whole unit at the earliest deadline (we discarded those
-    // bake events); the real per-portion bakes carry their own oven claims below.
-    const prepClaims = (prepRes.equipClaims || []).filter(c => c.pool !== 'oven');
-    return { ...prepRes, events, equipClaims: [...prepClaims, ...bakeOvenClaims] };
-  }
-
   // Post-pass: insert a "Top <label>" step just before the first bake of any bread process
   // whose in-plan recipe carries a 'topping' stage (loaf seeds, focaccia rosemary, muffin
   // cornmeal). Bagels already split boil/top in the engine, so they're excluded here.
@@ -14729,19 +14742,21 @@ ${notesHtml}
     try {
       units.forEach((u, ui) => {
         const carryNonLoaf = ui === 0; // non-loaf processes + shared levain ride with the earliest unit
-        if (u.combined) {
-          results.push({ res: scheduleCombinedUnit(u, baseOpts, rd, carryNonLoaf, fullPlan, dlMs), gi: ui, group: u });
-        } else {
-          const ids = new Set(u.recipes.map(r => r.id));
-          const partPlan = {};
-          recipes.forEach(r => {
-            const c = fullPlan[r.id] || 0; if (c <= 0) return;
-            if (getProcessType(r) === 'sourdough-loaf') { if (ids.has(r.id)) partPlan[r.id] = c; }
-            else if (carryNonLoaf) partPlan[r.id] = c;
-          });
-          plan = partPlan; // partition the module-level plan for this call (restored in finally)
-          results.push({ res: buildSchedule({ ...baseOpts, loafDeadline: rd[u.recipes[0].id] || baseOpts.loafDeadline, loafColdProofHours: u.window.min, loafColdProofMaxHr: u.window.max }), gi: ui, group: u });
-        }
+        const ids = new Set(u.recipes.map(r => r.id));
+        const partPlan = {};
+        recipes.forEach(r => {
+          const c = fullPlan[r.id] || 0; if (c <= 0) return;
+          if (getProcessType(r) === 'sourdough-loaf') { if (ids.has(r.id)) partPlan[r.id] = c; }
+          else if (carryNonLoaf) partPlan[r.id] = c;
+        });
+        plan = partPlan; // partition the module-level plan for this call (restored in finally)
+        // A merged (split / combine-toggled) unit schedules ONCE at its EARLIEST recipe
+        // deadline — the engine's native portions bake the later parts at their own slots
+        // (this replaced scheduleCombinedUnit's prep + per-portion engine calls).
+        const anchor = u.combined
+          ? u.recipes.slice().sort((a, b) => (dlMs(a) || 0) - (dlMs(b) || 0))[0]
+          : u.recipes[0];
+        results.push({ res: buildSchedule({ ...baseOpts, loafDeadline: rd[anchor.id] || baseOpts.loafDeadline, loafColdProofHours: u.window.min, loafColdProofMaxHr: u.window.max }), gi: ui, group: u });
       });
     } finally {
       plan = fullPlan; // ALWAYS restore the real plan

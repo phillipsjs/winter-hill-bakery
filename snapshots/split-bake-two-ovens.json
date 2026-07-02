@@ -444,7 +444,7 @@
    "equip": [
     "Oven A · Deck 1: 4 × Sourdough Batard",
     "Oven A · Deck 2: 4 × Sourdough Batard",
-    "Oven A · Deck 1: 4 × Sourdough Batard"
+    "Oven B · Deck 1: 4 × Sourdough Batard"
    ],
    "equipStrip": "\nOven A · Deck 1: 4 × Sourdough Batard\nOven A · Deck 2: 4 × Sourdough Batard\nOven B · Deck 1: 4 × Sourdough Batard",
    "equipStripTitle": null,
@@ -459,7 +459,7 @@
    "t": "2026-01-17T14:00:00.000Z",
    "tEnd": null,
    "title": "Last loaves out — start cooling",
-   "detail": "1 hr cool · turn off Oven A (cools to room temp)",
+   "detail": "1 hr cool · turn off the oven (cools to room temp)",
    "process": "loaf",
    "columnKey": "g0~loaf",
    "colDetails": null,
@@ -496,10 +496,32 @@
    "batchIngredients": null
   },
   {
+   "t": "2026-01-17T16:50:00.000Z",
+   "tEnd": null,
+   "title": "Turn on oven to 500°F",
+   "detail": "~90 min preheat to 500°F",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [
+    "Oven B"
+   ],
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
    "t": "2026-01-17T18:20:00.000Z",
    "tEnd": null,
    "title": "Bake 1 of 1 — into oven",
-   "detail": "10 min load · 40 min bake · 500°F\nOven A · Deck 1: 4 × Sourdough Batard\nOven A · Deck 2: 4 × Sourdough Batard",
+   "detail": "10 min load · 40 min bake · 500°F\nOven B · Deck 1: 4 × Sourdough Batard\nOven B · Deck 2: 4 × Sourdough Batard",
    "process": "loaf",
    "columnKey": "g0~loaf",
    "colDetails": null,
@@ -509,7 +531,7 @@
     "Oven B · Deck 1: 4 × Sourdough Batard",
     "Oven B · Deck 2: 4 × Sourdough Batard"
    ],
-   "equipStrip": "\nOven A · Deck 1: 4 × Sourdough Batard\nOven A · Deck 2: 4 × Sourdough Batard",
+   "equipStrip": "\nOven B · Deck 1: 4 × Sourdough Batard\nOven B · Deck 2: 4 × Sourdough Batard",
    "equipStripTitle": null,
    "container": null,
    "activeStep": null,
@@ -583,7 +605,7 @@
   {
    "pool": "oven",
    "role": "Loaf bake",
-   "name": "Oven A",
+   "name": "Oven B",
    "count": 1,
    "start": "2026-01-17T13:20:00.000Z",
    "end": "2026-01-17T14:00:00.000Z",

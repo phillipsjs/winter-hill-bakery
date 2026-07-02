@@ -3055,9 +3055,14 @@ function runDiffDough(split) {
   const batardShape = shapeSteps.find(e => colsOf(e).some(isBatard));
   sdOk &= sd('shared-prep split: the shared batard shaping SPANS both split columns (base + clone)',
     !!batardShape && colsOf(batardShape).filter(isBatard).length === 2);
-  const bakeCols = new Set(srSplit.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title)).map(e => e.columnKey));
+  // Native portions: the base recipes bake together in the group bake (per-column
+  // attribution via colDetails); the split's later portion bakes as its own event
+  // confined to the clone column. All three columns must appear, distinctly.
+  const bakeEvents = srSplit.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title));
+  const allBakeCols = new Set(bakeEvents.flatMap(colsOf));
   sdOk &= sd('shared-prep split: bakes attribute to batard, split, and boule columns distinctly',
-    [...bakeCols].filter(k => /batard/.test(k || '')).length === 2 && [...bakeCols].some(k => /boule/.test(k || '')));
+    [...allBakeCols].filter(isBatard).length === 2 && [...allBakeCols].some(isBoule) &&
+    bakeEvents.some(e => { const cs = colsOf(e); return cs.length === 1 && isBatard(cs[0]); }));
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
   api.saveBakeInstances({});
 }
@@ -3180,9 +3185,13 @@ function runDiffDough(split) {
   const sr = api.__sr();
   const bouleColKey = (sr.loafColumns || []).map(c => c.key).find(k => /boule/.test(k));
   const bakes = sr.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title));
-  const bouleBake = bakes.find(e => (e.columnKey || '') === bouleColKey);
+  const colsOfBake = (e) => e.colDetails ? Object.keys(e.colDetails) : (e.columnKey ? [e.columnKey] : []);
+  // Native portions: the base (batards + boules, same dough) bakes as group batches with
+  // per-column colDetails built from each batch's actual contents â€” so a column only ever
+  // shows in a bake that really contains its loaves; the clone bakes as its own event.
   sdOk &= sd('same-dough split: boule bake confines to the boule column (not spanning all)',
-    !!bouleBake && bakes.every(e => /loaf::/.test(e.columnKey || '')));
+    bakes.some(e => colsOfBake(e).includes(bouleColKey)) &&
+    bakes.every(e => { const cs = colsOfBake(e); return cs.length > 0 && cs.every(k => /loaf/.test(k)); }));
   const bouleColLabel = (sr.loafColumns || []).find(c => c.key === bouleColKey);
   sdOk &= sd('same-dough split: the un-split boule column is NOT tagged "(staggered)"',
     bouleColLabel && !/staggered/.test(bouleColLabel.label));
@@ -3202,7 +3211,7 @@ function runDiffDough(split) {
   // boule (a different dough) stays in its own single column.
   sdOk &= sd('split: batard shaping spans BOTH split columns; boule shapes separately',
     !!batShape && colsOf(batShape).filter(isBat).length === 2 && shapeSteps.some(e => { const cs = colsOf(e); return cs.length === 1 && isBou(cs[0]); }));
-  const bakeCols2 = new Set(sr.events.filter(e => /^Bake \d+ of/.test(e.title)).map(e => e.columnKey));
+  const bakeCols2 = new Set(sr.events.filter(e => /^Bake \d+ of/.test(e.title)).flatMap(colsOf));
   sdOk &= sd('split: bakes still diverge to base + clone columns despite shared prep/container',
     bakeCols2.has('g0~loaf::seed-sourdough-batard') && bakeCols2.has('g0~loaf::seed-sourdough-batard~b1'));
   localStorageStub.removeItem('whb-split-loaf-cols-v1');
@@ -3427,18 +3436,16 @@ function np(label, cond) { console.log(`  [portion] ${cond ? 'PASS' : 'FAIL'} â€
   const sr = api.__sr();
   const g = (sr._loafGroups || [])[0];
   const portions = (g && g.portions) || [];
-  npOk &= np('split plan: the loaf group assembles one portion per recipe', portions.length === 2);
-  npOk &= np('portions carry the split counts (16 + 4)',
-    portions.some(p => p.count === 16) && portions.some(p => p.count === 4));
-  npOk &= np('portions carry their own deadlines (5 hr apart)',
-    portions.length === 2 && Math.abs(portions[1].deadline - portions[0].deadline) === 5 * 3600000);
-  // Fidelity: with no oven overlap, the later portion's scaffold slot must equal the
-  // bake time the wrapper's per-portion engine call actually emitted.
-  const later = portions.find(p => p.count === 4);
+  npOk &= np('split plan: the loaf group assembles one LATER portion (the clone; base rides the group bake)',
+    portions.length === 1 && portions[0].count === 4);
+  npOk &= np('the group bake covers only the base loaves (16)', !!g && g.total === 16);
+  npOk &= np('the portion carries its own later deadline',
+    portions.length === 1 && !!g.deadline && portions[0].deadline - g.deadline === 5 * 3600000);
+  // The later portion bakes at its own slot, after the group's bakes.
   const bakes = sr.events.filter(e => e.process === 'loaf' && /^Bake \d+ of/.test(e.title)).sort((a, b) => a.time - b.time);
-  npOk &= np('later portion scaffold slot matches the wrapper-emitted later bake time',
-    !!later && bakes.length >= 2 && bakes[bakes.length - 1].time.getTime() === later.slot.firstBakeStart.getTime());
-  npOk &= np('no portion slack/late warnings leak from the scaffold (quiet slots)',
+  npOk &= np('the later portion bake is the last bake, at its own slot',
+    portions.length === 1 && bakes.length >= 2 && bakes[bakes.length - 1].time.getTime() === portions[0].slot.firstBakeStart.getTime());
+  npOk &= np('no portion slack/late warnings leak (quiet slots)',
     !(sr.warnings || []).some(w => w.issue === 'slack' || w.issue === 'bake-late'));
   api.saveBakeInstances({});
 }
