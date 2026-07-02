@@ -3595,5 +3595,39 @@ function op(label, cond) { console.log(`  [optimize] ${cond ? 'PASS' : 'FAIL'} �
 }
 allOk &= opOk;
 
+// ---- Quiet-hours optimizer: elastic per-recipe chill windows ----
+console.log('\nElastic-chill assertions:');
+let ecOk = true;
+function ec(label, cond) { console.log(`  [elastic-chill] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  // Kitchen hours 6:00–22:00; deadline 18:00. With a chill range of 8–16 h, the midpoint
+  // (12 h) would put the mix ~5 AM (late-night); a shorter chill moves it into daytime.
+  api.__setOvens([]); api.__setContainers([]); api.saveBakeInstances({});
+  localStorageStub.setItem('whb-kitchen-open-windows-v1', JSON.stringify([{ start: 6, end: 22 }]));
+  const evening = new Date(); evening.setDate(evening.getDate() + 2); evening.setHours(18, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(evening);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  const dough = { id: 'ec-dough', name: 'Icebox Dough', processType: 'simple', unit: 'piece',
+    loafWeight: 60, leavening: 'none', chillWindow: '8-16', batchSizeOverride: 24,
+    ingredients: [{ name: 'All purpose flour', pct: 100, flourType: 'anchor' }, { name: 'Butter', pct: 50 }],
+    stages: (() => { const s = api.stageTemplateFor('simple'); s.splice(2, 0, { type: 'chill', label: 'Cold proof', duration: { kind: 'range', minHr: 8, maxHr: 16 } }); return s; })() };
+  api.__recipes().push(dough);
+  api.__setPlan({ 'ec-dough': 24 }); seedPlan({ 'ec-dough': 24 });
+  api.renderSchedule();
+  const ev = api.__sr().events.filter(e => e.process === 'simple');
+  const mix = ev.find(e => /^Mix/.test(e.title));
+  const chill = ev.find(e => e.stageType === 'chill');
+  ecOk &= ec('the elastic chill moves the mix into kitchen hours (not the 5 AM midpoint)',
+    !!mix && mix.time.getHours() >= 6 && mix.time.getHours() < 22);
+  ecOk &= ec('the chosen chill stays inside the recipe window (8–16 h)',
+    !!chill && /(?:8|9|1[0-6]) hr in the fridge/.test(chill.detail));
+  ecOk &= ec('no late-night warning for this plan',
+    !(api.__sr().warnings || []).some(w => w.issue === 'late-night' && w.kind === 'simple'));
+  localStorageStub.removeItem('whb-kitchen-open-windows-v1');
+  const recs = api.__recipes(); const ix = recs.findIndex(r => r.id === 'ec-dough'); if (ix >= 0) recs.splice(ix, 1);
+}
+allOk &= ecOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

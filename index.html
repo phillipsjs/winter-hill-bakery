@@ -14585,6 +14585,34 @@ ${notesHtml}
         }
         cum += j.gapBefore;
         const bakeStart = addMinutes(slot.firstBakeStart, cum);
+        // Quiet-hours optimizer: a recipe's chill window ('12-24' etc.) is ELASTIC — the
+        // bake is deadline-pinned, so the chill length just decides WHEN the pre-chill
+        // prep happens. Instead of always using the range midpoint, try each hour in the
+        // window and pick the one whose hands-on steps land inside kitchen hours (ties
+        // break toward the midpoint, today's default). Auto ranges are searched at the
+        // plan level (findBestColdProof); fixed durations are untouched.
+        const elasticChill = (() => {
+          const stages = stagesForScheduling(r);
+          const chill = stages.find(s => s.type === 'chill' && s.duration && s.duration.kind === 'range' && !s.duration.auto);
+          if (!chill) return null;
+          const lo = Number(chill.duration.minHr), hi = Number(chill.duration.maxHr);
+          if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return null;
+          const mid = (lo + hi) / 2;
+          let best = null;
+          for (let hr = Math.ceil(lo); hr <= Math.floor(hi); hr++) {
+            const trialStages = stages.map(s => (s === chill ? { ...s, duration: { kind: 'fixed', min: hr * 60 } } : s));
+            let late = 0;
+            walkStagesBackward(bakeStart, {
+              recipe: r, batchUnits: j.units, batchIndex: b, numBatches: p.numBatches,
+              suffix: '', unitsLabel: '', process: g.process, columnKey: g.key,
+              containerName: p.containerName, stages: trialStages,
+              pushEvent: (ev) => { if (ev.activeStep && isLateNightHour(ev.time.getHours())) late++; },
+              addClaim: () => {}, ingsForUnits: () => [],
+            });
+            if (!best || late < best.late || (late === best.late && Math.abs(hr - mid) < Math.abs(best.hr - mid))) best = { hr, late };
+          }
+          return best ? { chill, hr: best.hr } : null;
+        })();
         // A spanning batch (split bake) keeps ONE chain sized for the whole batch, but
         // only its wave-1 share bakes now — the rest stays chilled for the later wave.
         const span = j.splitOffUnits ? (g.portions || []).find(pp => pp.baseId === r.id && pp.spanBatchIndex === b) : null;
@@ -14596,6 +14624,10 @@ ${notesHtml}
           recipe: r, batchUnits, batchIndex: b, numBatches: p.numBatches,
           suffix, unitsLabel, process: g.process, columnKey: g.key,
           containerName: p.containerName,
+          stages: elasticChill
+            ? stagesForScheduling(r).map(s => (s.type === 'chill' && s.duration && s.duration.kind === 'range' && !s.duration.auto
+                ? { ...s, duration: { kind: 'fixed', min: elasticChill.hr * 60 } } : s))
+            : undefined,
           chillClaimEnd: span ? span.slot.firstBakeStart : undefined,
           chillNote: span ? ` · ${j.splitOffUnits} ${unit}${j.splitOffUnits === 1 ? '' : 's'} stay chilled for the later bake` : undefined,
           pushEvent: (ev) => events.push(ev),
