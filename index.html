@@ -13596,21 +13596,35 @@ ${notesHtml}
       }
     });
 
+    // Mill (when any flour needs milling) then Gather, chained backward from a group's mix
+    // start — the shared prep-emission head of the muffin/bagel group emitters. mixBatches > 1
+    // appends the per-mixer-load weigh note + mixBatchCount (split hosts); divergent groups
+    // pass 0 (their recipe count is always > 1, so the recipe-count detail always shows).
+    const emitPrepWeighMill = (g, process, mixBatches) => {
+      const recs = g.recipes;
+      const weighDur = weighMinFor(recs);
+      const weighEnd = g.millingFlours.size > 0 ? addMinutes(g.mixStart, -g.millMin) : g.mixStart;
+      if (g.millingFlours.size > 0) {
+        events.push({ time: addMinutes(g.mixStart, -g.millMin), title: 'Mill flour', detail: `${g.millMin} min active · ${[...g.millingFlours].join(' + ')}`, process, columnKey: g.key });
+      }
+      events.push({
+        time: addMinutes(weighEnd, -weighDur),
+        title: 'Gather ingredients',
+        detail: (recs.length > 1 ? `${weighDur} min active · ${recs.length} recipes` : `${weighDur} min active`)
+          + (mixBatches > 1 ? ` · weigh per batch (${mixBatches} mixer loads)` : ''),
+        process, columnKey: g.key,
+        mixBatchCount: mixBatches > 1 ? mixBatches : undefined,
+      });
+    };
+
     // --- Muffin mix / shape / fridge events (per deadline group, using g.times/g.timeline) ---
     muffinGroups.forEach(g => {
       if (!g.times) return;
-      const muffinMillMin = g.millMin;
       const muffinRecs = g.recipes;
       if (g.divergent) {
       // Per-recipe: one shared Gather/Mill (anchored to the earliest mix) then a per-recipe
       // mix→bulk→shape→fridge chain, each suffixed with the recipe name.
-      const muffinWeighDuration = weighMinFor(muffinRecs);
-      const earliestMix = g.mixStart;
-      const muffinWeighEnd = g.millingFlours.size > 0 ? addMinutes(earliestMix, -muffinMillMin) : earliestMix;
-      if (g.millingFlours.size > 0) {
-        events.push({ time: addMinutes(earliestMix, -muffinMillMin), title: 'Mill flour', detail: `${muffinMillMin} min active · ${[...g.millingFlours].join(' + ')}`, process: 'muffin', columnKey: g.key });
-      }
-      events.push({ time: addMinutes(muffinWeighEnd, -muffinWeighDuration), title: 'Gather ingredients', detail: `${muffinWeighDuration} min active · ${muffinRecs.length} recipes`, process: 'muffin', columnKey: g.key });
+      emitPrepWeighMill(g, 'muffin', 0);
       const muffinLevainNote = useSeparateLevains ? '(uses muffin-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
       const muffinBakeEndFallback = g.slot.lastBakeEnd || g.slot.firstBakeStart;
       g.timeline.forEach(t => {
@@ -13649,30 +13663,9 @@ ${notesHtml}
       const emitShapeMin = g.splitTotalShapeMin;
       const emitMixBatches = g.splitMixBatches;
       if (!g.splitRider) {
-      if (g.millingFlours.size > 0) {
-        events.push({
-          time: addMinutes(g.mixStart, -muffinMillMin),
-          title: 'Mill flour',
-          detail: `${muffinMillMin} min active · ${[...g.millingFlours].join(' + ')}`,
-          process: 'muffin', columnKey: g.key,
-        });
-      }
-      // Weigh ingredients before mixing (duration from each recipe's weigh stage) —
+      // Mill + weigh before mixing (weigh duration from each recipe's weigh stage) —
       // finishing in time for the mill step (if any flour is milled) or the mix otherwise.
-      const muffinWeighDuration = weighMinFor(muffinRecs);
-      const muffinWeighEnd = g.millingFlours.size > 0
-        ? addMinutes(g.mixStart, -muffinMillMin)
-        : g.mixStart;
-      events.push({
-        time: addMinutes(muffinWeighEnd, -muffinWeighDuration),
-        title: 'Gather ingredients',
-        detail: (muffinRecs.length > 1
-          ? `${muffinWeighDuration} min active · ${muffinRecs.length} recipes`
-          : `${muffinWeighDuration} min active`)
-          + (emitMixBatches > 1 ? ` · weigh per batch (${emitMixBatches} mixer loads)` : ''),
-        process: 'muffin', columnKey: g.key,
-        mixBatchCount: emitMixBatches > 1 ? emitMixBatches : undefined,
-      });
+      emitPrepWeighMill(g, 'muffin', emitMixBatches);
       const muffinBulkHrLabel = (g.agg.bulkMin / 60).toFixed(g.agg.bulkMin % 60 === 0 ? 0 : 1);
       const muffinMixerName = (muffinRecs.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
       const muffinMixerParen = ` (mixer holds max ${SCHED.MUFFIN_MIXER_CAPACITY} muffins; all batches go into the same container)`;
@@ -13750,18 +13743,11 @@ ${notesHtml}
     // --- Bagel mix / shape / fridge events (per deadline group, using g.times/g.timeline) ---
     bagelGroups.forEach(g => {
       if (!g.times) return;
-      const bagelMillMin = g.millMin;
       const bagelRecs = g.recipes;
       if (g.divergent) {
       // Per-recipe: shared Gather/Mill (anchored to earliest mix) then a per-recipe
       // mix→bulk→shape→fridge chain. No warm-up — bagels boil straight from cold.
-      const bagelWeighDuration = weighMinFor(bagelRecs);
-      const earliestMix = g.mixStart;
-      const bagelWeighEnd = g.millingFlours.size > 0 ? addMinutes(earliestMix, -bagelMillMin) : earliestMix;
-      if (g.millingFlours.size > 0) {
-        events.push({ time: addMinutes(earliestMix, -bagelMillMin), title: 'Mill flour', detail: `${bagelMillMin} min active · ${[...g.millingFlours].join(' + ')}`, process: 'bagel', columnKey: g.key });
-      }
-      events.push({ time: addMinutes(bagelWeighEnd, -bagelWeighDuration), title: 'Gather ingredients', detail: `${bagelWeighDuration} min active · ${bagelRecs.length} recipes`, process: 'bagel', columnKey: g.key });
+      emitPrepWeighMill(g, 'bagel', 0);
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
       const bagelBakeEndFallback = g.slot.lastBakeEnd || g.slot.firstBakeStart;
       g.timeline.forEach(t => {
@@ -13800,30 +13786,9 @@ ${notesHtml}
       const emitShapeMin = g.splitTotalShapeMin;
       const emitMixBatches = g.splitMixBatches;
       if (!g.splitRider) {
-      if (g.millingFlours.size > 0) {
-        events.push({
-          time: addMinutes(g.mixStart, -bagelMillMin),
-          title: 'Mill flour',
-          detail: `${bagelMillMin} min active · ${[...g.millingFlours].join(' + ')}`,
-          process: 'bagel', columnKey: g.key,
-        });
-      }
-      // Weigh ingredients before mixing (duration from each recipe's weigh stage) —
+      // Mill + weigh before mixing (weigh duration from each recipe's weigh stage) —
       // finishing in time for the mill step (if any flour is milled) or the mix otherwise.
-      const bagelWeighDuration = weighMinFor(bagelRecs);
-      const bagelWeighEnd = g.millingFlours.size > 0
-        ? addMinutes(g.mixStart, -bagelMillMin)
-        : g.mixStart;
-      events.push({
-        time: addMinutes(bagelWeighEnd, -bagelWeighDuration),
-        title: 'Gather ingredients',
-        detail: (bagelRecs.length > 1
-          ? `${bagelWeighDuration} min active · ${bagelRecs.length} recipes`
-          : `${bagelWeighDuration} min active`)
-          + (emitMixBatches > 1 ? ` · weigh per batch (${emitMixBatches} mixer loads)` : ''),
-        process: 'bagel', columnKey: g.key,
-        mixBatchCount: emitMixBatches > 1 ? emitMixBatches : undefined,
-      });
+      emitPrepWeighMill(g, 'bagel', emitMixBatches);
       const bagelBulkHrLabel = (g.agg.bulkMin / 60).toFixed(g.agg.bulkMin % 60 === 0 ? 0 : 1);
       const bagelLevainNote = useBagelSeparateLevain ? '(uses bagel-specific Build 2 levain)' : '(uses the shared ripe Build 2 levain)';
       const bagelMixerName = (bagelRecs.map(mixerForRecipeG).find(Boolean) || {}).name || 'Mixer';
