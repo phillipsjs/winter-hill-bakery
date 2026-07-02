@@ -3686,6 +3686,23 @@
     }
     return cursor;
   }
+  // Walk a chain and flush its buffered events/claims in REVERSE (i.e. chronological)
+  // order. The walker visits stages backward, but push order is frozen output — the
+  // late-night warnings list step names in encounter order and the claims array is
+  // order-sensitive downstream — so ports buffer both and flush oldest-first. Multi-event
+  // expanders (fold fan-outs) must push their events in DESCENDING time order so the
+  // reversed flush restores ascending. Returns the walk's final cursor.
+  function walkChainReversed(anchor, x, pushEventOut, addClaimOut) {
+    const buf = [];
+    const walkX = Object.assign({}, x, {
+      pushEvent: (ev) => buf.push({ ev }),
+      addClaim: (...args) => buf.push({ claim: args }),
+    });
+    const cursor = walkStagesBackward(anchor, walkX);
+    buf.reverse().forEach(item => { if (item.ev) pushEventOut(item.ev); else addClaimOut(...item.claim); });
+    return cursor;
+  }
+
   // ---- Dough assembly (engine unification scaffolding) ----
   // Groups the plan's recipes into DOUGHS — the baker's unit of work: recipes sharing a
   // formula (ratioSignature) within one process are one dough; each (recipe, deadline)
@@ -13356,16 +13373,13 @@ ${notesHtml}
     // bulk start, one interval of rest after the mix); it pushes k-DESCENDING because the
     // buffer flushes reversed to restore the legacy chronological push order (frozen output).
     const emitLoafPrepChain = (shapeAnchor, stages, present) => {
-      const buf = [];
-      walkStagesBackward(shapeAnchor, {
+      walkChainReversed(shapeAnchor, {
         recipe: loafRecipes[0], batchUnits: 0, batchIndex: 0, numBatches: 1,
         suffix: '', unitsLabel: '', process: 'loaf', columnKey: undefined,
         stages,
-        pushEvent: (ev) => buf.push(ev),
-        addClaim, ingsForUnits,
+        ingsForUnits,
         expanders: present,
-      });
-      buf.reverse().forEach(ev => events.push(ev));
+      }, (ev) => events.push(ev), addClaim);
     };
     const loafFoldExpander = (foldTitle, foldDetail) => (s, ev, x) => {
       for (let k = loafAgg.foldsCount - 1; k >= 0; k--) {
@@ -13547,10 +13561,8 @@ ${notesHtml}
       const preshapeBaseDetail = `${wb ? `Weigh & divide: ${wb} · ` : ''}${shapeBreakdown(c, 'preshape')} = ${shape.preshapeMin} min total`;
       const attr = loafColAttrFor(c.contents, c.colKey);
       // The container's shape phase (preshape → bench rest → final shape) as a walker
-      // chain, backward from the container's shape end (= its fridge-in). Buffer flushes
-      // reversed so the legacy chronological push order holds.
-      const buf = [];
-      walkStagesBackward(containerEndT, {
+      // chain, backward from the container's shape end (= its fridge-in).
+      walkChainReversed(containerEndT, {
         recipe: loafRecipes[0], batchUnits: 0, batchIndex: i, numBatches: numContainers,
         suffix, unitsLabel: '', process: 'loaf', columnKey: undefined,
         stages: [
@@ -13558,8 +13570,7 @@ ${notesHtml}
           { type: 'bench', duration: { kind: 'fixed', min: shape.benchRest } },
           { type: 'shape', duration: { kind: 'fixed', min: shape.finalShapeMin } },
         ],
-        pushEvent: (ev) => buf.push(ev),
-        addClaim, ingsForUnits,
+        ingsForUnits,
         expanders: {
           preshape: (s, ev, x) => {
             x.pushEvent({
@@ -13593,8 +13604,7 @@ ${notesHtml}
             return false;
           },
         },
-      });
-      buf.reverse().forEach(ev => events.push(ev));
+      }, (ev) => events.push(ev), addClaim);
 
       cursorTime = containerEndT;
     }
@@ -13863,13 +13873,10 @@ ${notesHtml}
       const bulkCont = pickDoughContainer(doughG, r.preferredContainerIds || []);
       const bulkContainer = bulkCont ? bulkCont.name : 'dough tub';
       let mixEv, bulkEv;
-      const buf = [];
-      walkStagesBackward(g.slot.firstBakeStart, {
+      walkChainReversed(g.slot.firstBakeStart, {
         recipe: r, batchUnits: 0, batchIndex: 0, numBatches: 1,
         suffix: sfx, unitsLabel: '', process, columnKey: g.key,
         stages: t.stages,
-        pushEvent: (ev) => buf.push({ ev }),
-        addClaim: (...args) => buf.push({ claim: args }),
         ingsForUnits: () => [],
         expanders: {
           mix(s, ev, x) {
@@ -13913,8 +13920,7 @@ ${notesHtml}
             return false;
           },
         },
-      });
-      buf.reverse().forEach(item => { if (item.ev) events.push(item.ev); else addClaim(...item.claim); });
+      }, (ev) => events.push(ev), addClaim);
     };
 
     // --- Muffin mix / shape / fridge events (per deadline group, using g.times/g.timeline) ---
