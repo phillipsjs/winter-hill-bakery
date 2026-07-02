@@ -11932,19 +11932,30 @@ ${notesHtml}
       return n;
     };
     const multiDough = (recs) => new Set(recs.map(ratioSignature)).size > 1;
+    // Resolve a recipe's effective deadline: per-recipe override → the process fallback.
+    // Shared by every per-deadline grouping (muffin/bagel/focaccia bake groups, side groups).
+    const deadlineForRecipe = (r, fallback) => {
+      const d = opts.recipeDeadlines && opts.recipeDeadlines[r.id];
+      return d ? new Date(d) : (fallback ? new Date(fallback) : null);
+    };
+    // Bucket recipes by that deadline, earliest first — the shared first step of every
+    // per-deadline bake-group split. One bucket per distinct deadline.
+    const makeDeadlineBuckets = (recs, fallback) => {
+      const byDl = new Map();
+      recs.forEach(r => {
+        const d = deadlineForRecipe(r, fallback);
+        const k = d ? d.getTime() : 'none';
+        if (!byDl.has(k)) byDl.set(k, { deadline: d, recipes: [] });
+        byDl.get(k).recipes.push(r);
+      });
+      return [...byDl.values()].sort((a, b) => (a.deadline ? a.deadline.getTime() : 0) - (b.deadline ? b.deadline.getTime() : 0));
+    };
     // Muffin slot(s): split by deadline into independent bake groups (mirrors bagels). A
     // single deadline → one group keyed 'muffin' whose derived values equal the legacy
     // globals (byte-identical); multiple deadlines → 'muffin#0', 'muffin#1', …
     const muffinGroups = [];
     if (totalMuffins > 0) {
-      const byDl = new Map();
-      muffinRecipes.forEach(r => {
-        const d = (opts.recipeDeadlines && opts.recipeDeadlines[r.id]) ? new Date(opts.recipeDeadlines[r.id]) : (effMuffinDeadline ? new Date(effMuffinDeadline) : null);
-        const k = d ? d.getTime() : 'none';
-        if (!byDl.has(k)) byDl.set(k, { deadline: d, recipes: [] });
-        byDl.get(k).recipes.push(r);
-      });
-      const buckets = [...byDl.values()].sort((a, b) => (a.deadline ? a.deadline.getTime() : 0) - (b.deadline ? b.deadline.getTime() : 0));
+      const buckets = makeDeadlineBuckets(muffinRecipes, effMuffinDeadline);
       buckets.forEach((bk, i) => {
         const recs = bk.recipes;
         const specs = recs.map(getRecipeSpec);
@@ -11986,14 +11997,7 @@ ${notesHtml}
     // values equal the legacy globals (byte-identical); multiple → 'bagel#0', 'bagel#1'.
     const bagelGroups = [];
     if (totalBagels > 0) {
-      const byDl = new Map();
-      bagelRecipes.forEach(r => {
-        const d = (opts.recipeDeadlines && opts.recipeDeadlines[r.id]) ? new Date(opts.recipeDeadlines[r.id]) : (effBagelDeadline ? new Date(effBagelDeadline) : null);
-        const k = d ? d.getTime() : 'none';
-        if (!byDl.has(k)) byDl.set(k, { deadline: d, recipes: [] });
-        byDl.get(k).recipes.push(r);
-      });
-      const buckets = [...byDl.values()].sort((a, b) => (a.deadline ? a.deadline.getTime() : 0) - (b.deadline ? b.deadline.getTime() : 0));
+      const buckets = makeDeadlineBuckets(bagelRecipes, effBagelDeadline);
       buckets.forEach((bk, i) => {
         const recs = bk.recipes;
         const total = recs.reduce((s, r) => s + (plan[r.id] || 0), 0);
@@ -12035,14 +12039,7 @@ ${notesHtml}
     // (same slack / bake-late warnings via kindLabel 'Focaccia').
     const focacciaGroups = [];
     if (totalFocaccia > 0) {
-      const byDl = new Map();
-      focacciaRecipes.forEach(r => {
-        const d = (opts.recipeDeadlines && opts.recipeDeadlines[r.id]) ? new Date(opts.recipeDeadlines[r.id]) : (focacciaDeadline ? new Date(focacciaDeadline) : null);
-        const k = d ? d.getTime() : 'none';
-        if (!byDl.has(k)) byDl.set(k, { deadline: d, recipes: [] });
-        byDl.get(k).recipes.push(r);
-      });
-      const buckets = [...byDl.values()].sort((a, b) => (a.deadline ? a.deadline.getTime() : 0) - (b.deadline ? b.deadline.getTime() : 0));
+      const buckets = makeDeadlineBuckets(focacciaRecipes, focacciaDeadline);
       buckets.forEach((bk, i) => {
         if (!bk.deadline) return;
         const recs = bk.recipes;
@@ -12091,17 +12088,13 @@ ${notesHtml}
     };
     const sideBakeTimeFor = { simple: simpleBakeTime, enriched: enrichedBakeTime };
     const sideTmplFor = { simple: simpleTmpl, enriched: enrichedTmpl };
-    const sideDeadlineForRecipe = (r, fallback) => {
-      const d = opts.recipeDeadlines && opts.recipeDeadlines[r.id];
-      return d ? new Date(d) : (fallback ? new Date(fallback) : null);
-    };
     const sideGroups = [];
     const buildSideGroups = (proc, recs) => {
       const tmpl = sideTmplFor[proc];
       const fallback = sideFallbackDeadline[proc];
       const groups = new Map(); // ratioSig|deadlineMs -> { recipes, deadline }
       recs.forEach(r => {
-        const dl = sideDeadlineForRecipe(r, fallback);
+        const dl = deadlineForRecipe(r, fallback);
         const gkey = ratioSignature(r) + '|' + (dl ? dl.getTime() : 'none');
         if (!groups.has(gkey)) groups.set(gkey, { recipes: [], deadline: dl });
         groups.get(gkey).recipes.push(r);
