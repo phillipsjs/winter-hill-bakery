@@ -147,6 +147,7 @@ const exportsTail = `
   __plan: () => plan,
   __setBakeSheetPrintMode: (v) => { _bsPrintMode = v; },
   computeDragAnchorMs, getAnchors, setAnchorForEvent, clearAllAnchors, applyAnchorsToEvents,
+  buildDoughs, walkStagesBackward, stageDurationMin, fmtStageDur, STAGE_EXPANDERS,
   stepDoneKey, loadDoneSteps, isStepDone, setStepDone, saveDoneSteps,
 };`;
 
@@ -3364,6 +3365,46 @@ function runDiffDough(split) {
   api.__setContainers([]); api.saveBakeInstances({});
 }
 allOk &= sdOk;
+
+// ---- Dough assembly scaffolding (unified engine, Phase B) ----
+console.log('\nDough assembly assertions:');
+let daOk = true;
+function da(label, cond) { console.log(`  [dough] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  const bat = api.__recipes().find(r => r.id === SEED.batard);
+  const bou = api.__recipes().find(r => r.id === SEED.boule);
+  const batSnap = bat.ingredients.map(i => ({ ...i }));
+  // Same formula → ONE dough with two portions.
+  bou.ingredients = bat.ingredients.map(i => ({ ...i }));
+  const dl = new Date(tomorrow8);
+  let doughs = api.buildDoughs([bat, bou], { [SEED.batard]: 12, [SEED.boule]: 8 }, () => dl);
+  daOk &= da('same-formula loaves form ONE dough', doughs.length === 1 && doughs[0].processType === 'sourdough-loaf');
+  daOk &= da('that dough carries one portion per recipe with its count',
+    doughs.length === 1 && doughs[0].portions.length === 2 &&
+    doughs[0].portions.some(p => p.recipeId === SEED.batard && p.count === 12) &&
+    doughs[0].portions.some(p => p.recipeId === SEED.boule && p.count === 8));
+  daOk &= da('portions carry the resolved deadline', doughs[0].portions.every(p => p.deadlineMs === dl.getTime()));
+  // Different formulas → separate doughs (earlier blocks may have synced the seed boule
+  // to the batard's formula, so force a genuinely different dough); zero-count excluded.
+  bou.ingredients = bat.ingredients.map(i => ({ ...i }));
+  bou.ingredients.find(i => /water/i.test(i.name)).pct = 80;
+  doughs = api.buildDoughs([bat, bou], { [SEED.batard]: 12, [SEED.boule]: 8 }, () => dl);
+  daOk &= da('different formulas split into separate doughs', doughs.length === 2);
+  doughs = api.buildDoughs([bat, bou], { [SEED.batard]: 12 }, () => dl);
+  daOk &= da('zero-count recipes are excluded', doughs.length === 1 && doughs[0].portions.length === 1);
+  bat.ingredients = batSnap;
+  // The schedule result carries the parallel-computed assembly (not driving emission yet).
+  els['deadline-default-input'].value = fmtLocal(tomorrow8);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  api.__setPlan({ [SEED.batard]: 8, [SEED.muffin]: 24 }); seedPlan({ [SEED.batard]: 8, [SEED.muffin]: 24 });
+  api.renderSchedule();
+  const srD = api.__sr();
+  daOk &= da('renderSchedule result exposes _doughs (one loaf dough + one muffin dough)',
+    Array.isArray(srD._doughs) && srD._doughs.length === 2 &&
+    new Set(srD._doughs.map(d => d.processType)).size === 2);
+}
+allOk &= daOk;
 
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

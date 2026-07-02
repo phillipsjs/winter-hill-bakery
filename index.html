@@ -3592,6 +3592,118 @@
     const v = s && s.duration ? Number(s.duration.min) : NaN;
     return Number.isFinite(v) ? v : fallbackMin;
   }
+  // ---- Unified stage walker (engine unification, Phase B) ----
+  // Walks a recipe's pre-bake stages BACKWARD from a bake start, emitting one event per
+  // stage. Per-stage-type EXPANDERS adjust the default event (equipment, ingredient
+  // payloads, container claims); an expander that returns false takes over emission
+  // itself (the walker then does NOT push the event). Today this drives the
+  // simple/enriched side groups; the bread engines migrate onto it port by port
+  // (focaccia → muffin → bagel → loaf), each adding its expanders (fold fan-out,
+  // deck-packed bakes, boil batches) instead of a hand-coded timeline.
+  function fmtStageDur(min) {
+    return min >= 60
+      ? `${(min / 60) % 1 === 0 ? (min / 60) : (min / 60).toFixed(1)} hr`
+      : `${Math.round(min)} min`;
+  }
+  // Elapsed minutes of one stage for a batch of the given size, per duration kind.
+  function stageDurationMin(s, batchUnits) {
+    const d = s.duration || {};
+    switch (d.kind) {
+      case 'perUnit': return Math.max(1, Math.round(batchUnits * (Number(d.minPerUnit) || 0)));
+      case 'countInterval': return (Number(d.count) || 0) * (Number(d.intervalMin) || 0);
+      case 'range': {
+        const hr = d.auto ? (d.minHr != null ? Number(d.minHr) : 8)
+          : (((Number(d.minHr) || 0) + (Number(d.maxHr) || 0)) / 2);
+        return Math.round(hr * 60);
+      }
+      default: return Number(d.min) || 0;
+    }
+  }
+  // Walk context `x`: { recipe, batchUnits, batchIndex, numBatches, suffix, unitsLabel,
+  // process, columnKey, containerName, dur (set per stage by the walker), pushEvent,
+  // addClaim, ingsForUnits } — the last three bridge into the running buildSchedule
+  // (its events array, claims registry, and ingredient scaler are locals there).
+  const STAGE_EXPANDERS = {
+    shape(s, ev, x) {
+      const w = perUnitDoughDetail([x.recipe], x.recipe.unit && x.recipe.unit !== 'unit' ? x.recipe.unit : '');
+      if (w) ev.detail += ` · ${w}`;
+    },
+    preshape(s, ev, x) { STAGE_EXPANDERS.shape(s, ev, x); },
+    weigh(s, ev, x) { ev.batchIngredients = x.ingsForUnits(x.recipe, x.batchUnits); },
+    mill(s, ev, x) { ev.detail = `${fmtStageDur(x.dur)} active · ${[...milledFlourNamesFor(x.recipe)].join(' + ')}`; },
+    mix(s, ev, x) {
+      const mx = mixerForRecipeG(x.recipe);
+      if (mx) ev.equip = [mx.name];
+    },
+    boil(s, ev, x) {
+      const potId = (typeof s.vessel === 'string' && s.vessel.indexOf('pot:') === 0) ? s.vessel.slice(4) : x.recipe.preferredPotId;
+      const pot = potId ? userPots.find(p => p.id === potId) : null;
+      if (pot) { ev.equip = [pot.name]; ev.equipStrip = ` · ${pot.name}`; ev.detail = `${x.unitsLabel} · ${fmtStageDur(x.dur)} · ${pot.name}`; }
+    },
+    chill(s, ev, x) {
+      const contLabel = x.containerName ? (x.numBatches > 1 ? `${x.containerName} #${x.batchIndex + 1}` : x.containerName) : 'a container';
+      ev.container = contLabel;
+      ev.equipStrip = ` · use ${contLabel}`;
+      ev.detail = `${x.unitsLabel} · ${fmtStageDur(x.dur)} in the fridge · use ${contLabel}`;
+      x.pushEvent(ev);
+      const grams = x.batchUnits * (x.recipe.loafWeight || 0);
+      x.addClaim('container', `Cold proof ${x.recipe.name}`, x.containerName, 1, ev.time, x.cursor, null,
+        x.containerName ? {
+          candidates: containerCandidates(['any'], grams, true),
+          relabel: (newType) => {
+            const nl = x.numBatches > 1 ? `${newType} #${x.batchIndex + 1}` : newType;
+            ev.container = nl;
+            if (ev.detail) ev.detail = ev.detail.split(`· use ${contLabel}`).join(`· use ${nl}`);
+            ev.equipStrip = ` · use ${nl}`;
+          },
+        } : null);
+      return false; // emission handled here
+    },
+  };
+  function walkStagesBackward(bakeStart, x) {
+    const stages = stagesForScheduling(x.recipe);
+    const bakeIdx = stages.findIndex(s => s.type === 'bake');
+    const preStages = bakeIdx >= 0 ? stages.slice(0, bakeIdx) : stages;
+    let cursor = bakeStart;
+    for (let i = preStages.length - 1; i >= 0; i--) {
+      const s = preStages[i];
+      const dur = stageDurationMin(s, x.batchUnits);
+      const start = addMinutes(cursor, -dur);
+      const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
+      const aMin = stageActiveMinutes(s, dur);
+      const ev = { time: start, title: `${s.label}${x.suffix}`, detail: `${x.unitsLabel} · ${fmtStageDur(dur)}`, process: x.process, columnKey: x.columnKey, stage: pal.stage, stageType: s.type, activeStep: aMin > 0, activeMin: aMin };
+      x.dur = dur;
+      x.cursor = cursor;
+      const expander = STAGE_EXPANDERS[s.type];
+      const handled = expander ? expander(s, ev, x) === false : false;
+      if (!handled) x.pushEvent(ev);
+      cursor = start;
+    }
+    return cursor;
+  }
+  // ---- Dough assembly (engine unification scaffolding) ----
+  // Groups the plan's recipes into DOUGHS — the baker's unit of work: recipes sharing a
+  // formula (ratioSignature) within one process are one dough; each (recipe, deadline)
+  // becomes a PORTION, the point where the dough diverges (shape / cold proof / bake).
+  // Not yet driving emission: computed alongside the legacy engines (result._doughs) so
+  // each port can assert against it, then take over its group construction.
+  function buildDoughs(recipeList, planMap, deadlineOf) {
+    const doughs = new Map(); // processType|sig -> dough
+    (recipeList || []).forEach(r => {
+      const count = planMap[r.id] || 0;
+      if (count <= 0) return;
+      const pt = getProcessType(r);
+      if (pt === 'levain') return;
+      const sig = ratioSignature(r);
+      const key = pt + '|' + sig;
+      if (!doughs.has(key)) doughs.set(key, { key, processType: pt, sig, recipes: [], portions: [] });
+      const d = doughs.get(key);
+      d.recipes.push(r);
+      const dl = deadlineOf ? deadlineOf(r) : null;
+      d.portions.push({ recipe: r, recipeId: r.id, count, deadlineMs: dl ? dl.getTime() : null, sharePrep: !!r.__sharePrep });
+    });
+    return [...doughs.values()];
+  }
   // Per-unit dough weight for a shape/portion/divide step, so the baker knows how heavy to
   // make each piece (e.g. "300 g each" bagels). One recipe → "300 g each"; several →
   // "300 g per Sesame · 110 g per Plain". Empty when no weights are known.
@@ -13968,22 +14080,6 @@ ${notesHtml}
     // bake start over the recipe's stages, so custom-shaped recipes schedule. Cool / glaze
     // / package stay group-level. ---
     const sidePreheatFor = (slot, temp) => ovenPreheatMin(userOvens.find(o => o.id === slot.ovenId), temp) ?? SIDE_PREHEAT_MIN;
-    const fmtStageDur = (min) => min >= 60
-      ? `${(min / 60) % 1 === 0 ? (min / 60) : (min / 60).toFixed(1)} hr`
-      : `${Math.round(min)} min`;
-    const stageDurationMin = (s, batchUnits) => {
-      const d = s.duration || {};
-      switch (d.kind) {
-        case 'perUnit': return Math.max(1, Math.round(batchUnits * (Number(d.minPerUnit) || 0)));
-        case 'countInterval': return (Number(d.count) || 0) * (Number(d.intervalMin) || 0);
-        case 'range': {
-          const hr = d.auto ? (d.minHr != null ? Number(d.minHr) : 8)
-            : (((Number(d.minHr) || 0) + (Number(d.maxHr) || 0)) / 2);
-          return Math.round(hr * 60);
-        }
-        default: return Number(d.min) || 0;
-      }
-    };
     for (const g of sideGroups) {
       if (!g.slot) continue;
       const slot = g.slot;
@@ -14004,56 +14100,13 @@ ${notesHtml}
         const bakeStart = addMinutes(slot.firstBakeStart, cum);
         // Pre-bake dough chain: walk the recipe's stages before the bake, backward from
         // the bake start, so each batch's chain ends exactly when its bake begins.
-        const stages = stagesForScheduling(r);
-        const milledNames = milledFlourNamesFor(r);
-        const bakeIdx = stages.findIndex(s => s.type === 'bake');
-        const preStages = bakeIdx >= 0 ? stages.slice(0, bakeIdx) : stages;
-        let cursor = bakeStart;
-        for (let i = preStages.length - 1; i >= 0; i--) {
-          const s = preStages[i];
-          const dur = stageDurationMin(s, batchUnits);
-          const start = addMinutes(cursor, -dur);
-          const pal = STAGE_PALETTE[s.type] || STAGE_PALETTE.step;
-          const aMin = stageActiveMinutes(s, dur);
-          const ev = { time: start, title: `${s.label}${suffix}`, detail: `${unitsLabel} · ${fmtStageDur(dur)}`, process: g.process, columnKey: g.key, stage: pal.stage, stageType: s.type, activeStep: aMin > 0, activeMin: aMin };
-          if (s.type === 'shape' || s.type === 'preshape') {
-            const w = perUnitDoughDetail([r], r.unit && r.unit !== 'unit' ? r.unit : '');
-            if (w) ev.detail += ` · ${w}`;
-          }
-          if (s.type === 'weigh') {
-            ev.batchIngredients = ingsForUnits(r, batchUnits);
-          } else if (s.type === 'mill') {
-            ev.detail = `${fmtStageDur(dur)} active · ${[...milledNames].join(' + ')}`;
-          } else if (s.type === 'mix') {
-            const mx = mixerForRecipeG(r);
-            if (mx) ev.equip = [mx.name];
-          } else if (s.type === 'boil') {
-            const potId = (typeof s.vessel === 'string' && s.vessel.indexOf('pot:') === 0) ? s.vessel.slice(4) : r.preferredPotId;
-            const pot = potId ? userPots.find(p => p.id === potId) : null;
-            if (pot) { ev.equip = [pot.name]; ev.equipStrip = ` · ${pot.name}`; ev.detail = `${unitsLabel} · ${fmtStageDur(dur)} · ${pot.name}`; }
-          }
-          if (s.type === 'chill') {
-            const contLabel = p.containerName ? (p.numBatches > 1 ? `${p.containerName} #${b + 1}` : p.containerName) : 'a container';
-            ev.container = contLabel;
-            ev.equipStrip = ` · use ${contLabel}`;
-            ev.detail = `${unitsLabel} · ${fmtStageDur(dur)} in the fridge · use ${contLabel}`;
-            events.push(ev);
-            const grams = batchUnits * (r.loafWeight || 0);
-            addClaim('container', `Cold proof ${r.name}`, p.containerName, 1, start, cursor, null,
-              p.containerName ? {
-                candidates: containerCandidates(['any'], grams, true),
-                relabel: (newType) => {
-                  const nl = p.numBatches > 1 ? `${newType} #${b + 1}` : newType;
-                  ev.container = nl;
-                  if (ev.detail) ev.detail = ev.detail.split(`· use ${contLabel}`).join(`· use ${nl}`);
-                  ev.equipStrip = ` · use ${nl}`;
-                },
-              } : null);
-          } else {
-            events.push(ev);
-          }
-          cursor = start;
-        }
+        walkStagesBackward(bakeStart, {
+          recipe: r, batchUnits, batchIndex: b, numBatches: p.numBatches,
+          suffix, unitsLabel, process: g.process, columnKey: g.key,
+          containerName: p.containerName,
+          pushEvent: (ev) => events.push(ev),
+          addClaim, ingsForUnits,
+        });
         events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${j.bakeMin} min · ${fmtTemp(j.temp)}${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
         addOvenClaim(ovenEquip, `${r.name} bake`, bakeStart, j.bakeMin);
         cum += j.bakeMin;
@@ -14115,7 +14168,16 @@ ${notesHtml}
       events.forEach(e => { if (e.process === proc && (!e.columnKey || !groupKeys.has(e.columnKey))) e.columnKey = firstKey; });
     });
     events.sort((a, b) => a.time - b.time);
+    // Dough assembly (unification scaffolding): computed alongside the legacy engines,
+    // not yet driving emission — ports assert against it, then take over group building.
+    const _doughFallbackDl = {
+      'sourdough-loaf': loafDeadline, 'sourdough-muffin': effMuffinDeadline,
+      'bagel': effBagelDeadline, 'focaccia': focacciaDeadline,
+      'simple': sideFallbackDeadline.simple, 'enriched': sideFallbackDeadline.enriched,
+    };
+    const _doughs = buildDoughs(recipes, plan, r => deadlineForRecipe(r, _doughFallbackDl[getProcessType(r)]));
     return {
+      _doughs,
       totalLoaves, totalMuffins, totalBagels, totalFocaccia, totalSimple, totalEnriched, batches, events, warnings,
       sideColumns, bagelColumns, muffinColumns, focacciaColumns, loafColumns,
       build1Opt, build2Opt,
