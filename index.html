@@ -13079,9 +13079,12 @@ ${notesHtml}
     // mix when there are loaves, otherwise the earliest secondary mix.
     // Levain is one shared Build 2; in divergent mode anchor it to the EARLIEST dough's mix so
     // every dough has ripe levain when it mixes.
-    const loafMix = totalLoaves > 0
-      ? ((proofingDivergent && ctTimeline && ctTimeline.length) ? ctTimeline.reduce((m, x) => (x.mix < m ? x.mix : m), ctTimeline[0].mix) : mixTime)
-      : null;
+    // Levain anchor: the EARLIEST loaf mix across groups (a single group today — G1a);
+    // within a group, divergent per-container preps anchor to the earliest container mix.
+    const loafGroupMix = (g) => (g.proofingDivergent && g.ctTimeline && g.ctTimeline.length)
+      ? g.ctTimeline.reduce((m, x) => (x.mix < m ? x.mix : m), g.ctTimeline[0].mix)
+      : g.mixTime;
+    const loafMix = loafGroups.reduce((m, g) => { const t = loafGroupMix(g); return t && (!m || t < m) ? t : m; }, null);
     const allMixes = [loafMix, muffinMixStart, bagelMixStart].filter(Boolean);
     let earliestMix = allMixes[0] || null;
     for (const m of allMixes) if (m < earliestMix) earliestMix = m;
@@ -13291,7 +13294,10 @@ ${notesHtml}
       addClaim('container', 'Levain Build 2 (bagels)', bagelLevainCont && bagelLevainCont.name, 1, bagelLevainBuild2EarliestStart, bagelMixStart, null,
         bagelLevainCont ? { candidates: containerCandidates(['any', 'levain'], bagelLevainTotal), relabel: useRelabel(gB2Ev) } : null);
     }
-    if (totalLoaves > 0) {
+    // Loaf prep emission, per group (a loop of 1 today — G1a). The destructure shadows
+    // the legacy singulars with the group's state so the body reads group-scoped values.
+    loafGroups.forEach(gLoaf => {
+    const { containerInfo, numContainers, proofingDivergent, ctTimeline, autolyseStart, shapePhaseStart, mixTime } = gLoaf;
     // Compact container label appended to bulk-ferment step details
     const containerBulkStr = numContainers === 0 ? '' :
       numContainers === 1 && containerInfo[0].containerName
@@ -13512,7 +13518,7 @@ ${notesHtml}
         });
       });
     }
-    } // end if (totalLoaves > 0) loaf prep events
+    }); // end loaf prep events (per group)
     const formatMin = (n) => {
       if (Math.abs(n - Math.round(n)) < 0.05) return String(Math.round(n));
       return n.toFixed(1);
