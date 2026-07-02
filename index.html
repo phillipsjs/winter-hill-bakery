@@ -12611,7 +12611,13 @@ ${notesHtml}
         : (SCHED.PRESHAPE_MIN_PER_LOAF + SCHED.FINAL_SHAPE_MIN_PER_LOAF);
     };
 
-    if (totalLoaves > 0 && loafSlot) {
+    // Loaf computation, per group (a loop of 1 today — G1b). The shadows bind the group's
+    // slot/agg/recipes/plan so the body reads group state; the outer singular assignments
+    // remain (exactly one group exists until the across-groups wrapper hands over).
+    loafGroups.forEach(gLoaf => {
+      if (!gLoaf.slot) return;
+      const loafSlot = gLoaf.slot, loafAgg = gLoaf.agg, loafRecipes = gLoaf.recipes,
+        breadBatches = gLoaf.batches, ovenPlan = gLoaf.ovenPlan;
       firstBakeStart = loafSlot.firstBakeStart;
       lastBakeEnd = loafSlot.lastBakeEnd;
       packageReady = loafSlot.packageReady;
@@ -12622,7 +12628,7 @@ ${notesHtml}
         loafBakeStartTimes.push(addMinutes(firstBakeStart, cum));
         cum += loafAgg.bakeMin + (b < breadBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
-      loafGroups[0].bakeStartTimes = loafBakeStartTimes;
+      gLoaf.bakeStartTimes = loafBakeStartTimes;
 
       fridgeIn = addHours(firstBakeStart, -loafColdProofHours);
       const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
@@ -12798,15 +12804,15 @@ ${notesHtml}
           x.autolyse = addMinutes(x.mix, -loafAgg.autolyseMin);
         });
       }
-    }
-    const numContainers = containerInfo.length;
-    // G1a: attach the container/prep state to the loaf group (the group-shaped view the
-    // per-group emission blocks read; single group today, so these ARE the singulars).
-    if (loafGroups.length) Object.assign(loafGroups[0], {
-      containerInfo, containerShape, containerFirstBakeIdx, ctTimeline, proofingDivergent,
-      shapePhaseStart, fridgeIn, mixTime, autolyseStart, numContainers,
-      columns: loafColumns,
+      // Attach the group-shaped view the per-group emission blocks read (single group
+      // today, so these ARE the singulars this loop just assigned).
+      Object.assign(gLoaf, {
+        containerInfo, containerShape, containerFirstBakeIdx, ctTimeline, proofingDivergent,
+        shapePhaseStart, fridgeIn, mixTime, autolyseStart, numContainers: containerInfo.length,
+        columns: loafColumns,
+      });
     });
+    const numContainers = containerInfo.length;
     // Each loaf proofing container is tied up from mix until shaping begins. Divergent: each
     // dough's tub is claimed for its own mix→shape window; uniform: the shared window.
     loafGroups.forEach(g => {
