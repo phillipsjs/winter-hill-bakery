@@ -12800,13 +12800,22 @@ ${notesHtml}
       }
     }
     const numContainers = containerInfo.length;
+    // G1a: attach the container/prep state to the loaf group (the group-shaped view the
+    // per-group emission blocks read; single group today, so these ARE the singulars).
+    if (loafGroups.length) Object.assign(loafGroups[0], {
+      containerInfo, containerShape, containerFirstBakeIdx, ctTimeline, proofingDivergent,
+      shapePhaseStart, fridgeIn, mixTime, autolyseStart, numContainers,
+      columns: loafColumns,
+    });
     // Each loaf proofing container is tied up from mix until shaping begins. Divergent: each
     // dough's tub is claimed for its own mix→shape window; uniform: the shared window.
-    if (proofingDivergent && ctTimeline) {
-      containerInfo.forEach((c, ci) => { const t = ctTimeline[ci]; addClaim('container', 'Loaf bulk ferment', c.containerName, 1, t.mix, t.shapeStart); });
-    } else if (mixTime && shapePhaseStart) {
-      containerInfo.forEach(c => addClaim('container', 'Loaf bulk ferment', c.containerName, 1, mixTime, shapePhaseStart));
-    }
+    loafGroups.forEach(g => {
+      if (g.proofingDivergent && g.ctTimeline) {
+        g.containerInfo.forEach((c, ci) => { const t = g.ctTimeline[ci]; addClaim('container', 'Loaf bulk ferment', c.containerName, 1, t.mix, t.shapeStart); });
+      } else if (g.mixTime && g.shapePhaseStart) {
+        g.containerInfo.forEach(c => addClaim('container', 'Loaf bulk ferment', c.containerName, 1, g.mixTime, g.shapePhaseStart));
+      }
+    });
     // Per-container batch breakdown for the bake sheet, so batched mixing steps can
     // show ingredients per batch (one mix per container) instead of overall totals.
     const loafBatchContents = numContainers > 1
@@ -13554,13 +13563,15 @@ ${notesHtml}
       return contentsLabel ? `${head}: ${contentsLabel}` : head;
     };
     const containerFridgeInTimes = [];
-    let cursorTime = shapePhaseStart;
-    for (let i = 0; i < containerInfo.length; i++) {
-      const c = containerInfo[i];
-      const shape = containerShape[i];
+    loafGroups.forEach(gLoaf => {
+    gLoaf.containerFridgeInTimes = containerFridgeInTimes;
+    let cursorTime = gLoaf.shapePhaseStart;
+    for (let i = 0; i < gLoaf.containerInfo.length; i++) {
+      const c = gLoaf.containerInfo[i];
+      const shape = gLoaf.containerShape[i];
       // Divergent: each dough shapes backward from its own fridge-in (per-recipe cold proof);
       // uniform: containers shape back-to-back from the shared shapePhaseStart cursor.
-      const preshapeStartT = proofingDivergent ? ctTimeline[i].shapeStart : cursorTime;
+      const preshapeStartT = gLoaf.proofingDivergent ? gLoaf.ctTimeline[i].shapeStart : cursorTime;
       const containerEndT = addMinutes(preshapeStartT, shape.preshapeMin + shape.benchRest + shape.finalShapeMin);
       containerFridgeInTimes.push(containerEndT);
 
@@ -13621,6 +13632,7 @@ ${notesHtml}
 
       cursorTime = containerEndT;
     }
+    });
     // One "into fridge" event per container at its actual shape end. Each
     // shows the cold proof time from that container's shape end to its first
     // bake — typically a 0-90 min window across containers.
@@ -13632,21 +13644,22 @@ ${notesHtml}
       return min === 0 ? `${wholeHr} hr` : `${wholeHr} hr ${min} min`;
     };
     const containerColdProofMs = [];
-    if (loafColdProofHours > 0) {
-      for (let i = 0; i < containerInfo.length; i++) {
-        const c = containerInfo[i];
-        const fridgeTime = containerFridgeInTimes[i];
-        const bakeIdx = containerFirstBakeIdx[i];
-        const bakeStart = (Number.isFinite(bakeIdx) && loafBakeStartTimes[bakeIdx])
-          ? loafBakeStartTimes[bakeIdx]
-          : firstBakeStart;
+    loafGroups.forEach(gLoaf => {
+      if (!(loafColdProofHours > 0)) return;
+      for (let i = 0; i < gLoaf.containerInfo.length; i++) {
+        const c = gLoaf.containerInfo[i];
+        const fridgeTime = gLoaf.containerFridgeInTimes[i];
+        const bakeIdx = gLoaf.containerFirstBakeIdx[i];
+        const bakeStart = (Number.isFinite(bakeIdx) && gLoaf.bakeStartTimes && gLoaf.bakeStartTimes[bakeIdx])
+          ? gLoaf.bakeStartTimes[bakeIdx]
+          : gLoaf.slot.firstBakeStart;
         const cpMs = bakeStart - fridgeTime;
         containerColdProofMs.push(cpMs);
         const contentsLabel = aggregateContents(c.contents);
         const containerLabel = c.containerName
-          ? (numContainers > 1 ? `${c.containerName} ${i + 1} of ${numContainers}` : c.containerName)
-          : `container ${i + 1} of ${numContainers}`;
-        const suffix = (numContainers > 1 || c.containerName) ? ` (${containerLabel}: ${contentsLabel})` : '';
+          ? (gLoaf.numContainers > 1 ? `${c.containerName} ${i + 1} of ${gLoaf.numContainers}` : c.containerName)
+          : `container ${i + 1} of ${gLoaf.numContainers}`;
+        const suffix = (gLoaf.numContainers > 1 || c.containerName) ? ` (${containerLabel}: ${contentsLabel})` : '';
         events.push({
           time: fridgeTime,
           title: `Into fridge${suffix}`,
@@ -13667,7 +13680,7 @@ ${notesHtml}
           : ([...new Set(eligibleBannetons.map(b => b.name))].join(' + ') || '(bannetons)');
         addClaim('banneton', 'Loaf cold proof', bannetonKey, c.loaves || 0, fridgeTime, bakeStart, eligibleBannetonCap || null);
       }
-    }
+    });
     const loafColdProofRange = containerColdProofMs.length > 0
       ? { minMs: Math.min(...containerColdProofMs), maxMs: Math.max(...containerColdProofMs) }
       : null;
