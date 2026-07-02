@@ -48,6 +48,14 @@
   "stage": "bake"
  },
  {
+  "pattern": "Bake Split Cookies",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Bake Split Rolls — batch N of N",
+  "stage": "bake"
+ },
+ {
   "pattern": "Bake Test Cookies — batch N of N",
   "stage": "bake"
  },
@@ -78,6 +86,10 @@
  {
   "pattern": "Bulk rise — batch N of N",
   "stage": "bulk"
+ },
+ {
+  "pattern": "Cold proof",
+  "stage": "(substep/control)"
  },
  {
   "pattern": "Final proof — warm — batch N of N",
@@ -204,6 +216,10 @@
   "stage": "mill"
  },
  {
+  "pattern": "Mix",
+  "stage": "(substep/control)"
+ },
+ {
   "pattern": "Mix — batch N of N",
   "stage": "mix"
  },
@@ -312,6 +328,10 @@
   "stage": "shape"
  },
  {
+  "pattern": "Shape / portion",
+  "stage": "shape"
+ },
+ {
   "pattern": "Shape / portion — batch N of N",
   "stage": "shape"
  },
@@ -342,6 +362,14 @@
  {
   "pattern": "Shape muffins — Sourdough English Muffins",
   "stage": "shape"
+ },
+ {
+  "pattern": "Split Cookies out — cool",
+  "stage": "cool"
+ },
+ {
+  "pattern": "Split Rolls out — cool",
+  "stage": "cool"
  },
  {
   "pattern": "Start autolyse — flour + water only",

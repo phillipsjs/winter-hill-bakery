@@ -3476,5 +3476,77 @@ function sf(label, cond) { console.log(`  [stages-first] ${cond ? 'PASS' : 'FAIL
 }
 allOk &= sfOk;
 
+// ---- Split bakes for simple/enriched (side groups) ----
+console.log('\nSide-split assertions:');
+let ssOk = true;
+function ss(label, cond) { console.log(`  [side-split] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+function sideSplitSetup(recipe, count, splitCount) {
+  api.__setOvens([]); api.__setContainers([]); api.saveBakeInstances({});
+  const far = new Date(); far.setDate(far.getDate() + 3); far.setHours(10, 0, 0, 0);
+  const far2 = new Date(far); far2.setHours(16, 0, 0, 0);
+  els['deadline-default-input'].value = fmtLocal(far);
+  ['coldproof-loaf-input', 'coldproof-muffin-input', 'coldproof-bagel-input', 'bake-time-default-input'].forEach(id => { els[id].value = ''; });
+  localStorageStub.removeItem(RECIPE_DEADLINES_KEY);
+  const recs = api.__recipes();
+  const ix = recs.findIndex(r => r.id === recipe.id); if (ix >= 0) recs.splice(ix, 1);
+  recs.push(recipe);
+  api.__setPlan({ [recipe.id]: count }); seedPlan({ [recipe.id]: count });
+  api.addBakeInstance(recipe.id, true);
+  const inst = api.loadBakeInstances()[recipe.id][0];
+  api.setBakeInstanceField(recipe.id, inst.id, 'count', splitCount);
+  api.setBakeInstanceField(recipe.id, inst.id, 'deadline', fmtLocal(far2));
+  api.renderSchedule();
+  return api.__sr();
+}
+{
+  // SPAN case: 24 cookies in one batch (no capacity limits), split 16/8 → one chain,
+  // one chill holding 8 for later, two bake waves, two package-ready markers.
+  const cookie = { id: 'ss-cookie', name: 'Split Cookies', processType: 'simple', unit: 'cookie',
+    loafWeight: 40, leavening: 'none', chillWindow: '12-24', batchSizeOverride: 24,
+    ingredients: [{ name: 'All purpose flour', pct: 100, flourType: 'anchor' }, { name: 'Butter', pct: 60 }, { name: 'Sugar', pct: 55 }],
+    stages: api.stageTemplateFor('simple') };
+  cookie.stages.splice(2, 0, { type: 'chill', label: 'Cold proof', duration: { kind: 'range', minHr: 12, maxHr: 24 } });
+  const sr = sideSplitSetup(cookie, 24, 8);
+  const ev = sr.events.filter(e => e.process === 'simple');
+  ssOk &= ss('span split: ONE mix (one dough for both waves)', ev.filter(e => /^Mix/.test(e.title)).length === 1);
+  const chill = ev.find(e => e.stageType === 'chill');
+  ssOk &= ss('span split: the chill notes the units held for the later bake',
+    !!chill && /8 cookies stay chilled for the later bake/.test(chill.detail));
+  const bakes = ev.filter(e => /^Bake Split Cookies/.test(e.title)).sort((a, b) => a.time - b.time);
+  ssOk &= ss('span split: two bake waves (16 now, 8 later from the chilled batch)',
+    bakes.length === 2 && /16 cookies/.test(bakes[0].detail) && /8 cookies/.test(bakes[1].detail) && /from the chilled batch/.test(bakes[1].detail));
+  ssOk &= ss('span split: the later wave bakes hours after the first',
+    bakes.length === 2 && bakes[1].time - bakes[0].time >= 5 * 3600000);
+  ssOk &= ss('span split: two package-ready markers (one per wave)',
+    ev.filter(e => e.title === 'Package & ready for sale').length === 2);
+  ssOk &= ss('span split: two oven turn-ons (the later wave preheats again)',
+    ev.filter(e => /^Turn on oven/.test(e.title)).length === 2);
+  ssOk &= ss('span split: one side group / one column (split shares the dough)',
+    (sr.sideColumns || []).length === 1);
+  api.saveBakeInstances({});
+}
+{
+  // WHOLE-BATCH case: batchSizeOverride 12 on 24 units split 12 → the later wave is a
+  // whole batch with its own fresh chain (mixed closer to its bake).
+  const roll = { id: 'ss-roll', name: 'Split Rolls', processType: 'enriched', unit: 'roll',
+    loafWeight: 90, leavening: 'commercial-yeast', finalProofMode: 'cold', finalProofColdWindow: '8-12',
+    batchSizeOverride: 12,
+    ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }, { name: 'Milk', pct: 55 }, { name: 'Butter', pct: 20 }],
+    stages: api.stageTemplateFor('enriched') };
+  const sr = sideSplitSetup(roll, 24, 12);
+  const ev = sr.events.filter(e => e.process === 'enriched');
+  const mixes = ev.filter(e => /^Mix/.test(e.title)).sort((a, b) => a.time - b.time);
+  ssOk &= ss('whole-batch split: two mixes (each batch is its own dough)', mixes.length === 2);
+  const bakes = ev.filter(e => /^Bake Split Rolls/.test(e.title)).sort((a, b) => a.time - b.time);
+  ssOk &= ss('whole-batch split: two bake waves hours apart',
+    bakes.length === 2 && bakes[1].time - bakes[0].time >= 5 * 3600000);
+  ssOk &= ss('whole-batch split: the later batch mixes AFTER the first (fresh chain)',
+    mixes.length === 2 && mixes[1].time > mixes[0].time);
+  ssOk &= ss('whole-batch split: no bake claims to a phantom oven double-book',
+    !(sr.warnings || []).some(w => /double-booked/.test(w.msg || '')));
+  api.saveBakeInstances({});
+}
+allOk &= ssOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

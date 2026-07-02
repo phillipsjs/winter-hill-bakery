@@ -3658,10 +3658,12 @@
       const contLabel = x.containerName ? (x.numBatches > 1 ? `${x.containerName} #${x.batchIndex + 1}` : x.containerName) : 'a container';
       ev.container = contLabel;
       ev.equipStrip = ` · use ${contLabel}`;
-      ev.detail = `${x.unitsLabel} · ${fmtStageDur(x.dur)} in the fridge · use ${contLabel}`;
+      // A split's spanning batch holds part of its dough for the later wave: the claim
+      // extends to the later bake (x.chillClaimEnd) and the detail says so (x.chillNote).
+      ev.detail = `${x.unitsLabel} · ${fmtStageDur(x.dur)} in the fridge · use ${contLabel}${x.chillNote || ''}`;
       x.pushEvent(ev);
       const grams = x.batchUnits * (x.recipe.loafWeight || 0);
-      x.addClaim('container', `Cold proof ${x.recipe.name}`, x.containerName, 1, ev.time, x.cursor, null,
+      x.addClaim('container', `Cold proof ${x.recipe.name}`, x.containerName, 1, ev.time, x.chillClaimEnd || x.cursor, null,
         x.containerName ? {
           candidates: containerCandidates(['any'], grams, true),
           relabel: (newType) => {
@@ -8126,8 +8128,14 @@ ${notesHtml}
               ${ovenHtml}
             </div>`;
         });
-        const splitBtn = ['sourdough-loaf', 'sourdough-muffin', 'bagel'].includes(getProcessType(r))
-          ? `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}', true)" title="Bake some of this dough at a different time — one mix &amp; bulk, the later portion just cold-proofs longer">+ Split bake across times</button>`
+        // A split needs a fridge hold for the later portion: any cold-proofing bread, a
+        // simple bake with a chill window, or an enriched dough with a cold final proof.
+        const pt = getProcessType(r);
+        const splitEligible = ['sourdough-loaf', 'sourdough-muffin', 'bagel'].includes(pt)
+          || (pt === 'simple' && r.chillWindow && r.chillWindow !== '')
+          || (pt === 'enriched' && r.finalProofMode === 'cold');
+        const splitBtn = splitEligible
+          ? `<button class="bake-add-btn" onclick="addBakeInstance('${r.id}', true)" title="Bake some of this dough at a different time — one mix &amp; chill, the later portion just stays cold longer">+ Split bake across times</button>`
           : '';
         detHtml += `<div class="bake-add-row"><button class="bake-add-btn" onclick="addBakeInstance('${r.id}')">+ Add another batch (different deadline)</button>${splitBtn}</div></div>`;
       });
@@ -8819,10 +8827,10 @@ ${notesHtml}
   // Unified per-recipe batch plan for a simple/enriched recipe: batch size = the
   // smallest of mixer / oven-pan / chilling-or-cold-proof container capacity (or a
   // per-recipe override), divided evenly.
-  function sideBatchInfo(r) {
+  function sideBatchInfo(r, extraUnits) {
     const pt = getProcessType(r);
     const tmpl = PROCESS_TEMPLATES[pt] || PROCESS_TEMPLATES.simple;
-    const count = plan[r.id] || 0;
+    const count = (plan[r.id] || 0) + (extraUnits || 0);
     const mx = mixerForRecipeG(r);
     const mixerCap = (mx && mx.recipeCapacities && mx.recipeCapacities[r.id] > 0) ? mx.recipeCapacities[r.id] * (mx.quantity || 1) : Infinity;
     const panCap = bakeCapForG(r, tmpl.ovenCapacity);
@@ -12319,8 +12327,8 @@ ${notesHtml}
     const focacciaSlot = focacciaGroups.length === 1 ? focacciaGroups[0].slot : null;
 
     // Simple & enriched bake slots. postBakeMin covers cooling (+ glaze for enriched).
-    const computeSideSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind) =>
-      deadline ? computeSlot(deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind, 'bake time.') : null;
+    const computeSideSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind, quiet) =>
+      deadline ? computeSlot(deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind, 'bake time.', quiet) : null;
     // --- Side groups: each simple/enriched scheduling unit = (process, dough ratio,
     // deadline). Recipes that share a dough AND a deadline merge into one group (one
     // column, one oven slot); a different ratio OR a different deadline splits into a
@@ -12336,8 +12344,18 @@ ${notesHtml}
     const buildSideGroups = (proc, recs) => {
       const tmpl = sideTmplFor[proc];
       const fallback = sideFallbackDeadline[proc];
+      // Split bakes (simple/enriched): a __sharePrep clone rides its BASE recipe's group
+      // as a later-baking PORTION — the clone's units fold into the base's batch plan
+      // (one dough where a batch spans both waves), whole later batches keep their own
+      // fresh chains (per-batch doughs, mixed closer to their bake), and a spanning
+      // batch keeps ONE chain: its bake splits across the waves and its chill stretches.
+      const splitClones = recs.filter(r => r.__sharePrep && r.__instanceOf && (plan[r.id] || 0) > 0 && recs.some(b => b.id === r.__instanceOf));
+      const cloneIds = new Set(splitClones.map(r => r.id));
+      const extraUnitsByBase = {};
+      splitClones.forEach(c => { extraUnitsByBase[c.__instanceOf] = (extraUnitsByBase[c.__instanceOf] || 0) + (plan[c.id] || 0); });
       const groups = new Map(); // ratioSig|deadlineMs -> { recipes, deadline }
       recs.forEach(r => {
+        if (cloneIds.has(r.id)) return; // folded into the base recipe's group as a portion
         const dl = deadlineForRecipe(r, fallback);
         const gkey = ratioSignature(r) + '|' + (dl ? dl.getTime() : 'none');
         if (!groups.has(gkey)) groups.set(gkey, { recipes: [], deadline: dl });
@@ -12345,14 +12363,45 @@ ${notesHtml}
       });
       groups.forEach(({ recipes: recsG, deadline }) => {
         const key = `${proc}#${sideGroups.length}`;
-        const batchPlan = recsG.map(sideBatchInfo);
+        const batchPlan = recsG.map(r => sideBatchInfo(r, extraUnitsByBase[r.id] || 0));
         batchPlan.forEach(p => batchSizeWarning(p, key, proc === 'simple' ? 'chilling' : 'cold-proof'));
+        // Carve each portion's units from the END of its base's batches: whole batches
+        // move to the later wave; a partial carve marks the batch as SPANNING (one
+        // chain, two bakes). The host bake sequence covers only wave-1 bakes.
+        const portions = splitClones
+          .filter(c => recsG.some(b => b.id === c.__instanceOf))
+          .map(c => ({ recipe: c, recipeId: c.id, baseId: c.__instanceOf, count: plan[c.id] || 0,
+                       deadline: deadlineForRecipe(c, fallback) }));
+        portions.forEach(p => {
+          const bp = batchPlan.find(x => x.recipe.id === p.baseId);
+          p.bp = bp; p.fullBatches = []; p.spanUnits = 0; p.spanBatchIndex = null;
+          let remaining = p.count;
+          for (let b = bp.perBatch.length - 1; b >= 0 && remaining > 0; b--) {
+            const u = bp.perBatch[b];
+            if (remaining >= u) { p.fullBatches.unshift(b); remaining -= u; }
+            else { p.spanUnits = remaining; p.spanBatchIndex = b; remaining = 0; }
+          }
+          bp.wave2Batches = new Set(p.fullBatches);
+          if (p.spanBatchIndex != null) bp.spanBatch = { index: p.spanBatchIndex, units: p.spanUnits };
+        });
         const bakeSeq = buildSideBakeSequence(batchPlan);
+        // Wave partition: drop whole wave-2 batches from the host sequence (they bake at
+        // the portion's slot); a spanning batch stays (its wave-1 share bakes here).
+        if (portions.length) {
+          bakeSeq.jobs = bakeSeq.jobs.filter(j => !(j.p.wave2Batches && j.p.wave2Batches.has(j.batchIndex)));
+          bakeSeq.jobs.forEach(j => {
+            if (j.p.spanBatch && j.p.spanBatch.index === j.batchIndex) j.splitOffUnits = j.p.spanBatch.units;
+          });
+          let t = 0;
+          bakeSeq.jobs.forEach((j, i) => { if (i > 0) t += j.gapBefore; t += j.bakeMin; });
+          bakeSeq.totalMin = t;
+        }
         const g = {
           key, process: proc, deadline, bakeTime: sideBakeTimeFor[proc],
           recipes: recsG, recipeIds: recsG.map(r => r.id),
           label: recsG.map(r => r.name).join(', '),
-          total: recsG.reduce((s, r) => s + (plan[r.id] || 0), 0),
+          // Split portions bake later but belong to this group's dough — count them in.
+          total: recsG.reduce((s, r) => s + (plan[r.id] || 0), 0) + portions.reduce((s, p) => s + p.count, 0),
           batchPlan, numBatches: batchPlan.reduce((s, p) => s + p.numBatches, 0),
           bakeSeq, totalMin: bakeSeq.totalMin,
           temp: bakeSeq.firstTemp != null ? bakeSeq.firstTemp : sideMaxTemp(recsG, tmpl),
@@ -12380,6 +12429,19 @@ ${notesHtml}
         g.glazeMin = g.glaze ? Math.max(...glazers.map(x => x.glazeMin || tmpl.glazeMin)) : 0;
         g.postBakeMin = g.coolMin + (g.glaze ? g.glazeMin : 0);
         g.slot = computeSideSlot(deadline, g.bakeTime, g.totalMin, g.postBakeMin, g.label, key);
+        // Portion slots (quiet — pinned to their own deadlines, like loaf portions): the
+        // later wave = the spanning batch's carved share (baked first — its dough is
+        // already chilled) then the whole later batches, back-to-back with reheats.
+        if (portions.length && g.slot) {
+          portions.forEach(p => {
+            const bp = p.bp;
+            p.jobs = p.fullBatches.map(b => ({ units: bp.perBatch[b], batchIndex: b, bakeMin: bp.bakeMin, temp: bp.bakeTempF, fresh: true }));
+            if (p.spanUnits > 0) p.jobs.unshift({ units: p.spanUnits, batchIndex: p.spanBatchIndex, bakeMin: bp.bakeMin, temp: bp.bakeTempF, span: true });
+            const pTotal = p.jobs.reduce((s, j, i) => s + j.bakeMin + (i > 0 ? SCHED.REHEAT_MIN : 0), 0);
+            p.slot = computeSideSlot(p.deadline, g.bakeTime, pTotal, g.postBakeMin, g.label, key, true);
+          });
+          g.portions = portions.filter(p => p.slot);
+        }
         sideGroups.push(g);
       });
     };
@@ -14491,16 +14553,23 @@ ${notesHtml}
         }
         cum += j.gapBefore;
         const bakeStart = addMinutes(slot.firstBakeStart, cum);
+        // A spanning batch (split bake) keeps ONE chain sized for the whole batch, but
+        // only its wave-1 share bakes now — the rest stays chilled for the later wave.
+        const span = j.splitOffUnits ? (g.portions || []).find(pp => pp.baseId === r.id && pp.spanBatchIndex === b) : null;
+        const bakeUnits = batchUnits - (j.splitOffUnits || 0);
+        const bakeUnitsLabel = `${bakeUnits} ${unit}${bakeUnits === 1 ? '' : 's'}`;
         // Pre-bake dough chain: walk the recipe's stages before the bake, backward from
         // the bake start, so each batch's chain ends exactly when its bake begins.
         walkStagesBackward(bakeStart, {
           recipe: r, batchUnits, batchIndex: b, numBatches: p.numBatches,
           suffix, unitsLabel, process: g.process, columnKey: g.key,
           containerName: p.containerName,
+          chillClaimEnd: span ? span.slot.firstBakeStart : undefined,
+          chillNote: span ? ` · ${j.splitOffUnits} ${unit}${j.splitOffUnits === 1 ? '' : 's'} stay chilled for the later bake` : undefined,
           pushEvent: (ev) => events.push(ev),
           addClaim, ingsForUnits,
         });
-        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${unitsLabel} · ${j.bakeMin} min · ${fmtTemp(j.temp)}${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+        events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${r.name}${suffix}`, detail: `${bakeUnitsLabel} · ${j.bakeMin} min · ${fmtTemp(j.temp)}${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
         addOvenClaim(ovenEquip, `${r.name} bake`, bakeStart, j.bakeMin);
         cum += j.bakeMin;
       });
@@ -14508,6 +14577,39 @@ ${notesHtml}
       events.push({ time: slot.lastBakeEnd, title: `${g.label} out — cool`, detail: `${g.coolMin} min cool`, process: g.process, columnKey: g.key, stage: 'cool', activeStep: false });
       if (g.glaze) events.push({ time: addMinutes(slot.lastBakeEnd, g.coolMin), title: `Glaze / ice ${g.label}`, detail: `${g.glazeMin} min`, process: g.process, columnKey: g.key, stage: 'done', activeStep: true });
       events.push({ time: slot.packageReady, title: 'Package & ready for sale', detail: '', process: g.process, columnKey: g.key, stage: 'done', activeStep: false });
+      // Split-bake portions: the later wave — its own preheat, the spanning batch's
+      // chilled share first (no chain: its dough is already in the fridge), then any
+      // whole later batches (fresh chains, mixed closer to their bake), then its own
+      // cool + package-ready.
+      (g.portions || []).forEach(pt => {
+        const pSlot = pt.slot;
+        events.push({ time: addMinutes(pSlot.firstBakeStart, -preheat), title: `Turn on oven to ${fmtTemp(g.temp)}`, detail: `~${preheat} min preheat${ovenTag}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+        let pCum = 0;
+        pt.jobs.forEach((j, ji) => {
+          if (ji > 0) pCum += SCHED.REHEAT_MIN;
+          const bakeStart = addMinutes(pSlot.firstBakeStart, pCum);
+          const bp = pt.bp;
+          const unit = pt.recipe.unit || 'unit';
+          const jl = `${j.units} ${unit}${j.units === 1 ? '' : 's'}`;
+          const suffix = bp.numBatches > 1 ? ` — batch ${j.batchIndex + 1} of ${bp.numBatches}` : '';
+          if (j.fresh) {
+            // A whole later batch is its own dough — full chain backward from ITS bake.
+            walkStagesBackward(bakeStart, {
+              recipe: bp.recipe, batchUnits: j.units, batchIndex: j.batchIndex, numBatches: bp.numBatches,
+              suffix, unitsLabel: jl, process: g.process, columnKey: g.key,
+              containerName: bp.containerName,
+              pushEvent: (ev) => events.push(ev),
+              addClaim, ingsForUnits,
+            });
+          }
+          events.push({ time: bakeStart, timeEnd: addMinutes(bakeStart, j.bakeMin), title: `Bake ${bp.recipe.name}${suffix}`, detail: `${jl} · ${j.bakeMin} min · ${fmtTemp(j.temp)}${ovenTag}${j.span ? ' · from the chilled batch (split bake)' : ''}`, process: g.process, columnKey: g.key, stage: 'bake', activeStep: false, equip: ovenEquip, equipStrip: ovenTag });
+          addOvenClaim(ovenEquip, `${bp.recipe.name} bake`, bakeStart, j.bakeMin);
+          pCum += j.bakeMin;
+        });
+        events.push({ time: pSlot.lastBakeEnd, title: `${g.label} out — cool`, detail: `${g.coolMin} min cool`, process: g.process, columnKey: g.key, stage: 'cool', activeStep: false });
+        if (g.glaze) events.push({ time: addMinutes(pSlot.lastBakeEnd, g.coolMin), title: `Glaze / ice ${g.label}`, detail: `${g.glazeMin} min`, process: g.process, columnKey: g.key, stage: 'done', activeStep: true });
+        events.push({ time: pSlot.packageReady, title: 'Package & ready for sale', detail: '', process: g.process, columnKey: g.key, stage: 'done', activeStep: false });
+      });
     }
 
     // Late-night warnings for simple/enriched (computed here, after their steps exist).

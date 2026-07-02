@@ -396,6 +396,32 @@ const FIXTURES = [
     rec(SEED.boule).coldProofHr = '16';
     setPlan({ [SEED.batard]: 8, [SEED.boule]: 6 });
   } },
+  { name: 'simple-split-span', setup() {
+    // Split bake of a simple chill recipe where the batch SPANS both waves: one dough,
+    // one chill (holding the later units), two bake waves.
+    api.__recipes().push({ id: 'fx-ss-cookie', name: 'Split Cookies', processType: 'simple', unit: 'cookie',
+      loafWeight: 40, leavening: 'none', chillWindow: '12-24', batchSizeOverride: 24,
+      ingredients: [{ name: 'All purpose flour', pct: 100, flourType: 'anchor' }, { name: 'Butter', pct: 60 }, { name: 'Sugar', pct: 55 }],
+      stages: (() => { const s = api.stageTemplateFor('simple'); s.splice(2, 0, { type: 'chill', label: 'Cold proof', duration: { kind: 'range', minHr: 12, maxHr: 24 } }); return s; })() });
+    setPlan({ 'fx-ss-cookie': 24 });
+    api.addBakeInstance('fx-ss-cookie', true);
+    const inst = api.loadBakeInstances()['fx-ss-cookie'][0];
+    api.setBakeInstanceField('fx-ss-cookie', inst.id, 'count', 8);
+    api.setBakeInstanceField('fx-ss-cookie', inst.id, 'deadline', fmtLocal(D(3, 16)));
+  } },
+  { name: 'enriched-split-whole-batch', setup() {
+    // Enriched cold-proof split where the later wave is a whole batch (own fresh chain).
+    api.__recipes().push({ id: 'fx-ss-roll', name: 'Split Rolls', processType: 'enriched', unit: 'roll',
+      loafWeight: 90, leavening: 'commercial-yeast', finalProofMode: 'cold', finalProofColdWindow: '8-12',
+      batchSizeOverride: 12,
+      ingredients: [{ name: 'Bread flour', pct: 100, flourType: 'anchor' }, { name: 'Milk', pct: 55 }, { name: 'Butter', pct: 20 }],
+      stages: api.stageTemplateFor('enriched') });
+    setPlan({ 'fx-ss-roll': 24 });
+    api.addBakeInstance('fx-ss-roll', true);
+    const inst = api.loadBakeInstances()['fx-ss-roll'][0];
+    api.setBakeInstanceField('fx-ss-roll', inst.id, 'count', 12);
+    api.setBakeInstanceField('fx-ss-roll', inst.id, 'deadline', fmtLocal(D(3, 16)));
+  } },
   { name: 'stages-vs-flat-diverged', setup() {
     // Stage list says bulk 300 min; flat field left '' (template default). Today the bread
     // engines read the FLAT spec (240); the Phase H stages-first flip changes this fixture.
