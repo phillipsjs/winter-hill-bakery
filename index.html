@@ -13695,15 +13695,19 @@ ${notesHtml}
       // bake ending (oven is still hot — no separate preheat needed).
       return gapMs > 60 * 60 * 1000 || gapMs < -loafPreheat * 60 * 1000;
     })();
-    if (breadBatches > 0) {
+    // Loaf preheat, per group (a loop of 1 today — G1a). The single-group case may share
+    // the muffin 'turn on' when the muffin bake runs continuously after the loaf bake.
+    loafGroups.forEach(g => {
+      if (!(g.batches > 0) || !g.slot) return;
+      const sharedWithMuffin = muffinSlot && !showsSeparatePreheats;
       events.push({
-        time: addMinutes(firstBakeStart, -loafPreheat),
-        title: muffinSlot && !showsSeparatePreheats ? `Turn on oven to ${fmtTemp(loafTemp)}` : `Turn on oven (bread) to ${fmtTemp(loafTemp)}`,
+        time: addMinutes(g.slot.firstBakeStart, -loafPreheat),
+        title: sharedWithMuffin ? `Turn on oven to ${fmtTemp(loafTemp)}` : `Turn on oven (bread) to ${fmtTemp(loafTemp)}`,
         detail: fmtPreheat(loafPreheat, loafTemp),
-        process: muffinSlot && !showsSeparatePreheats ? 'shared' : 'loaf',
-        equip: ovenNamesFromPlan(muffinSlot && !showsSeparatePreheats ? [...ovenPlan, ...muffinOvenPlan] : ovenPlan),
+        process: sharedWithMuffin ? 'shared' : 'loaf',
+        equip: ovenNamesFromPlan(sharedWithMuffin ? [...g.ovenPlan, ...muffinOvenPlan] : g.ovenPlan),
       });
-    }
+    });
     // Muffin preheats, per deadline group. The single group may share the loaf 'turn on'
     // (when continuous with the loaf bake → !showsSeparatePreheats), so it's skipped here
     // exactly as before; multiple groups each get their own preheat.
