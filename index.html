@@ -12088,6 +12088,18 @@ ${notesHtml}
     const loafSlot = totalLoaves > 0
       ? computeBakeSlot(loafDeadline, loafBakeTime, loafBakeTotalMin, 'Bread', 'loaf', loafCoolMin)
       : null;
+    // Loaf deadline group (engine unification, G1a): the wrapper still pre-partitions loaf
+    // plans by deadline, so buildSchedule always sees ONE loaf group today. This is the
+    // group-shaped view of the loaf singulars — the pipeline attaches its derived values
+    // (container info, bake start times, package-ready) as it runs, and emission blocks
+    // convert one by one to iterate loafGroups (a loop of 1 → byte-identical), so multiple
+    // in-engine deadline groups — and native split portions — become possible (G1b/G2).
+    const loafGroups = totalLoaves > 0 ? [{
+      key: 'loaf', deadline: loafDeadline ? new Date(loafDeadline) : null,
+      recipes: loafRecipes, total: totalLoaves,
+      agg: loafAgg, ovenPlan, batches: breadBatches, bakeTotalMin: loafBakeTotalMin,
+      coolMin: loafCoolMin, slot: loafSlot,
+    }] : [];
     // A mixer load can only ever hold ONE dough — two recipes with different
     // ingredients can't be mixed together even if their combined count would fit
     // the mixer. So mix batches are counted PER dough (recipes with an identical
@@ -12610,6 +12622,7 @@ ${notesHtml}
         loafBakeStartTimes.push(addMinutes(firstBakeStart, cum));
         cum += loafAgg.bakeMin + (b < breadBatches - 1 ? SCHED.REHEAT_MIN : 0);
       }
+      loafGroups[0].bakeStartTimes = loafBakeStartTimes;
 
       fridgeIn = addHours(firstBakeStart, -loafColdProofHours);
       const containerGroups = planDoughContainers(loafRecipes, plan, DOUGH_CONTAINER_CAPACITY_G, userContainers);
@@ -13728,9 +13741,12 @@ ${notesHtml}
     // Oven naming for the loaf bake/out/off steps (mirrors the turn-off layer below).
     const loafOvenEquip = (loafSlot && loafSlot.ovenName) ? [loafSlot.ovenName] : (singleOvenName ? [singleOvenName] : []);
     const loafOvenLabel = (loafSlot && loafSlot.ovenName) ? loafSlot.ovenName : (singleOvenName || 'the oven');
-    for (let b = 0; b < breadBatches; b++) {
-      const bakeStart = loafBakeStartTimes[b];
-      const plan_b = ovenPlan[b];
+    // --- Loaf bake loop (per group; a loop of 1 today — G1a) ---
+    loafGroups.forEach(g => {
+      if (!g.slot || !g.bakeStartTimes) return;
+      for (let b = 0; b < g.batches; b++) {
+      const bakeStart = g.bakeStartTimes[b];
+      const plan_b = g.ovenPlan[b];
       const kindSuffix = totalMuffins > 0 ? ' — bread into oven' : ' — into oven';
       const deckEquip = plan_b
         ? plan_b.map((deck, di) => `${deckLabelFor(di)}: ${deck.items.map(it => `${it.count} × ${it.name}`).join(' + ')}`)
@@ -13751,24 +13767,25 @@ ${notesHtml}
       }
       events.push({
         time: bakeStart,
-        title: `Bake ${b + 1} of ${breadBatches}${kindSuffix}`,
-        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${loafAgg.bakeMin} min bake · ${fmtTemp(loafAgg.bakeTempF)}${planLines}`,
+        title: `Bake ${b + 1} of ${g.batches}${kindSuffix}`,
+        detail: `${SCHED.OVEN_LOAD_MIN} min load · ${g.agg.bakeMin} min bake · ${fmtTemp(g.agg.bakeTempF)}${planLines}`,
         process: 'loaf', colDetails: bakeColDetails, equip: (singleOvenName ? [singleOvenName] : []).concat(deckEquip), equipStrip: planLines,
       });
-      addOvenClaim(loafSlot && loafSlot.ovenName ? [loafSlot.ovenName] : [], 'Loaf bake', bakeStart, loafAgg.bakeMin);
+      addOvenClaim(g.slot.ovenName ? [g.slot.ovenName] : [], 'Loaf bake', bakeStart, g.agg.bakeMin);
       // Dedicated "loaves out" step at the moment this batch leaves the oven. The
       // reheat before the next batch (folded into the bake step before) lives here.
       // The final batch's "out" step is the cooling step below (which folds the
       // oven-off), so only emit per-batch out steps for the non-final batches.
-      if (b < breadBatches - 1) {
+      if (b < g.batches - 1) {
         events.push({
-          time: addMinutes(bakeStart, loafAgg.bakeMin),
-          title: `Loaves out (batch ${b + 1} of ${breadBatches})`,
-          detail: `Pull batch ${b + 1}, load batch ${b + 2} · reheat ~${SCHED.REHEAT_MIN} min to ${fmtTemp(loafAgg.bakeTempF)} before next bake`,
+          time: addMinutes(bakeStart, g.agg.bakeMin),
+          title: `Loaves out (batch ${b + 1} of ${g.batches})`,
+          detail: `Pull batch ${b + 1}, load batch ${b + 2} · reheat ~${SCHED.REHEAT_MIN} min to ${fmtTemp(g.agg.bakeTempF)} before next bake`,
           process: 'loaf', stage: 'bake', equip: loafOvenEquip,
         });
       }
-    }
+      }
+    });
 
     // --- Muffin bake loop (per deadline group, independent slot) ---
     muffinGroups.forEach(g => {
@@ -14128,28 +14145,25 @@ ${notesHtml}
     });
 
     // --- Per-process cooling + package-ready ---
-    const lastLoafBakeEnd = breadBatches > 0
-      ? addMinutes(firstBakeStart, breadBatches * loafAgg.bakeMin + Math.max(0, breadBatches - 1) * SCHED.REHEAT_MIN)
-      : firstBakeStart;
     const fmtCoolHr = (ms) => {
       const hr = ms / (60 * 60 * 1000);
       return hr % 1 === 0 ? `${hr} hr` : `${hr.toFixed(1)} hr`;
     };
-    const loafCoolDetail = `${fmtCoolHr(packageReady - lastLoafBakeEnd)} cool`;
-
-    if (breadBatches > 0) {
-      // The final batch's "out" step doubles as the oven-off step (folded in, like
-      // the per-batch reheat) so the schedule stops assuming the oven stays hot.
-      const loafTurnOff = !!(loafSlot && loafSlot.turnOffAfter);
+    // Loaf cooling, per group (a loop of 1 today — G1a). The final batch's "out" step
+    // doubles as the oven-off step (folded in, like the per-batch reheat) so the schedule
+    // stops assuming the oven stays hot. The turn-off instruction names the oven in the
+    // detail; no need to repeat it in the Equipment column (same oven it just baked in).
+    loafGroups.forEach(g => {
+      if (!(g.batches > 0) || !g.slot) return;
+      const gLastBakeEnd = addMinutes(g.slot.firstBakeStart, g.batches * g.agg.bakeMin + Math.max(0, g.batches - 1) * SCHED.REHEAT_MIN);
+      const turnOff = !!g.slot.turnOffAfter;
       events.push({
-        time: lastLoafBakeEnd,
+        time: gLastBakeEnd,
         title: 'Last loaves out — start cooling',
-        // The turn-off instruction names the oven in the detail; no need to repeat
-        // it in the Equipment column (it's the same oven the loaves just baked in).
-        detail: loafCoolDetail + (loafTurnOff ? ` · turn off ${loafOvenLabel} (cools to room temp)` : ''),
+        detail: `${fmtCoolHr(g.slot.packageReady - gLastBakeEnd)} cool` + (turnOff ? ` · turn off ${loafOvenLabel} (cools to room temp)` : ''),
         process: 'loaf',
       });
-    }
+    });
     // Group-level cooling step: last bake out → cool until package-ready.
     const emitGroupCooling = (g, label, process) => {
       if (!g.slot) return;
@@ -14162,7 +14176,7 @@ ${notesHtml}
     // Package-ready: collapse to one combined event when every present process
     // finishes within a minute of the others; otherwise per-process events.
     const readyEntries = [];
-    if (totalLoaves > 0) readyEntries.push({ time: packageReady, label: 'Loaves', process: 'loaf' });
+    loafGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Loaves', process: 'loaf' }); });
     muffinGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Muffins', process: 'muffin', columnKey: g.key }); });
     bagelGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Bagels', process: 'bagel', columnKey: g.key }); });
     focacciaGroups.forEach(g => { if (g.slot) readyEntries.push({ time: g.slot.packageReady, label: 'Focaccia', process: 'focaccia', columnKey: g.key }); });
