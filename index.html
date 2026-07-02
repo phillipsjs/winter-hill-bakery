@@ -13534,9 +13534,7 @@ ${notesHtml}
       // Divergent: each dough shapes backward from its own fridge-in (per-recipe cold proof);
       // uniform: containers shape back-to-back from the shared shapePhaseStart cursor.
       const preshapeStartT = proofingDivergent ? ctTimeline[i].shapeStart : cursorTime;
-      const benchRestStartT = addMinutes(preshapeStartT, shape.preshapeMin);
-      const finalShapeStartT = addMinutes(benchRestStartT, shape.benchRest);
-      const containerEndT = addMinutes(finalShapeStartT, shape.finalShapeMin);
+      const containerEndT = addMinutes(preshapeStartT, shape.preshapeMin + shape.benchRest + shape.finalShapeMin);
       containerFridgeInTimes.push(containerEndT);
 
       const contentsLabel = aggregateContents(c.contents);
@@ -13547,28 +13545,56 @@ ${notesHtml}
       const shapeContainer = suffix ? `${containerLabel}: ${contentsLabel}` : '';
       const wb = weightBreakdown(c);
       const preshapeBaseDetail = `${wb ? `Weigh & divide: ${wb} · ` : ''}${shapeBreakdown(c, 'preshape')} = ${shape.preshapeMin} min total`;
-      events.push({
-        time: preshapeStartT,
-        title: `Start preshape${suffix}`,
-        detail: shape.benchRest === 0
-          ? `${preshapeBaseDetail} · first loaves rest naturally while you finish (no separate bench rest needed)`
-          : preshapeBaseDetail,
-        process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: shapeContainer, equipStripTitle: suffix,
+      const attr = loafColAttrFor(c.contents, c.colKey);
+      // The container's shape phase (preshape → bench rest → final shape) as a walker
+      // chain, backward from the container's shape end (= its fridge-in). Buffer flushes
+      // reversed so the legacy chronological push order holds.
+      const buf = [];
+      walkStagesBackward(containerEndT, {
+        recipe: loafRecipes[0], batchUnits: 0, batchIndex: i, numBatches: numContainers,
+        suffix, unitsLabel: '', process: 'loaf', columnKey: undefined,
+        stages: [
+          { type: 'preshape', duration: { kind: 'fixed', min: shape.preshapeMin } },
+          { type: 'bench', duration: { kind: 'fixed', min: shape.benchRest } },
+          { type: 'shape', duration: { kind: 'fixed', min: shape.finalShapeMin } },
+        ],
+        pushEvent: (ev) => buf.push(ev),
+        addClaim, ingsForUnits,
+        expanders: {
+          preshape: (s, ev, x) => {
+            x.pushEvent({
+              time: ev.time,
+              title: `Start preshape${suffix}`,
+              detail: shape.benchRest === 0
+                ? `${preshapeBaseDetail} · first loaves rest naturally while you finish (no separate bench rest needed)`
+                : preshapeBaseDetail,
+              process: 'loaf', ...attr, container: shapeContainer, equipStripTitle: suffix,
+            });
+            return false;
+          },
+          bench: (s, ev, x) => {
+            if (shape.benchRest > 0) {
+              x.pushEvent({
+                time: ev.time,
+                title: `Bench rest${suffix}`,
+                detail: `${shape.benchRest} min rest (loaf 1 already rested ~${shape.naturalRest} min during preshape)`,
+                process: 'loaf', ...attr, container: shapeContainer, equipStripTitle: suffix,
+              });
+            }
+            return false;
+          },
+          shape: (s, ev, x) => {
+            x.pushEvent({
+              time: ev.time,
+              title: `Final shape${suffix}`,
+              detail: `${shapeBreakdown(c, 'final')} = ${shape.finalShapeMin} min total`,
+              process: 'loaf', ...attr, container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
+            });
+            return false;
+          },
+        },
       });
-      if (shape.benchRest > 0) {
-        events.push({
-          time: benchRestStartT,
-          title: `Bench rest${suffix}`,
-          detail: `${shape.benchRest} min rest (loaf 1 already rested ~${shape.naturalRest} min during preshape)`,
-          process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: shapeContainer, equipStripTitle: suffix,
-        });
-      }
-      events.push({
-        time: finalShapeStartT,
-        title: `Final shape${suffix}`,
-        detail: `${shapeBreakdown(c, 'final')} = ${shape.finalShapeMin} min total`,
-        process: 'loaf', ...loafColAttrFor(c.contents, c.colKey), container: bannetonLabelFor(c.contents), equipStripTitle: suffix,
-      });
+      buf.reverse().forEach(ev => events.push(ev));
 
       cursorTime = containerEndT;
     }
