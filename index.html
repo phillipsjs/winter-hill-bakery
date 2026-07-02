@@ -3660,11 +3660,16 @@
       return false; // emission handled here
     },
   };
-  function walkStagesBackward(bakeStart, x) {
-    const stages = stagesForScheduling(x.recipe);
+  // Walk backward from `anchor` (a bake start — or any later anchor when x.stages is an
+  // explicit pre-anchor list). x.stages overrides the recipe's own stage list (ports pass
+  // synthetic spec-derived lists during migration); x.expanders overlays per-walk expanders
+  // on the defaults (a port's presentation adapter). Returns the walk's final cursor (the
+  // start of the earliest stage — e.g. the mix time, which anchors levain + weigh/mill).
+  function walkStagesBackward(anchor, x) {
+    const stages = x.stages || stagesForScheduling(x.recipe);
     const bakeIdx = stages.findIndex(s => s.type === 'bake');
     const preStages = bakeIdx >= 0 ? stages.slice(0, bakeIdx) : stages;
-    let cursor = bakeStart;
+    let cursor = anchor;
     for (let i = preStages.length - 1; i >= 0; i--) {
       const s = preStages[i];
       const dur = stageDurationMin(s, x.batchUnits);
@@ -3674,7 +3679,7 @@
       const ev = { time: start, title: `${s.label}${x.suffix}`, detail: `${x.unitsLabel} · ${fmtStageDur(dur)}`, process: x.process, columnKey: x.columnKey, stage: pal.stage, stageType: s.type, activeStep: aMin > 0, activeMin: aMin };
       x.dur = dur;
       x.cursor = cursor;
-      const expander = STAGE_EXPANDERS[s.type];
+      const expander = (x.expanders && x.expanders[s.type]) || STAGE_EXPANDERS[s.type];
       const handled = expander ? expander(s, ev, x) === false : false;
       if (!handled) x.pushEvent(ev);
       cursor = start;
@@ -11774,26 +11779,62 @@ ${notesHtml}
       const foldInterval = agg.foldIntervalMin;
       const bulkOf = (r) => fermentScale(getRecipeSpec(r).bulkMin || PROCESS_TEMPLATES.focaccia.bulkMin);
       const divergent = recs.length > 1 && (new Set(recs.map(ratioSignature)).size > 1 || new Set(recs.map(bulkOf)).size > 1);
-      const foldGap = (agg.foldsCount - 1) * foldInterval;
       const preMix = foldInterval + agg.autolyseMin;
-      const lines = (divergent ? recs.map(r => ({ r, bulk: bulkOf(r) })) : [{ r: null, bulk: agg.bulkMin }])
-        .map(L => { const lastFold = addMinutes(shapeStart, -L.bulk); const firstFold = addMinutes(lastFold, -foldGap); return { ...L, firstFold, mix: addMinutes(firstFold, -preMix) }; });
-      const earliestMix = lines.reduce((m, L) => (L.mix < m ? L.mix : m), lines[0].mix);
+      const evs = [];
+      // Each line (one shared timeline, or per-recipe when divergent) walks a synthetic
+      // spec-derived stage list backward from the shared shape: mix(0) ← autolyse ← folds
+      // ← bulk. Bulk and autolyse are silent time-keepers (no event of their own today —
+      // autolyse surfaces as "then N min rest" in the mix detail); the fold expander fans
+      // out per-fold events anchored to the stage END (last fold right at bulk start, one
+      // interval of rest after the mix); the mix expander presents the focaccia title.
+      // Each line buffers its events and appends them time-sorted (mix, then folds) so the
+      // PUSH order matches the legacy emitter — the fast path's late-night warning lists
+      // step names in encounter order, so push order is part of the frozen output.
+      // The walk's return value is the line's mix time (anchors Gather/Mill below).
+      const lineBufs = [];
+      const walkLine = (r, bulk) => {
+        const sfx = r ? ` — ${r.name}` : '';
+        const buf = [];
+        lineBufs.push(buf);
+        const evs = buf; // expanders below close over `evs` — route them into this line's buffer
+        return walkStagesBackward(shapeStart, {
+          recipe: r || recs[0], batchUnits: 0, batchIndex: 0, numBatches: 1,
+          suffix: sfx, unitsLabel: '', process: 'focaccia', columnKey,
+          stages: [
+            { type: 'mix', duration: { kind: 'fixed', min: 0 } },
+            { type: 'autolyse', duration: { kind: 'fixed', min: agg.autolyseMin } },
+            { type: 'fold', duration: { kind: 'countInterval', count: agg.foldsCount, intervalMin: foldInterval } },
+            { type: 'bulk', duration: { kind: 'fixed', min: bulk } },
+          ],
+          pushEvent: (ev) => evs.push(ev),
+          addClaim: () => {}, ingsForUnits: () => [],
+          expanders: {
+            bulk: () => false,
+            autolyse: () => false,
+            fold: (s, ev, x) => {
+              for (let k = 0; k < agg.foldsCount; k++) {
+                const isLast = k === agg.foldsCount - 1;
+                evs.push({ time: addMinutes(x.cursor, -(agg.foldsCount - 1 - k) * foldInterval), title: `Stretch & fold ${k + 1} of ${agg.foldsCount}${isLast ? ' (last)' : ''} — focaccia${sfx}`, detail: isLast ? `5 min active · then ${bulk} min bulk ferment` : `5 min active · next fold in ${foldInterval} min`, process: 'focaccia', columnKey });
+              }
+              return false;
+            },
+            mix: (s, ev) => {
+              evs.push({ time: ev.time, title: `Mix focaccia dough${sfx}`, detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${preMix - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia', columnKey });
+              return false;
+            },
+          },
+        });
+      };
+      const lines = divergent ? recs.map(r => ({ r, bulk: bulkOf(r) })) : [{ r: null, bulk: agg.bulkMin }];
+      const mixTimes = lines.map(L => walkLine(L.r, L.bulk));
+      const earliestMix = mixTimes.reduce((m, t) => (t < m ? t : m), mixTimes[0]);
       const focWeighDur = weighMinFor(recs);
       const focMills = milling.size > 0;
       const focMillMin = millMinFor(recs);
       const focWeighEnd = focMills ? addMinutes(earliestMix, -focMillMin) : earliestMix;
-      const evs = [];
       evs.push({ time: addMinutes(focWeighEnd, -focWeighDur), title: 'Gather ingredients', detail: recs.length > 1 ? `${focWeighDur} min active · ${recs.length} recipes` : `${focWeighDur} min active`, process: 'focaccia', columnKey });
       if (focMills) evs.push({ time: addMinutes(earliestMix, -focMillMin), title: 'Mill flour', detail: `${focMillMin} min active · ${[...milling].join(' + ')}`, process: 'focaccia', columnKey });
-      lines.forEach(L => {
-        const sfx = L.r ? ` — ${L.r.name}` : '';
-        evs.push({ time: L.mix, title: `Mix focaccia dough${sfx}`, detail: `${FOCACCIA_MIX_ACTIVE_MIN} min mix · then ${preMix - FOCACCIA_MIX_ACTIVE_MIN} min rest · commercial yeast, no levain needed`, process: 'focaccia', columnKey });
-        for (let k = 0; k < agg.foldsCount; k++) {
-          const isLast = k === agg.foldsCount - 1;
-          evs.push({ time: addMinutes(L.firstFold, k * foldInterval), title: `Stretch & fold ${k + 1} of ${agg.foldsCount}${isLast ? ' (last)' : ''} — focaccia${sfx}`, detail: isLast ? `5 min active · then ${L.bulk} min bulk ferment` : `5 min active · next fold in ${foldInterval} min`, process: 'focaccia', columnKey });
-        }
-      });
+      lineBufs.forEach(buf => { buf.sort((a, b) => a.time - b.time); evs.push(...buf); });
       return evs;
     };
     // Per-process cooling comes from each recipe's editable cool stage (the longest cool
