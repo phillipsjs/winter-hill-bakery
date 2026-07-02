@@ -3451,5 +3451,30 @@ function np(label, cond) { console.log(`  [portion] ${cond ? 'PASS' : 'FAIL'} �
 }
 allOk &= npOk;
 
+// ---- Stage-aware timing precedence (Phase H): explicit flat > stages > template ----
+console.log('\nStages-first precedence assertions:');
+let sfOk = true;
+function sf(label, cond) { console.log(`  [stages-first] ${cond ? 'PASS' : 'FAIL'} — ${label}`); return cond; }
+{
+  const base = api.SEED_RECIPES.find(r => r.id === SEED.batard);
+  const r = JSON.parse(JSON.stringify(base));
+  r.id = 'sf-test'; r.name = 'SF Test';
+  r.stages = api.stageTemplateFor('sourdough-loaf');
+  r.stages.find(s => s.type === 'bulk').duration.min = 300;
+  delete r.bulkMin; // blank flat → the hand-edited stage wins
+  sfOk &= sf('a hand-edited stage with a BLANK flat field drives the spec (bulk 300)',
+    api.getRecipeSpec(r).bulkMin === 300);
+  r.bulkMin = 200; // explicit flat override → flat wins over the stage
+  sfOk &= sf('an explicit flat override still wins over the stage (bulk 200)',
+    api.getRecipeSpec(r).bulkMin === 200);
+  r.bulkMin = '';
+  sfOk &= sf('clearing the flat field falls back to the stage again',
+    api.getRecipeSpec(r).bulkMin === 300);
+  r.stages = []; r.bulkMin = '';
+  sfOk &= sf('no stages + blank flat falls back to the template',
+    api.getRecipeSpec(r).bulkMin === api.stageTemplateFor('sourdough-loaf').find(s => s.type === 'bulk').duration.min);
+}
+allOk &= sfOk;
+
 console.log(allOk ? '\nALL SCENARIOS PASSED' : '\nSOME SCENARIOS FAILED');
 process.exit(allOk ? 0 : 1);

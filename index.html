@@ -3252,12 +3252,26 @@
       processLabel: template.label,
       schedulable: template.schedulable,
     };
+    // Stage-aware timing (Phase H): precedence = explicit flat override > the recipe's
+    // editable stage list > the process template. An explicitly set flat field keeps
+    // winning (the Bake-Plan per-recipe controls and editor saves write flat fields);
+    // a hand-edited stage whose flat field is BLANK now schedules by the stage instead
+    // of silently falling back to the template — the step editor becomes the source of
+    // truth for anything not explicitly overridden. paramsFromStages emits '' for
+    // template-default stage values, so the final template fallback is unchanged.
+    // Equipment-capacity fields (ovenCapacity, deckCapacity) are not stage concerns.
+    const stageParams = (recipe && Array.isArray(recipe.stages) && recipe.stages.length)
+      ? paramsFromStages(stagesForScheduling(recipe), type)
+      : null;
     const hasOverride = (field) => {
       const raw = recipe ? recipe[field] : undefined;
       return raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw));
     };
     for (const field of SCHEDULER_OVERRIDE_FIELDS) {
-      const raw = recipe ? recipe[field] : undefined;
+      const flatRaw = recipe ? recipe[field] : undefined;
+      const raw = (flatRaw !== undefined && flatRaw !== null && flatRaw !== '')
+        ? flatRaw
+        : ((stageParams && field in stageParams) ? stageParams[field] : flatRaw);
       if (raw === undefined || raw === null || raw === '') {
         spec[field] = template[field];
         continue;

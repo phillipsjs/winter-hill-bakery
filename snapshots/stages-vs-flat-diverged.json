@@ -12,8 +12,8 @@
  },
  "events": [
   {
-   "t": "2026-01-15T15:00:00.000Z",
-   "tEnd": "2026-01-15T18:00:00.000Z",
+   "t": "2026-01-15T14:00:00.000Z",
+   "tEnd": "2026-01-15T17:00:00.000Z",
    "title": "Levain Build 1 — first refresh",
    "detail": "1:1:1 ratio · 2 min mix · ripens in 6–9 hr",
    "process": "loaf",
@@ -32,8 +32,8 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-15T22:00:00.000Z",
-   "tEnd": "2026-01-16T02:00:00.000Z",
+   "t": "2026-01-15T21:00:00.000Z",
+   "tEnd": "2026-01-16T01:00:00.000Z",
    "title": "Levain Build 2 — final build",
    "detail": "1:5:5 ratio · 2 min mix · ripens in 12–16 hr (slower ratio chosen to avoid a late-night refresh)",
    "process": "loaf",
@@ -52,7 +52,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T12:49:00.000Z",
+   "t": "2026-01-16T11:49:00.000Z",
    "tEnd": null,
    "title": "Gather ingredients",
    "detail": "5 min active",
@@ -72,7 +72,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T12:54:00.000Z",
+   "t": "2026-01-16T11:54:00.000Z",
    "tEnd": null,
    "title": "Start autolyse — flour + water only",
    "detail": "10 min mix · then 50 min rest",
@@ -92,7 +92,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T13:54:00.000Z",
+   "t": "2026-01-16T12:54:00.000Z",
    "tEnd": null,
    "title": "Mix in salt + ripe levain",
    "detail": "10 min mix · 30 min rest before fold 1",
@@ -112,7 +112,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:24:00.000Z",
+   "t": "2026-01-16T13:24:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 1 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -132,7 +132,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T14:54:00.000Z",
+   "t": "2026-01-16T13:54:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 2 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -152,7 +152,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:24:00.000Z",
+   "t": "2026-01-16T14:24:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 3 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -172,7 +172,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T15:54:00.000Z",
+   "t": "2026-01-16T14:54:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 4 of 5",
    "detail": "5 min active · next fold in 30 min",
@@ -192,7 +192,7 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T16:24:00.000Z",
+   "t": "2026-01-16T15:24:00.000Z",
    "tEnd": null,
    "title": "Stretch & fold 5 of 5 (last)",
    "detail": "5 min active · last fold, then bulk ferment",
@@ -212,10 +212,10 @@
    "batchIngredients": null
   },
   {
-   "t": "2026-01-16T16:24:00.000Z",
+   "t": "2026-01-16T15:24:00.000Z",
    "tEnd": "2026-01-16T20:24:00.000Z",
    "title": "Bulk ferment",
-   "detail": "4 hr warm bulk ferment until ready to shape",
+   "detail": "5 hr warm bulk ferment until ready to shape",
    "process": "loaf",
    "columnKey": null,
    "colDetails": null,
