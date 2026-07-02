@@ -1,0 +1,338 @@
+[
+ {
+  "pattern": "Bagel dough bulk ferment",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Bagels into fridge — cold proof",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Bagels ready for sale",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Bake batch N of N — bagels into oven",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Bake focaccia",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Bake N of N — bread into oven",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Bake N of N — into oven",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Bake N of N — muffins into oven",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Bake Test Cookies — batch N of N",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Bake Test Rolls — batch N of N",
+  "stage": "bake"
+ },
+ {
+  "pattern": "Boil batch N of N",
+  "stage": "boil"
+ },
+ {
+  "pattern": "Bring the pot to a boil",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Bulk ferment",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Bulk rise — batch N of N",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Final proof — warm — batch N of N",
+  "stage": "proof"
+ },
+ {
+  "pattern": "Final shape",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Final shape (container N of N: N × Sourdough Batard)",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Final shape (container N of N: N × Sourdough Boule)",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Final shape (Small tub N of N: N × Sourdough Batard)",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Focaccia ready for sale",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Gather ingredients",
+  "stage": "weigh"
+ },
+ {
+  "pattern": "Gather ingredients — batch N of N",
+  "stage": "weigh"
+ },
+ {
+  "pattern": "Into fridge",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Into fridge (container N of N: N × Sourdough Batard)",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Into fridge (container N of N: N × Sourdough Boule)",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Into fridge (Small tub N of N: N × Sourdough Batard)",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Last bagels out — start cooling",
+  "stage": "cool"
+ },
+ {
+  "pattern": "Last focaccia out — start cooling",
+  "stage": "cool"
+ },
+ {
+  "pattern": "Last loaves out — start cooling",
+  "stage": "cool"
+ },
+ {
+  "pattern": "Last muffins out — start cooling",
+  "stage": "cool"
+ },
+ {
+  "pattern": "Levain Build N — final build",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — final build (bagels)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — final build (loaves + muffins)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — final build (loaves)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — final build (muffins + bagels)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — final build (muffins)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — first refresh",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — first refresh (bagels)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — first refresh (loaves + muffins)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — first refresh (loaves)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — first refresh (muffins + bagels)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Levain Build N — first refresh (muffins)",
+  "stage": "levain"
+ },
+ {
+  "pattern": "Loaves out (batch N of N)",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Loaves ready for sale",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Mill flour",
+  "stage": "mill"
+ },
+ {
+  "pattern": "Mix — batch N of N",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix & knead — batch N of N",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix bagel dough",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix focaccia dough",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix in salt + ripe levain",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Mix muffin dough",
+  "stage": "mix"
+ },
+ {
+  "pattern": "Muffin dough bulk ferment",
+  "stage": "bulk"
+ },
+ {
+  "pattern": "Muffins into fridge — cold proof",
+  "stage": "chill"
+ },
+ {
+  "pattern": "Muffins out of fridge",
+  "stage": "warmup"
+ },
+ {
+  "pattern": "Muffins ready for sale",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "N loaves ready for sale",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Package & ready for sale",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Pan rise",
+  "stage": "warmup"
+ },
+ {
+  "pattern": "Set the oven to N°F",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Shape — batch N of N",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Shape / portion — batch N of N",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Shape bagels",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Shape focaccia — transfer to pans",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Shape muffins",
+  "stage": "shape"
+ },
+ {
+  "pattern": "Start autolyse — flour + water only",
+  "stage": "autolyse"
+ },
+ {
+  "pattern": "Start preshape",
+  "stage": "preshape"
+ },
+ {
+  "pattern": "Start preshape (container N of N: N × Sourdough Batard)",
+  "stage": "preshape"
+ },
+ {
+  "pattern": "Start preshape (container N of N: N × Sourdough Boule)",
+  "stage": "preshape"
+ },
+ {
+  "pattern": "Start preshape (Small tub N of N: N × Sourdough Batard)",
+  "stage": "preshape"
+ },
+ {
+  "pattern": "Stretch & fold N of N",
+  "stage": "fold"
+ },
+ {
+  "pattern": "Stretch & fold N of N — focaccia",
+  "stage": "fold"
+ },
+ {
+  "pattern": "Stretch & fold N of N (last)",
+  "stage": "fold"
+ },
+ {
+  "pattern": "Stretch & fold N of N (last) — focaccia",
+  "stage": "fold"
+ },
+ {
+  "pattern": "Test Cookies out — cool",
+  "stage": "cool"
+ },
+ {
+  "pattern": "Test Rolls out — cool",
+  "stage": "cool"
+ },
+ {
+  "pattern": "Top batch N of N",
+  "stage": "topping"
+ },
+ {
+  "pattern": "Top loaves",
+  "stage": "topping"
+ },
+ {
+  "pattern": "Turn off Oven A",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Turn off Oven C",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Turn off the oven",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Turn on oven (bagels) to N°F",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Turn on oven (bread) to N°F",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Turn on oven (muffins) to N°F",
+  "stage": "(substep/control)"
+ },
+ {
+  "pattern": "Turn on oven to N°F",
+  "stage": "(substep/control)"
+ }
+]

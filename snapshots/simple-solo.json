@@ -1,0 +1,375 @@
+{
+ "totals": {
+  "totalLoaves": 0,
+  "totalMuffins": 0,
+  "totalBagels": 0,
+  "totalFocaccia": 0,
+  "totalSimple": 24,
+  "totalEnriched": 0,
+  "batches": 2,
+  "mixBatches": 2,
+  "bagelBatches": 0
+ },
+ "events": [
+  {
+   "t": "2026-01-17T13:44:00.000Z",
+   "tEnd": null,
+   "title": "Gather ingredients — batch 1 of 2",
+   "detail": "12 cookies · 5 min",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "prep",
+   "stageType": "weigh",
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": true,
+   "activeMin": 5,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": [
+    {
+     "name": "All purpose flour",
+     "grams": 223.25581395348837
+    },
+    {
+     "name": "Butter",
+     "grams": 133.953488372093
+    },
+    {
+     "name": "Sugar",
+     "grams": 122.79069767441861
+    }
+   ]
+  },
+  {
+   "t": "2026-01-17T13:49:00.000Z",
+   "tEnd": null,
+   "title": "Mix — batch 1 of 2",
+   "detail": "12 cookies · 15 min",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "mix",
+   "stageType": "mix",
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": true,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T13:57:00.000Z",
+   "tEnd": null,
+   "title": "Turn on oven to 350°F",
+   "detail": "~15 min preheat",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "bake",
+   "stageType": null,
+   "equip": [],
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": false,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:03:00.000Z",
+   "tEnd": null,
+   "title": "Gather ingredients — batch 2 of 2",
+   "detail": "12 cookies · 5 min",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "prep",
+   "stageType": "weigh",
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": true,
+   "activeMin": 5,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": [
+    {
+     "name": "All purpose flour",
+     "grams": 223.25581395348837
+    },
+    {
+     "name": "Butter",
+     "grams": 133.953488372093
+    },
+    {
+     "name": "Sugar",
+     "grams": 122.79069767441861
+    }
+   ]
+  },
+  {
+   "t": "2026-01-17T14:04:00.000Z",
+   "tEnd": null,
+   "title": "Shape / portion — batch 1 of 2",
+   "detail": "12 cookies · 8 min · 40 g per cookie",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "shape",
+   "stageType": "shape",
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": true,
+   "activeMin": 8,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:08:00.000Z",
+   "tEnd": null,
+   "title": "Mix — batch 2 of 2",
+   "detail": "12 cookies · 15 min",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "mix",
+   "stageType": "mix",
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": true,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:12:00.000Z",
+   "tEnd": "2026-01-17T14:26:00.000Z",
+   "title": "Bake Test Cookies — batch 1 of 2",
+   "detail": "12 cookies · 14 min · 350°F",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "bake",
+   "stageType": null,
+   "equip": [],
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": false,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:23:00.000Z",
+   "tEnd": null,
+   "title": "Shape / portion — batch 2 of 2",
+   "detail": "12 cookies · 8 min · 40 g per cookie",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "shape",
+   "stageType": "shape",
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": true,
+   "activeMin": 8,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:31:00.000Z",
+   "tEnd": "2026-01-17T14:45:00.000Z",
+   "title": "Bake Test Cookies — batch 2 of 2",
+   "detail": "12 cookies · 14 min · 350°F",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "bake",
+   "stageType": null,
+   "equip": [],
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": false,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:45:00.000Z",
+   "tEnd": null,
+   "title": "Test Cookies out — cool",
+   "detail": "15 min cool",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "cool",
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": false,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:45:00.000Z",
+   "tEnd": null,
+   "title": "Turn off the oven",
+   "detail": "Baking done — oven off, cools to room temp",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [],
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T15:00:00.000Z",
+   "tEnd": null,
+   "title": "Package & ready for sale",
+   "detail": "",
+   "process": "simple",
+   "columnKey": "simple#0",
+   "colDetails": null,
+   "stage": "done",
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": false,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  }
+ ],
+ "warnings": [
+  {
+   "msg": "Hands-on steps overlap: \"Mix — batch 1 of 2\" and \"Gather ingredients — batch 2 of 2\" both need you around 8:49 AM. You can only do one at a time — consider staggering them.",
+   "issue": "active-overlap",
+   "kind": null,
+   "type": "info"
+  },
+  {
+   "msg": "Hands-on steps overlap: \"Gather ingredients — batch 2 of 2\" and \"Shape / portion — batch 1 of 2\" both need you around 9:03 AM. You can only do one at a time — consider staggering them.",
+   "issue": "active-overlap",
+   "kind": null,
+   "type": "info"
+  },
+  {
+   "msg": "Hands-on steps overlap: \"Shape / portion — batch 1 of 2\" and \"Mix — batch 2 of 2\" both need you around 9:04 AM. You can only do one at a time — consider staggering them.",
+   "issue": "active-overlap",
+   "kind": null,
+   "type": "info"
+  },
+  {
+   "msg": "Fermentation and levain timing assume a 70°F proofing temperature (default). Set your kitchen's proofing temp in the Kitchen tab for more accurate timing.",
+   "issue": "proofing-temp-default",
+   "kind": null,
+   "type": "info"
+  }
+ ],
+ "equipClaims": [
+  {
+   "pool": "oven",
+   "role": "Test Cookies bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T14:12:00.000Z",
+   "end": "2026-01-17T14:26:00.000Z",
+   "capacity": 1
+  },
+  {
+   "pool": "oven",
+   "role": "Test Cookies bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T14:31:00.000Z",
+   "end": "2026-01-17T14:45:00.000Z",
+   "capacity": 1
+  }
+ ],
+ "columns": {
+  "loaf": [],
+  "muffin": [],
+  "bagel": [],
+  "focaccia": [],
+  "side": [
+   {
+    "key": "simple#0",
+    "process": "simple",
+    "label": "Test Cookies",
+    "recipeIds": [
+     "fx-simple"
+    ],
+    "total": 24
+   }
+  ]
+ },
+ "levain": {
+  "build1Opt": {
+   "min": 15,
+   "max": 20,
+   "mid": 17,
+   "ratio": "1:5:5",
+   "kind": "slow",
+   "manual": false
+  },
+  "build2Opt": {
+   "min": 4,
+   "max": 6,
+   "mid": 5,
+   "ratio": "1:1:1",
+   "kind": "fast",
+   "manual": false
+  },
+  "useSeparateLevains": false,
+  "muffinBuild1Opt": null,
+  "muffinBuild2Opt": null,
+  "bagelBuild1Opt": null,
+  "bagelBuild2Opt": null,
+  "useBagelSeparateLevain": false,
+  "levainContainerInfo": {
+   "shared": null,
+   "muffin": null,
+   "bagel": null
+  }
+ },
+ "loafContainerInfo": [],
+ "loafColdProofRange": null
+}

@@ -1,0 +1,916 @@
+{
+ "totals": {
+  "totalLoaves": 28,
+  "totalMuffins": 0,
+  "totalBagels": 0,
+  "totalFocaccia": 0,
+  "totalSimple": 0,
+  "totalEnriched": 0,
+  "batches": 2,
+  "mixBatches": 3,
+  "bagelBatches": 0
+ },
+ "events": [
+  {
+   "t": "2026-01-15T13:30:00.000Z",
+   "tEnd": "2026-01-15T16:30:00.000Z",
+   "title": "Levain Build 1 — first refresh",
+   "detail": "1:1:1 ratio · 2 min mix · ripens in 6–9 hr",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": "",
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-15T20:30:00.000Z",
+   "tEnd": "2026-01-16T00:30:00.000Z",
+   "title": "Levain Build 2 — final build",
+   "detail": "1:5:5 ratio · 2 min mix · ripens in 12–16 hr (slower ratio chosen to avoid a late-night refresh)",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": "",
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T11:00:00.000Z",
+   "tEnd": null,
+   "title": "Gather ingredients",
+   "detail": "15 min active · 3 recipes · weigh per batch (3 containers)",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": [
+    {
+     "label": "Container 1 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Batard",
+       "count": 10
+      }
+     ]
+    },
+    {
+     "label": "Container 2 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Batard",
+       "count": 10
+      }
+     ]
+    },
+    {
+     "label": "Container 3 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Boule",
+       "count": 8
+      }
+     ]
+    }
+   ],
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T11:15:00.000Z",
+   "tEnd": null,
+   "title": "Start autolyse — flour + water only",
+   "detail": "10 min mix × 3 containers = 30 min active · then 50 min rest",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": [
+    {
+     "label": "Container 1 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Batard",
+       "count": 10
+      }
+     ]
+    },
+    {
+     "label": "Container 2 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Batard",
+       "count": 10
+      }
+     ]
+    },
+    {
+     "label": "Container 3 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Boule",
+       "count": 8
+      }
+     ]
+    }
+   ],
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T12:35:00.000Z",
+   "tEnd": null,
+   "title": "Mix in salt + ripe levain",
+   "detail": "10 min mix × 3 containers = 30 min active · 30 min rest before fold 1",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": [
+    {
+     "label": "Container 1 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Batard",
+       "count": 10
+      }
+     ]
+    },
+    {
+     "label": "Container 2 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Batard",
+       "count": 10
+      }
+     ]
+    },
+    {
+     "label": "Container 3 of 3",
+     "contents": [
+      {
+       "recipe": "Sourdough Boule",
+       "count": 8
+      }
+     ]
+    }
+   ],
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T13:25:00.000Z",
+   "tEnd": null,
+   "title": "Stretch & fold 1 of 5",
+   "detail": "5 min × 3 containers = 15 min active · next fold in 30 min",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T13:55:00.000Z",
+   "tEnd": null,
+   "title": "Stretch & fold 2 of 5",
+   "detail": "5 min × 3 containers = 15 min active · next fold in 30 min",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T14:25:00.000Z",
+   "tEnd": null,
+   "title": "Stretch & fold 3 of 5",
+   "detail": "5 min × 3 containers = 15 min active · next fold in 30 min",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T14:55:00.000Z",
+   "tEnd": null,
+   "title": "Stretch & fold 4 of 5",
+   "detail": "5 min × 3 containers = 15 min active · next fold in 30 min",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T15:25:00.000Z",
+   "tEnd": null,
+   "title": "Stretch & fold 5 of 5 (last)",
+   "detail": "5 min × 3 containers = 15 min active · last fold, then bulk ferment",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 15,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T15:25:00.000Z",
+   "tEnd": "2026-01-16T19:25:00.000Z",
+   "title": "Bulk ferment",
+   "detail": "4 hr warm bulk ferment until ready to shape",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": null,
+   "stage": "proof",
+   "stageType": null,
+   "equip": null,
+   "equipStrip": "",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T19:25:00.000Z",
+   "tEnd": null,
+   "title": "Start preshape (container 1 of 3: 10 × Sourdough Batard)",
+   "detail": "Weigh & divide: 675 g each · 4 min × 10 loaves = 40 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 1 of 3: 10 × Sourdough Batard)",
+   "container": "container 1 of 3: 10 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T20:05:00.000Z",
+   "tEnd": null,
+   "title": "Final shape (container 1 of 3: 10 × Sourdough Batard)",
+   "detail": "3 min × 10 loaves = 30 min total",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 1 of 3: 10 × Sourdough Batard)",
+   "container": "Bannetons: 10 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T20:35:00.000Z",
+   "tEnd": null,
+   "title": "Start preshape (container 2 of 3: 10 × Sourdough Batard)",
+   "detail": "Weigh & divide: 675 g each · 4 min × 10 loaves = 40 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 2 of 3: 10 × Sourdough Batard)",
+   "container": "container 2 of 3: 10 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T20:35:00.000Z",
+   "tEnd": null,
+   "title": "Into fridge (container 1 of 3: 10 × Sourdough Batard)",
+   "detail": "16 hr cold proof · last batch proofs ~5 hr longer (staggered bakes)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 1 of 3: 10 × Sourdough Batard)",
+   "container": "Bannetons: 10 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T21:15:00.000Z",
+   "tEnd": null,
+   "title": "Final shape (container 2 of 3: 10 × Sourdough Batard)",
+   "detail": "3 min × 10 loaves = 30 min total",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 2 of 3: 10 × Sourdough Batard)",
+   "container": "Bannetons: 10 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T21:45:00.000Z",
+   "tEnd": null,
+   "title": "Into fridge (container 2 of 3: 10 × Sourdough Batard)",
+   "detail": "14 hr 50 min cold proof · last batch proofs ~5 hr longer (staggered bakes)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 2 of 3: 10 × Sourdough Batard)",
+   "container": "Bannetons: 10 × Sourdough Batard",
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T21:45:00.000Z",
+   "tEnd": null,
+   "title": "Start preshape (container 3 of 3: 8 × Sourdough Boule)",
+   "detail": "Weigh & divide: 850 g each · 4 min × 8 loaves = 32 min total · first loaves rest naturally while you finish (no separate bench rest needed)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-boule",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 3 of 3: 8 × Sourdough Boule)",
+   "container": "container 3 of 3: 8 × Sourdough Boule",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T22:17:00.000Z",
+   "tEnd": null,
+   "title": "Final shape (container 3 of 3: 8 × Sourdough Boule)",
+   "detail": "3 min × 8 loaves = 24 min total",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-boule",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 3 of 3: 8 × Sourdough Boule)",
+   "container": "Bannetons: 8 × Sourdough Boule",
+   "activeStep": null,
+   "activeMin": 10,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-16T22:41:00.000Z",
+   "tEnd": null,
+   "title": "Into fridge (container 3 of 3: 8 × Sourdough Boule)",
+   "detail": "13 hr 54 min cold proof · last batch proofs ~5 hr longer (staggered bakes)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-boule",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": " (container 3 of 3: 8 × Sourdough Boule)",
+   "container": "Bannetons: 8 × Sourdough Boule",
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T10:25:00.000Z",
+   "tEnd": null,
+   "title": "Turn on oven to 500°F",
+   "detail": "~90 min preheat to 500°F",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [
+    "Oven"
+   ],
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T11:55:00.000Z",
+   "tEnd": null,
+   "title": "Bake 1 of 2 — into oven",
+   "detail": "10 min load · 40 min bake · 500°F\nDeck 1: 4 × Sourdough Batard\nDeck 2: 4 × Sourdough Batard\nDeck 3: 4 × Sourdough Batard",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [
+    "Deck 1: 4 × Sourdough Batard",
+    "Deck 2: 4 × Sourdough Batard",
+    "Deck 3: 4 × Sourdough Batard"
+   ],
+   "equipStrip": "\nDeck 1: 4 × Sourdough Batard\nDeck 2: 4 × Sourdough Batard\nDeck 3: 4 × Sourdough Batard",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T12:35:00.000Z",
+   "tEnd": null,
+   "title": "Loaves out (batch 1 of 2)",
+   "detail": "Pull batch 1, load batch 2 · reheat ~5 min to 500°F before next bake",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": "bake",
+   "stageType": null,
+   "equip": [],
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T12:40:00.000Z",
+   "tEnd": null,
+   "title": "Bake 2 of 2 — into oven",
+   "detail": "10 min load · 40 min bake · 500°F\nDeck 1: 4 × Sourdough Batard",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [
+    "Deck 1: 4 × Sourdough Batard"
+   ],
+   "equipStrip": "\nDeck 1: 4 × Sourdough Batard",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T13:20:00.000Z",
+   "tEnd": null,
+   "title": "Last loaves out — start cooling",
+   "detail": "1 hr cool · turn off the oven (cools to room temp)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T13:20:00.000Z",
+   "tEnd": null,
+   "title": "Bake 1 of 1 — into oven",
+   "detail": "10 min load · 40 min bake · 500°F\nDeck 1: 3 × Sourdough Boule\nDeck 2: 3 × Sourdough Boule\nDeck 3: 2 × Sourdough Boule",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-boule",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [
+    "Deck 1: 3 × Sourdough Boule",
+    "Deck 2: 3 × Sourdough Boule",
+    "Deck 3: 2 × Sourdough Boule"
+   ],
+   "equipStrip": "\nDeck 1: 3 × Sourdough Boule\nDeck 2: 3 × Sourdough Boule\nDeck 3: 2 × Sourdough Boule",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T14:00:00.000Z",
+   "tEnd": null,
+   "title": "Last loaves out — start cooling",
+   "detail": "1 hr cool · turn off the oven (cools to room temp)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-boule",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T15:00:00.000Z",
+   "tEnd": null,
+   "title": "24 loaves ready for sale",
+   "detail": "",
+   "process": "loaf",
+   "columnKey": "g0~loaf",
+   "colDetails": {
+    "g0~loaf::seed-sourdough-batard": "",
+    "g0~loaf::seed-sourdough-boule": ""
+   },
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T15:50:00.000Z",
+   "tEnd": null,
+   "title": "Turn on oven to 500°F",
+   "detail": "~90 min preheat to 500°F",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard~b1",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [
+    "Oven"
+   ],
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T17:20:00.000Z",
+   "tEnd": null,
+   "title": "Bake 1 of 1 — into oven",
+   "detail": "10 min load · 40 min bake · 500°F\nDeck 1: 4 × Sourdough Batard",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard~b1",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": [
+    "Deck 1: 4 × Sourdough Batard"
+   ],
+   "equipStrip": "\nDeck 1: 4 × Sourdough Batard",
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T18:00:00.000Z",
+   "tEnd": null,
+   "title": "Last loaves out — start cooling",
+   "detail": "1 hr cool · turn off the oven (cools to room temp)",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard~b1",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  },
+  {
+   "t": "2026-01-17T19:00:00.000Z",
+   "tEnd": null,
+   "title": "4 loaves ready for sale",
+   "detail": "",
+   "process": "loaf",
+   "columnKey": "g0~loaf::seed-sourdough-batard~b1",
+   "colDetails": null,
+   "stage": null,
+   "stageType": null,
+   "equip": null,
+   "equipStrip": null,
+   "equipStripTitle": null,
+   "container": null,
+   "activeStep": null,
+   "activeMin": 0,
+   "mixBatchCount": null,
+   "mixBatchContents": null,
+   "batchIngredients": null
+  }
+ ],
+ "warnings": [
+  {
+   "msg": "Sourdough Batard & Sourdough Boule: ONE dough split across bake times — shared mix, fold & bulk; each portion bakes at its own time (the later one cold-proofs longer).",
+   "issue": "same-dough-combined",
+   "kind": "loaf",
+   "type": "info"
+  },
+  {
+   "msg": "Fermentation and levain timing assume a 70°F proofing temperature (default). Set your kitchen's proofing temp in the Kitchen tab for more accurate timing.",
+   "issue": "proofing-temp-default",
+   "kind": null,
+   "type": "info"
+  }
+ ],
+ "equipClaims": [
+  {
+   "pool": "oven",
+   "role": "Loaf bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T11:55:00.000Z",
+   "end": "2026-01-17T12:35:00.000Z",
+   "capacity": 1
+  },
+  {
+   "pool": "oven",
+   "role": "Loaf bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T12:40:00.000Z",
+   "end": "2026-01-17T13:20:00.000Z",
+   "capacity": 1
+  },
+  {
+   "pool": "oven",
+   "role": "Loaf bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T13:20:00.000Z",
+   "end": "2026-01-17T14:00:00.000Z",
+   "capacity": 1
+  },
+  {
+   "pool": "oven",
+   "role": "Loaf bake",
+   "name": "Oven",
+   "count": 1,
+   "start": "2026-01-17T17:20:00.000Z",
+   "end": "2026-01-17T18:00:00.000Z",
+   "capacity": 1
+  }
+ ],
+ "columns": {
+  "loaf": [
+   {
+    "key": "g0~loaf::seed-sourdough-batard",
+    "label": "Sourdough Batard · one dough (staggered)",
+    "names": [
+     "Sourdough Batard"
+    ]
+   },
+   {
+    "key": "g0~loaf::seed-sourdough-boule",
+    "label": "Sourdough Boule · Sat 10:00 AM",
+    "names": [
+     "Sourdough Boule"
+    ]
+   },
+   {
+    "key": "g0~loaf::seed-sourdough-batard~b1",
+    "label": "Sourdough Batard · one dough (staggered)",
+    "names": [
+     "Sourdough Batard"
+    ]
+   }
+  ],
+  "muffin": [],
+  "bagel": [],
+  "focaccia": [],
+  "side": []
+ },
+ "levain": {
+  "build1Opt": {
+   "min": 6,
+   "max": 9,
+   "mid": 7,
+   "ratio": "1:1:1",
+   "kind": "fast",
+   "manual": false
+  },
+  "build2Opt": {
+   "min": 12,
+   "max": 16,
+   "mid": 14,
+   "ratio": "1:5:5",
+   "kind": "slow",
+   "manual": false
+  },
+  "useSeparateLevains": false,
+  "muffinBuild1Opt": null,
+  "muffinBuild2Opt": null,
+  "bagelBuild1Opt": null,
+  "bagelBuild2Opt": null,
+  "useBagelSeparateLevain": false,
+  "levainContainerInfo": {
+   "shared": null,
+   "muffin": null,
+   "bagel": null
+  }
+ },
+ "loafContainerInfo": [
+  {
+   "loaves": 10,
+   "dough": 6750,
+   "contents": [
+    {
+     "recipe": "Sourdough Batard",
+     "recipeId": "seed-sourdough-batard",
+     "count": 10,
+     "dough": 6750
+    }
+   ],
+   "containerName": null,
+   "colKey": "loaf"
+  },
+  {
+   "loaves": 10,
+   "dough": 6750,
+   "contents": [
+    {
+     "recipe": "Sourdough Batard",
+     "recipeId": "seed-sourdough-batard",
+     "count": 10,
+     "dough": 6750
+    }
+   ],
+   "containerName": null,
+   "colKey": "loaf"
+  },
+  {
+   "loaves": 8,
+   "dough": 6800,
+   "contents": [
+    {
+     "recipe": "Sourdough Boule",
+     "recipeId": "seed-sourdough-boule",
+     "count": 8,
+     "dough": 6800
+    }
+   ],
+   "containerName": null,
+   "colKey": "loaf"
+  }
+ ],
+ "loafColdProofRange": {
+  "minMs": 50040000,
+  "maxMs": 57600000
+ }
+}
