@@ -11874,7 +11874,11 @@ ${notesHtml}
     const effBagelDeadline = bagelDeadline || loafDeadline;
     const effBagelBakeTime = bagelBakeTime || loafBakeTime;
 
-    const computeBakeSlot = (deadline, bakeTimePref, bakeTotalMin, kindLabel, kind, coolMin) => {
+    // One slot computation for every process: anchor the bake to a preset time-of-day (or
+    // back off the deadline), warn on slack and late-night starts. postBakeMin = everything
+    // between last-bake-end and "ready" (cool, glaze…). lateTail parameterizes the advice
+    // tail of the late-night warning so the historical per-process phrasing is preserved.
+    const computeSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind, lateTail) => {
       const D = new Date(deadline);
       let firstBakeStart, lastBakeEnd, packageReady;
       const preset = bakeTimePref ? BAKE_TIME_PRESETS[bakeTimePref] : null;
@@ -11887,30 +11891,29 @@ ${notesHtml}
           return t;
         };
         let attempt = tryDay(day);
-        let coolEnd = addMinutes(attempt, bakeTotalMin + coolMin);
-        if (coolEnd > D) {
+        if (addMinutes(attempt, bakeTotalMin + postBakeMin) > D) {
           day.setDate(day.getDate() - 1);
           attempt = tryDay(day);
-          coolEnd = addMinutes(attempt, bakeTotalMin + coolMin);
         }
         firstBakeStart = attempt;
         lastBakeEnd = addMinutes(firstBakeStart, bakeTotalMin);
-        packageReady = addMinutes(lastBakeEnd, coolMin);
+        packageReady = addMinutes(lastBakeEnd, postBakeMin);
         const slackHr = (D - packageReady) / (1000 * 60 * 60);
         if (slackHr > 0.1) {
           warnings.push({ msg: `${kindLabel} will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind });
         }
       } else {
-        lastBakeEnd = addMinutes(D, -coolMin);
+        lastBakeEnd = addMinutes(D, -postBakeMin);
         firstBakeStart = addMinutes(lastBakeEnd, -bakeTotalMin);
         packageReady = D;
       }
-      const bakeHour = firstBakeStart.getHours();
-      if (isLateNightHour(bakeHour)) {
-        warnings.push({ msg: `${kindLabel} bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or picking a different bake-time preference.`, issue: 'bake-late', kind });
+      if (isLateNightHour(firstBakeStart.getHours())) {
+        warnings.push({ msg: `${kindLabel} bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or ${lateTail}`, issue: 'bake-late', kind });
       }
       return { firstBakeStart, lastBakeEnd, packageReady };
     };
+    const computeBakeSlot = (deadline, bakeTimePref, bakeTotalMin, kindLabel, kind, coolMin) =>
+      computeSlot(deadline, bakeTimePref, bakeTotalMin, coolMin, kindLabel, kind, 'picking a different bake-time preference.');
 
     const loafSlot = totalLoaves > 0
       ? computeBakeSlot(loafDeadline, loafBakeTime, loafBakeTotalMin, 'Bread', 'loaf', loafCoolMin)
@@ -12075,25 +12078,8 @@ ${notesHtml}
     const focacciaSlot = focacciaGroups.length === 1 ? focacciaGroups[0].slot : null;
 
     // Simple & enriched bake slots. postBakeMin covers cooling (+ glaze for enriched).
-    const computeSideSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind) => {
-      if (!deadline) return null;
-      const D = new Date(deadline);
-      const preset = bakeTimePref ? BAKE_TIME_PRESETS[bakeTimePref] : null;
-      let first, last, ready;
-      if (preset) {
-        const day = new Date(D); day.setHours(0, 0, 0, 0);
-        const tryDay = d => { const t = new Date(d); t.setHours(Math.floor(preset.mid), Math.round((preset.mid % 1) * 60), 0, 0); return t; };
-        let attempt = tryDay(day);
-        if (addMinutes(attempt, bakeTotalMin + postBakeMin) > D) { day.setDate(day.getDate() - 1); attempt = tryDay(day); }
-        first = attempt; last = addMinutes(first, bakeTotalMin); ready = addMinutes(last, postBakeMin);
-        const slackHr = (D - ready) / 3600000;
-        if (slackHr > 0.1) warnings.push({ msg: `${kindLabel} will be ready ${slackHr.toFixed(1)} hr before its deadline.`, issue: 'slack', kind });
-      } else {
-        last = addMinutes(D, -postBakeMin); first = addMinutes(last, -bakeTotalMin); ready = D;
-      }
-      if (isLateNightHour(first.getHours())) warnings.push({ msg: `${kindLabel} bake starts outside ${quietHoursLabel()}. Consider shifting its deadline or bake time.`, issue: 'bake-late', kind });
-      return { firstBakeStart: first, lastBakeEnd: last, packageReady: ready };
-    };
+    const computeSideSlot = (deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind) =>
+      deadline ? computeSlot(deadline, bakeTimePref, bakeTotalMin, postBakeMin, kindLabel, kind, 'bake time.') : null;
     // --- Side groups: each simple/enriched scheduling unit = (process, dough ratio,
     // deadline). Recipes that share a dough AND a deadline merge into one group (one
     // column, one oven slot); a different ratio OR a different deadline splits into a
